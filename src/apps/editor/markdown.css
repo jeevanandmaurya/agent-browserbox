@@ -1,0 +1,24 @@
+/* Rendered Markdown, shared by the Editor's live preview and the Preview app. */
+:is([data-app='editor'], [data-app='preview']) .md { line-height: 1.6; overflow-wrap: anywhere; }
+:is([data-app='editor'], [data-app='preview']) .md > :first-child { margin-top: 0; }
+:is([data-app='editor'], [data-app='preview']) .md :is(h1, h2, h3, h4, h5, h6) { margin: 1.2em 0 0.5em; line-height: 1.25; }
+:is([data-app='editor'], [data-app='preview']) .md h1 { font-size: 1.7em; padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+:is([data-app='editor'], [data-app='preview']) .md h2 { font-size: 1.35em; padding-bottom: 0.2em; border-bottom: 1px solid var(--border); }
+:is([data-app='editor'], [data-app='preview']) .md h3 { font-size: 1.15em; }
+:is([data-app='editor'], [data-app='preview']) .md :is(p, ul, ol, blockquote, pre, .md-table) { margin: 0 0 0.9em; }
+:is([data-app='editor'], [data-app='preview']) .md :is(ul, ol) { padding-left: 1.6em; }
+:is([data-app='editor'], [data-app='preview']) .md li > :is(ul, ol) { margin-bottom: 0; }
+:is([data-app='editor'], [data-app='preview']) .md li.task { list-style: none; margin-left: -1.3em; }
+:is([data-app='editor'], [data-app='preview']) .md li.task > input { margin: 0 0.4em 0 0; vertical-align: middle; }
+:is([data-app='editor'], [data-app='preview']) .md a { color: var(--accent); }
+:is([data-app='editor'], [data-app='preview']) .md .md-link { text-decoration: underline dotted; }
+:is([data-app='editor'], [data-app='preview']) .md code { padding: 0.1em 0.35em; border-radius: 4px; background: var(--panel-3); font: 0.92em var(--mono); }
+:is([data-app='editor'], [data-app='preview']) .md pre { padding: 10px 12px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+:is([data-app='editor'], [data-app='preview']) .md pre code { padding: 0; background: none; font-size: 12px; line-height: 1.5; }
+:is([data-app='editor'], [data-app='preview']) .md blockquote { padding: 0 1em; border-left: 3px solid var(--border); color: var(--muted); }
+:is([data-app='editor'], [data-app='preview']) .md hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+:is([data-app='editor'], [data-app='preview']) .md img { max-width: 100%; }
+:is([data-app='editor'], [data-app='preview']) .md .md-table { overflow-x: auto; }
+:is([data-app='editor'], [data-app='preview']) .md table { border-collapse: collapse; }
+:is([data-app='editor'], [data-app='preview']) .md :is(th, td) { padding: 5px 10px; border: 1px solid var(--border); }
+:is([data-app='editor'], [data-app='preview']) .md th { background: var(--panel-2); }

@@ -1,0 +1,46 @@
+[data-app='editor'] { container-type: inline-size; overflow: hidden; }
+[data-app='editor'] .editor-toolbar { overflow-x: auto; scrollbar-width: none; }
+[data-app='editor'] .editor-toolbar .sep { width: 1px; align-self: stretch; margin: 2px 2px; background: var(--border); flex-shrink: 0; }
+[data-app='editor'] .editor-toolbar .btn[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 22%, var(--panel-2)); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+[data-app='editor'] .findbar { display: grid; gap: 4px; padding: 6px 8px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+[data-app='editor'] .find-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+[data-app='editor'] .find-row .input { flex: 1; min-width: 80px; height: 26px; min-height: 26px; }
+[data-app='editor'] .find-count { font-size: 12px; white-space: nowrap; min-width: 4.5em; text-align: right; }
+[data-app='editor'] .findbar .btn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+[data-app='editor'] .banner { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: color-mix(in srgb, var(--warn) 14%, var(--panel)); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+[data-app='editor'] .banner > span:first-child { flex: 1; min-width: 160px; }
+
+[data-app='editor'] .editor-main { display: flex; min-height: 0; }
+[data-app='editor'] .code { position: relative; flex: 1; min-width: 0; display: flex; background: var(--bg); }
+[data-app='editor'] .gutter { flex-shrink: 0; overflow: hidden; padding: 8px 8px 8px 10px; min-width: 3.2em; background: var(--panel); border-right: 1px solid var(--border); color: var(--muted); font: 12px/1.6 var(--mono); text-align: right; user-select: none; }
+[data-app='editor'] .gutter-inner { white-space: pre; will-change: transform; }
+[data-app='editor'] .code-input { flex: 1; min-width: 0; margin: 0; padding: 8px 12px; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: 12px/1.6 var(--mono); tab-size: 2; white-space: pre; overflow: auto; }
+[data-app='editor'] .code-input[wrap='soft'] { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-app='editor'] .code:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
+
+[data-app='editor'] .md-preview { flex: 1; min-width: 0; overflow: auto; padding: 12px 18px; border-left: 1px solid var(--border); background: var(--panel); }
+
+[data-app='editor'] .run-panel { display: flex; flex-direction: column; height: 34%; min-height: 120px; max-height: 60%; border-top: 1px solid var(--border); background: var(--panel); flex-shrink: 0; }
+[data-app='editor'] .run-panel.collapsed { height: auto; min-height: 0; }
+[data-app='editor'] .run-panel.collapsed .run-out { display: none; }
+[data-app='editor'] .run-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px; background: var(--panel-2); font-size: 12px; }
+[data-app='editor'] .run-head .spacer { flex: 1; }
+[data-app='editor'] .run-head .ok { color: var(--ok); }
+[data-app='editor'] .run-head .err { color: var(--err); }
+[data-app='editor'] .run-out { flex: 1; margin: 0; padding: 8px 12px; overflow: auto; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-app='editor'] .run-out .err { color: var(--err); }
+[data-app='editor'] .run-out .value { color: var(--accent); }
+
+[data-app='editor'] .statusbar { overflow: hidden; white-space: nowrap; }
+[data-app='editor'] .sb-msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+[data-app='editor'] .sb-msg.warn { color: var(--warn); }
+[data-app='editor'] .sb-msg.err { color: var(--err); }
+
+@container (max-width: 560px) {
+  [data-app='editor'] .editor-main { flex-direction: column; }
+  [data-app='editor'] .md-preview { border-left: 0; border-top: 1px solid var(--border); }
+  [data-app='editor'] .sb-len, [data-app='editor'] .sb-enc { display: none; }
+  [data-app='editor'] .gutter { min-width: 2.6em; padding-left: 4px; padding-right: 6px; }
+}

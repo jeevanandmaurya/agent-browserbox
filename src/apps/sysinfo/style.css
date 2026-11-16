@@ -1,0 +1,67 @@
+/* Section nav: sidebar, collapsing to a scrolling tab strip in narrow windows. */
+[data-app="sysinfo"] { container-type: inline-size; }
+[data-app="sysinfo"] .sn-layout { flex: 1; min-height: 0; display: flex; }
+[data-app="sysinfo"] .sn-nav { display: flex; flex-direction: column; gap: 2px; width: 170px; flex-shrink: 0; padding: 10px 8px; background: var(--panel-2); border-right: 1px solid var(--border); overflow-y: auto; }
+[data-app="sysinfo"] .sn-tab { padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); text-align: left; cursor: pointer; white-space: nowrap; }
+[data-app="sysinfo"] .sn-tab:hover { background: var(--panel-3); color: var(--text); }
+[data-app="sysinfo"] .sn-tab[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--text); font-weight: 600; }
+[data-app="sysinfo"] .sn-panel { flex: 1; min-width: 0; overflow: auto; outline: none; }
+[data-app="sysinfo"] .sn-main { max-width: 820px; padding: 16px 20px 24px; }
+@container (max-width: 560px) {
+  [data-app="sysinfo"] .sn-layout { flex-direction: column; }
+  [data-app="sysinfo"] .sn-nav { flex-direction: row; width: auto; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  [data-app="sysinfo"] .sn-main { padding: 12px; }
+}
+
+[data-app="sysinfo"] .spacer { flex: 1; }
+[data-app="sysinfo"] .si-section { display: flex; flex-direction: column; gap: 12px; }
+[data-app="sysinfo"] .si-head h2 { margin: 0; font-size: 17px; }
+[data-app="sysinfo"] .si-head p { margin: 2px 0 0; }
+[data-app="sysinfo"] h3 { margin: 6px 0 0; font-size: 13px; }
+[data-app="sysinfo"] .si-subhead h3 { margin: 0; }
+[data-app="sysinfo"] .si-kv { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 6px 16px; margin: 0; }
+[data-app="sysinfo"] .si-kv dt { color: var(--muted); }
+[data-app="sysinfo"] .si-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@container (max-width: 420px) {
+  [data-app="sysinfo"] .si-kv { grid-template-columns: 1fr; gap: 0; }
+  [data-app="sysinfo"] .si-kv dd { margin-bottom: 8px; }
+}
+[data-app="sysinfo"] .si-wrap { font-size: 12px; word-break: break-all; }
+[data-app="sysinfo"] .si-inline { flex-wrap: wrap; }
+[data-app="sysinfo"] .si-note { margin: 0; font-size: 12px; }
+[data-app="sysinfo"] .si-error { margin: 0; color: var(--err); overflow-wrap: anywhere; }
+[data-app="sysinfo"] .si-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+[data-app="sysinfo"] .si-meter { height: 8px; border-radius: 99px; background: var(--panel-3); overflow: hidden; }
+[data-app="sysinfo"] .si-meter > div { height: 100%; background: var(--accent); border-radius: inherit; }
+
+[data-app="sysinfo"] .si-cap-group h3 { margin: 4px 0 6px; }
+[data-app="sysinfo"] .si-cap-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+[data-app="sysinfo"] .si-cap-list li { display: grid; grid-template-columns: auto minmax(120px, 200px) 1fr; align-items: center; gap: 10px; padding: 6px 10px; border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent); }
+[data-app="sysinfo"] .si-cap-list li:first-child { border-top: 0; }
+[data-app="sysinfo"] .si-cap-list li.missing .si-cap-label { color: var(--muted); }
+[data-app="sysinfo"] .si-cap-use { font-size: 12px; }
+@container (max-width: 480px) {
+  [data-app="sysinfo"] .si-cap-list li { grid-template-columns: auto 1fr; }
+  [data-app="sysinfo"] .si-cap-use { grid-column: 2; }
+}
+
+[data-app="sysinfo"] .si-usage { display: flex; flex-direction: column; gap: 8px; }
+[data-app="sysinfo"] .si-usage p { margin: 0; }
+[data-app="sysinfo"] .si-breakdown { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 12px; }
+[data-app="sysinfo"] .si-breakdown li { display: flex; justify-content: space-between; gap: 12px; }
+[data-app="sysinfo"] .si-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+
+[data-app="sysinfo"] .si-features { display: flex; flex-direction: column; gap: 8px; }
+[data-app="sysinfo"] .si-features p { margin: 0; }
+[data-app="sysinfo"] .si-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+[data-app="sysinfo"] .si-bench-result:empty { display: none; }
+[data-app="sysinfo"] .si-bench-result p { margin: 0; }
+[data-app="sysinfo"] .si-bench-result { display: flex; flex-direction: column; gap: 8px; }
+
+[data-app="sysinfo"] .si-timeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+[data-app="sysinfo"] .si-timeline li { display: grid; grid-template-columns: minmax(80px, 140px) 1fr 70px; align-items: center; gap: 10px; }
+[data-app="sysinfo"] .si-tl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+[data-app="sysinfo"] .si-tl-track { height: 8px; background: var(--panel-3); border-radius: 99px; overflow: hidden; }
+[data-app="sysinfo"] .si-tl-bar { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: inherit; }
+[data-app="sysinfo"] .si-tl-at { text-align: right; font-size: 12px; color: var(--muted); }

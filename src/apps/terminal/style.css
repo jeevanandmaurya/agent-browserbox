@@ -1,0 +1,18 @@
+[data-app='terminal'] { background: #0a0c10; color: #d7dce5; }
+:root[data-theme='light'] [data-app='terminal'] { background: #fbfbfd; color: #1a1d26; }
+[data-app='terminal'] .term { overflow-y: auto; padding: 10px 12px; font: 13px/1.5 var(--mono); cursor: text; }
+[data-app='terminal'] .term-out { white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-app='terminal'] .term-line { display: flex; white-space: pre; }
+[data-app='terminal'] .term-line.busy .term-prompt { display: none; }
+[data-app='terminal'] .term-input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: none; font: inherit; color: inherit; caret-color: var(--accent); }
+[data-app='terminal'] .a-bold { font-weight: 700; }
+[data-app='terminal'] .a-dim { opacity: 0.6; }
+[data-app='terminal'] .a-red { color: var(--err); }
+[data-app='terminal'] .a-green { color: var(--ok); }
+[data-app='terminal'] .a-yellow { color: var(--warn); }
+[data-app='terminal'] .a-blue { color: #60a5fa; }
+[data-app='terminal'] .a-magenta { color: #c084fc; }
+[data-app='terminal'] .a-cyan { color: #22d3ee; }
+:root[data-theme='light'] [data-app='terminal'] .a-blue { color: #2563eb; }
+:root[data-theme='light'] [data-app='terminal'] .a-magenta { color: #9333ea; }
+:root[data-theme='light'] [data-app='terminal'] .a-cyan { color: #0e7490; }

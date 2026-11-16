@@ -17,6 +17,8 @@ export interface AgentConfig {
   maxSteps: number;
   /** Extra instructions appended to the system prompt. */
   instructions: string;
+  /** Let Claude use Anthropic's server-side web search and fetch tools. */
+  webSearch: boolean;
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -28,6 +30,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   webllmModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
   maxSteps: 50,
   instructions: '',
+  webSearch: true,
 };
 
 export const ANTHROPIC_MODELS = [
