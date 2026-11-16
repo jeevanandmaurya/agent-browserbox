@@ -105,6 +105,12 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
       field('Model', modelSelect),
       customField,
       field('Effort', select(EFFORTS, cfg.effort, (v) => save({ effort: v as Effort })), 'How hard Claude thinks before acting. Higher is more thorough but slower and uses more tokens.'),
+      h(
+        'label',
+        { class: 'st-check' },
+        h('input', { type: 'checkbox', checked: cfg.webSearch, onchange: (e: Event) => save({ webSearch: (e.target as HTMLInputElement).checked }) }),
+        'Allow web search and fetch (runs on Anthropic’s servers)',
+      ),
     ),
   );
 

@@ -54,12 +54,14 @@ export async function gpuCompute(req: ComputeRequest): Promise<ComputeResult> {
   const device = await getDevice();
   const started = performance.now();
   device.pushErrorScope('validation');
+  let scoped = true;
 
   const module = device.createShaderModule({ code: req.wgsl });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === 'error');
   if (errors.length) {
     void device.popErrorScope();
+    scoped = false;
     throw new Error('WGSL compile error:\n' + errors.map((m) => `  ${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
   }
 
@@ -72,9 +74,16 @@ export async function gpuCompute(req: ComputeRequest): Promise<ComputeResult> {
   const readBuf = device.createBuffer({ size: outBytes, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
 
   try {
-    const pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+    // An explicit layout keeps both bindings valid even when a shader ignores its input.
+    const layout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      ],
+    });
+    const pipeline = await device.createComputePipelineAsync({ layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }), compute: { module, entryPoint: 'main' } });
     const bind = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
+      layout,
       entries: [
         { binding: 0, resource: { buffer: inBuf } },
         { binding: 1, resource: { buffer: outBuf } },
@@ -85,10 +94,13 @@ export async function gpuCompute(req: ComputeRequest): Promise<ComputeResult> {
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bind);
     const [x, y = 1, z = 1] = req.workgroups ?? [Math.ceil(req.outputLength / 64)];
+    const maxDim = device.limits.maxComputeWorkgroupsPerDimension;
+    if (Math.max(x, y, z) > maxDim) throw new Error(`dispatch of ${Math.max(x, y, z)} workgroups exceeds the device limit of ${maxDim} per dimension; use a larger @workgroup_size or a 2D dispatch via workgroups`);
     pass.dispatchWorkgroups(x, y, z);
     pass.end();
     encoder.copyBufferToBuffer(outBuf, 0, readBuf, 0, outBytes);
     device.queue.submit([encoder.finish()]);
+    scoped = false;
     const err = await device.popErrorScope();
     if (err) throw new Error(`WebGPU validation error: ${err.message}`);
     await readBuf.mapAsync(GPUMapMode.READ);
@@ -96,6 +108,7 @@ export async function gpuCompute(req: ComputeRequest): Promise<ComputeResult> {
     readBuf.unmap();
     return { output, ms: performance.now() - started };
   } finally {
+    if (scoped) void device.popErrorScope().catch(() => null);
     inBuf.destroy();
     outBuf.destroy();
     readBuf.destroy();

@@ -256,6 +256,7 @@ async function snapshot(os: Kernel, cwd: string): Promise<FileBlob[]> {
  * interpreter's working directory and anything it writes is copied back.
  */
 export async function runPython(os: Kernel, code: string, opts: RunOptions & { packages?: string[] } = {}): Promise<RunResult> {
+  // Deliberately parentless: the warm interpreter outlives whichever app first used it.
   if (!python?.alive) python = new Sandbox(os, { name: 'python', network: false });
   const cwd = opts.cwd ?? '/tmp';
   const files = await snapshot(os, cwd);

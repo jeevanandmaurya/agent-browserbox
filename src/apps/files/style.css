@@ -24,10 +24,7 @@
 [data-app='files'] .col-mtime { width: 170px; }
 [data-app='files'] td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
 [data-app='files'] td.col-size, [data-app='files'] td.col-mtime { color: var(--muted); font-variant-numeric: tabular-nums; }
-[data-app='files'] .col-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-[data-app='files'] th.col-name { display: table-cell; }
-[data-app='files'] .ficon { width: 18px; text-align: center; flex-shrink: 0; }
-[data-app='files'] .fname { overflow: hidden; text-overflow: ellipsis; }
+[data-app='files'] .ficon { display: inline-block; width: 18px; margin-right: 8px; text-align: center; }
 [data-app='files'] tr.cut { opacity: 0.5; }
 [data-app='files'] .files-pane:focus-visible tr.cursor { outline: 1px dashed var(--accent); outline-offset: -2px; }
 [data-app='files'] .files-empty-icon { font-size: 36px; margin-bottom: 4px; }

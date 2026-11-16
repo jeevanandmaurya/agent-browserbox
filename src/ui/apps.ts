@@ -68,7 +68,10 @@ export class AppHost {
     const app = APPS.find((a) => a.id === id);
     if (!app) return this.os.notify({ title: `No such app: ${id}`, level: 'error' });
     const existing = this.#singletons.get(id);
-    if (existing && !existing.closed) return existing.focus();
+    if (existing && !existing.closed) {
+      if (!Object.keys(args).length) return existing.focus();
+      existing.close(); // reopen so the new arguments (e.g. a section deep link) take effect
+    }
 
     const win = this.wm.open({ title: app.name, icon: app.icon, width: app.width, height: app.height });
     win.body.append(h('div', { class: 'app-loading' }, 'Loading…'));

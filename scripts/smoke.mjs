@@ -131,8 +131,9 @@ await check('agent: tool loop, approvals, validation', async () => {
   expect.forEach((re, i) => {
     if (!re.test(results[i] ?? '')) throw new Error(`tool result ${i} was ${JSON.stringify(results[i])}`);
   });
-  const saved = await page.evaluate(async () => (await bbx.fs.readdir('/home/agent/.sessions')).length);
-  if (saved !== 1) throw new Error('session was not saved');
+  await page.waitForFunction(() => bbx.fs.readdir('/home/agent/.sessions').then((l) => l.length === 1, () => false), null, { timeout: 5000 }).catch(() => {
+    throw new Error('session was not saved');
+  });
   return `${results.length} tool results, session saved, grants=${await page.evaluate(() => bbx.perms.grants().join(','))}`;
 });
 await check('agent: cli in the terminal', async () => {
@@ -152,11 +153,20 @@ await check('processes are cleaned up', () =>
 await check('every app opens', async () => {
   const ids = await page.evaluate(() => [...document.querySelectorAll('.desk-icon')].length);
   for (let i = 0; i < ids; i++) await page.locator('.desk-icon').nth(i).dblclick({ force: true });
-  await page.waitForFunction((n) => document.querySelectorAll('.win-body[data-app]').length >= n, ids, { timeout: 15000 });
+  await page.evaluate(() => (bbx.openApp('preview', { html: '<h1 id=x>hi</h1>', title: 't' }), bbx.openApp('editor', { path: '/home/user/Welcome.md' }), bbx.openApp('settings', { section: 'model' })));
+  await page.waitForFunction((n) => new Set([...document.querySelectorAll('.win-body[data-app]')].map((e) => e.dataset.app)).size >= n, ids + 1, { timeout: 15000 });
+  await page.waitForTimeout(1500);
   const bad = await page.evaluate(() => [...document.querySelectorAll('.app-error')].map((e) => e.textContent.slice(0, 200)));
   if (bad.length) throw new Error(bad.join(' | '));
-  return `${ids} apps`;
+  return `${ids + 1} apps`;
 });
+if (process.env.SHOTS) {
+  for (const id of ['agent', 'terminal', 'files', 'editor', 'taskmgr', 'browser', 'gpulab', 'sysinfo', 'settings']) {
+    const win = page.locator(`.win:has(.win-body[data-app="${id}"])`).last();
+    await win.dispatchEvent('pointerdown'); // raise it
+    await win.screenshot({ path: `${process.env.SHOTS}/${id}.png` });
+  }
+}
 await page.screenshot({ path: process.env.SHOT ?? 'smoke.png' });
 if (errors.length) {
   failed++;

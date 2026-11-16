@@ -7,13 +7,20 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props?: Props, 
   const el = document.createElement(tag);
   if (props) {
     for (const [k, v] of Object.entries(props)) {
-      if (v === undefined || v === null || v === false) continue;
+      if (v === undefined || v === null) continue;
+      // `false` only makes sense for real DOM properties (spellcheck, hidden, …); never as an attribute or class.
+      if (v === false && (k === 'class' || k === 'style' || k.startsWith('on') || !(k in el))) continue;
       if (k === 'class') el.className = String(v);
       else if (k === 'style') el.style.cssText = String(v);
       else if (k === 'dataset') Object.assign(el.dataset, v);
       else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v as EventListener);
-      else if (k in el) (el as unknown as Record<string, unknown>)[k] = v;
-      else el.setAttribute(k, String(v));
+      else if (k in el) {
+        try {
+          (el as unknown as Record<string, unknown>)[k] = v;
+        } catch {
+          el.setAttribute(k, String(v)); // read-only DOM property such as input.list
+        }
+      } else el.setAttribute(k, String(v));
     }
   }
   append(el, children);
