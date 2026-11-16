@@ -291,9 +291,9 @@ await check('agent window: Files and Terminal open in the workbench; a command r
   await agent.locator('.bb-term').click();
   const input = agent.locator('.wb-pane[data-app="terminal"] .term-input');
   await input.waitFor({ timeout: 10000 });
-  await input.fill('echo in-$PWD | wc -c && echo ok-$PWD');
+  await input.fill('echo ok-$AGENT_HOME-$USER && pwd');
   await input.press('Enter');
-  await agent.waitForFunction(() => /ok-\/home\/agent/.test(document.querySelector('.wb-pane[data-app="terminal"] .term-out')?.textContent ?? ''), null, { timeout: 15000 });
+  await agent.waitForFunction(() => /ok-\/home\/agent-user/.test(document.querySelector('.wb-pane[data-app="terminal"] .term-out')?.textContent ?? ''), null, { timeout: 15000 });
   const out = await agent.locator('.wb-pane[data-app="terminal"] .term-out').textContent();
   if (popups !== before) throw new Error('a new window opened');
   if (await agent.evaluate(() => bbx.procs.list().some((p) => p.name === 'desktop'))) throw new Error('the desktop started');

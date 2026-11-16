@@ -6,8 +6,8 @@ browser**, with no backend. It is split into independent parts:
 | Part | Path (or origin) | What it is |
 |---|---|---|
 | **Kernel** | `/kernel/` | Headless. A SharedWorker running the filesystem, process table, permissions, secrets, shells and agent sessions. No UI. |
-| **Agent** | `/agent/` | The agent in its own browser window. This is the default entry point. |
-| **Desktop** | `/os/` | An optional GUI (files, terminal, task manager…) loaded only on demand. |
+| **Agent** | `/agent/` | The complete app: chat, built-in workbench (preview, files, editor, terminal, processes…) and settings, in one browser window. This is the default entry point. |
+| **Desktop** | `/os/` | An optional windowed GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar). |
 
 The kernel keeps running as long as any BrowserBox window is open. Close the
 agent window and its session carries on; open it again and it reattaches.
@@ -43,11 +43,45 @@ directly, only ask. The subdomains must share one registrable domain you own
 each window gets its own kernel. Mounting a local folder currently assumes the
 window and kernel share an origin.
 
+## The agent window
+
+`/agent/` is a self-contained chat app; nothing in it opens another window
+unless you click “Open desktop”.
+
+- **Sidebar** (a drawer on phones): New chat, search over saved chats, recent
+  chats grouped by date (delete on hover), Settings, kernel status (opens the
+  process list) and a low-key “Open desktop” link.
+- **Conversation**: an empty state with a centered composer and suggestions;
+  after the first message the composer docks at the bottom. Replies stream as
+  Markdown (rendered to DOM nodes, never `innerHTML`), with collapsible
+  thinking, compact tool rows that expand to input and output, inline
+  permission and `ask_user` cards, notes, errors, a task list and a copy button.
+- **Composer**: auto-growing; Enter sends, Shift+Enter adds a line. Attach
+  copies files into `/home/agent/uploads/` and adds their paths to the message.
+  The model picker switches between configured models and effort, and links to
+  model settings.
+- **Workbench** (right panel, resizable; a full-screen sheet on phones): tabs
+  that host the regular app modules inside the page — Preview (where
+  `show_html` output appears), Files, Editor, Terminal, Processes, Browser,
+  GPU Lab, System. Each app is fetched on first use, keeps running while its
+  tab is hidden, and gets its own kernel process. The agent's `open_app` /
+  `show_html` requests open here (`src/apps/agent/panel-host.ts`).
+- **Settings** open in a modal (full-screen on phones), deep-linkable by
+  section: model, permissions, appearance, tools, data.
+- **First-run setup**: style (casual or developer profile, theme), model,
+  permissions and optional tool packs (`src/agent/packs.ts`). Skippable with
+  “Use defaults”; run it again from Settings → Tools. The developer profile is
+  denser, opens Terminal and Files beside the chat, expands tool calls and
+  shows kernel status; casual keeps tool calls to one-line summaries.
+
+The session lives in the kernel: closing the window detaches without stopping
+it, reopening reattaches, and “New chat” starts a fresh one.
+
 ## What is in it
 
 | | |
 |---|---|
-| **Agent** (GUI) | Chat with streaming replies, tool cards, inline approvals, a task list, saved sessions. |
+| **Agent** (GUI) | The agent window above: chat, workbench, settings, saved sessions. |
 | **Agent** (CLI) | `agent "task"` in the Terminal, or `agent` for an interactive session. |
 | **Terminal** | A POSIX-flavoured shell: pipes, redirects, `&&`/`\|\|`/`;`, `$VARS`, globs, history, tab completion, ~45 commands. |
 | **Task Manager** | Every app, agent, sandbox and service is a process you can inspect and kill; live performance charts. |
@@ -93,7 +127,8 @@ src/
   agent/          loop, sessions, providers/ (anthropic · openai · webllm), tools/
   pages/          entry points: agent window, desktop
   ui/             window manager, desktop, dialogs, app host, standalone page host
-  apps/           one directory per app, each lazy-loaded
+  apps/           one directory per app, each lazy-loaded; apps/agent/ is the agent window
+                  (shell, sidebar, composer, transcript, workbench + panel host, settings modal, setup)
 crates/kcore/     Rust → WebAssembly: hashing, line search, word count, token estimate
 ```
 
@@ -101,13 +136,15 @@ Apps, the shell and the agent are written against the `Kernel` interface. The
 real kernel (`KernelCore`) implements it in the worker; `RemoteKernel`
 implements it in each window. To add an app, create `src/apps/<id>/index.ts`
 exporting an `AppModule` and add it to `APPS` in `src/ui/apps.ts`; to run an app
-as its own window, mount it with `mountStandalone` as `src/pages/agent.ts` does.
+as its own window, mount it with `mountStandalone` as `src/pages/agent.ts` does;
+to embed it in a pane of another page, use `mountPanelApp` from
+`src/apps/agent/panel-host.ts`.
 To add a shell command or an agent tool, append it to the list in
 `src/shell/commands/*` or `src/agent/tools/*`.
 
 ### Why it boots fast
 
-The agent window loads about 20 kB (gzip) of script and is usable roughly
+The agent window loads about 30 kB (gzip) of script and is usable roughly
 100 ms after navigation in headless Chromium; the kernel worker boots in
 parallel. The desktop, every app and every model adapter are separate chunks
 fetched only when used, and the service worker makes later boots
