@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { Kernel } from '@/kernel/api';
 import { APPS, AppHost, type AppManifest } from './apps';
 import { permissionDialog } from './dialog';
 import { h } from './dom';
@@ -131,6 +131,7 @@ export function createDesktop(os: Kernel, mountPoint: HTMLElement): AppHost {
   });
 
   os.perms.setPrompter(permissionDialog);
+  if (!(os as { shared?: boolean }).shared) os.notify({ title: 'Running a private kernel', body: 'This browser has no SharedWorker, so each window has its own kernel. Files and settings are still shared.', level: 'warn' });
   mountPoint.replaceChildren(area, launcher, bar, toasts);
   return apps;
 }

@@ -1,4 +1,4 @@
-import type { Settings } from './settings';
+import type { SettingsApi } from './api';
 
 /** Things a sandboxed actor must be granted before the kernel will do them. */
 export type Capability =
@@ -20,7 +20,8 @@ export interface PermRequest {
 }
 
 export type PermDecision = 'once' | 'always' | 'deny';
-export type Prompter = (req: PermRequest) => Promise<PermDecision>;
+/** `signal` aborts when the request was answered elsewhere (another window). */
+export type Prompter = (req: PermRequest, signal?: AbortSignal) => Promise<PermDecision>;
 export type PermMode = 'ask' | 'auto';
 
 /**
@@ -30,10 +31,15 @@ export type PermMode = 'ask' | 'auto';
 export class Permissions {
   #prompter: Prompter = async () => 'deny';
 
-  constructor(private settings: Settings) {}
+  constructor(private settings: SettingsApi) {}
 
   setPrompter(p: Prompter): void {
     this.#prompter = p;
+  }
+
+  /** Shows the installed prompt without consulting or changing grants. */
+  prompt(req: PermRequest, signal?: AbortSignal): Promise<PermDecision> {
+    return this.#prompter(req, signal);
   }
 
   get mode(): PermMode {

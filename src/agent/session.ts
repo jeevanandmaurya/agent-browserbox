@@ -1,4 +1,5 @@
-import { AGENT_HOME, type Kernel } from '@/kernel/kernel';
+import type { Kernel } from '@/kernel/api';
+import { AGENT_HOME } from '@/kernel/paths';
 import type { TodoItem } from './tools/index';
 import type { Msg } from './types';
 

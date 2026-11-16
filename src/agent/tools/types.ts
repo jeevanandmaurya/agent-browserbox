@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
 import type { Capability } from '@/kernel/perms';
 import type { Shell } from '@/shell/shell';
 import type { JsonSchema } from '../types';

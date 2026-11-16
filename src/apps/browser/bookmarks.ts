@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { Kernel } from '@/kernel/api';
 
 export interface Bookmark {
   title: string;

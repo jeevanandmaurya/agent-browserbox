@@ -1,4 +1,5 @@
-import { AGENT_HOME, type Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
+import { AGENT_HOME } from '@/kernel/paths';
 import type { Prompter } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
 import { resolve } from '@/kernel/vfs/path';

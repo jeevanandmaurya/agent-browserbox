@@ -6,6 +6,8 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {
     target: 'es2022',
+    // One entry per part: redirect, agent window, desktop GUI, kernel bridge.
+    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', bridge: 'kernel/bridge.html' } },
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 7000,
   },

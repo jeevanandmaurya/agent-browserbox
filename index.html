@@ -2,22 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#0b0d12" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data:; connect-src *; frame-src 'self' blob: data: https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
-    />
-    <title>BrowserBox — Agent OS</title>
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0; url=./agent/" />
+    <title>BrowserBox</title>
     <style>
-      html, body { height: 100%; margin: 0; background: #0b0d12; }
+      html { background: #0b0d12; color: #e6e9ef; font: 14px system-ui, sans-serif; }
+      body { display: grid; place-items: center; height: 100vh; margin: 0; }
+      a { color: #a594ff; }
     </style>
   </head>
   <body>
-    <div id="desk"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <p>Opening the <a href="./agent/">BrowserBox agent</a>… (<a href="./os/">desktop</a>)</p>
   </body>
 </html>

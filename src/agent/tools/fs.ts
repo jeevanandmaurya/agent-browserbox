@@ -1,4 +1,4 @@
-import { AGENT_HOME } from '@/kernel/kernel';
+import { AGENT_HOME } from '@/kernel/paths';
 import { isInside } from '@/kernel/vfs/path';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types';
 

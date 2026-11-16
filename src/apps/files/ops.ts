@@ -1,5 +1,5 @@
 /** Filesystem helpers for the file manager: naming, uploads, downloads. */
-import type { Vfs } from '@/kernel/vfs/vfs';
+import type { FsApi as Vfs } from '@/kernel/api';
 import { basename, join } from '@/kernel/vfs/path';
 import { mimeOf } from './filetypes';
 

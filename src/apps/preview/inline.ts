@@ -4,7 +4,7 @@
  * and media are inlined. Only files inside `root` (the site folder) are
  * inlined, so a page's scripts cannot pull arbitrary VFS files into reach.
  */
-import type { Vfs } from '@/kernel/vfs/vfs';
+import type { FsApi as Vfs } from '@/kernel/api';
 import { dirname, isInside, join, normalize, resolve } from '@/kernel/vfs/path';
 import { mimeOf } from '../files/filetypes';
 

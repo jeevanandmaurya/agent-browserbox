@@ -185,8 +185,9 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     const stop = () => ctl.abort();
     ctx.proc.signal.addEventListener('abort', stop);
     try {
-      const key = await os.secrets.get(SECRET.openai).catch(() => null);
-      const ids = await probeOpenAi(cfg.openaiBaseUrl, key, ctl.signal);
+      // The kernel probes with the stored key; windows can never read secrets back.
+      const ids = await os.agents.probeModels(cfg.openaiBaseUrl);
+      ctl.signal.throwIfAborted();
       datalist.replaceChildren(...ids.map((id) => h('option', { value: id })));
       found.replaceChildren(h('option', { value: '' }, `Choose from ${ids.length} model${ids.length === 1 ? '' : 's'}…`), ...ids.map((id) => h('option', { value: id }, id)));
       found.hidden = ids.length === 0;

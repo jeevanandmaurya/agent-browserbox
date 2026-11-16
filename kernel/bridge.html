@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src *; frame-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'" />
+    <title>BrowserBox kernel bridge</title>
+  </head>
+  <body>
+    <!-- No UI. Embedded as a hidden frame by every BrowserBox window; see src/kernel-host/bridge.ts. -->
+    <script type="module" src="/src/kernel-host/bridge.ts"></script>
+  </body>
+</html>

@@ -1,9 +1,10 @@
 import './style.css';
-import { Agent } from '@/agent/agent';
 import { describeModel, loadConfig } from '@/agent/config';
-import { deleteSession, listSessions, loadSession, saveSession, titleFrom } from '@/agent/session';
+import { deleteSession, listSessions } from '@/agent/session';
+import type { AgentHandle } from '@/kernel/api';
 import type { AppModule } from '@/ui/apps';
 import { fmtTime, h } from '@/ui/dom';
+import type { TodoItem } from '@/agent/tools/types';
 import { renderTodos, Transcript } from './view';
 
 const SUGGESTIONS = [
@@ -14,16 +15,21 @@ const SUGGESTIONS = [
 ];
 
 const app: AppModule = {
-  mount(ctx) {
+  async mount(ctx) {
     const { os, root, win } = ctx;
     const log = new Transcript();
-    let agent: Agent;
+    // The session lives in the kernel; this window attaches to it and can leave without stopping it.
+    let agent: AgentHandle;
+    let busy = false;
+    let hasMessages = false;
+    let todos: TodoItem[] = [];
+    let wake: WakeLockSentinel | null = null;
 
     // --- layout ------------------------------------------------------------
     const modelBtn = h('button', { class: 'btn small ag-model', title: 'Change model', onclick: () => ctx.launch('settings', { section: 'model' }) });
     const usage = h('span', { class: 'muted ag-usage' });
     const sessions = h('div', { class: 'ag-sessions' });
-    const side = h('aside', { class: 'ag-side' }, h('button', { class: 'btn primary', onclick: () => newSession() }, '+ New session'), sessions);
+    const side = h('aside', { class: 'ag-side' }, h('button', { class: 'btn primary', onclick: () => void newSession() }, '+ New session'), sessions);
     const todoSlot = h('div', { class: 'ag-todo-slot' });
     const empty = h(
       'div',
@@ -63,77 +69,79 @@ const app: AppModule = {
 
     // --- behaviour ---------------------------------------------------------
     const refreshModel = () => (modelBtn.textContent = `${describeModel(loadConfig(os))} ▾`);
-    const setBusy = (busy: boolean) => {
-      sendBtn.hidden = busy;
-      stopBtn.hidden = !busy;
-      win.setTitle(busy ? 'Agent — working…' : 'Agent');
+    const setBusy = (b: boolean) => {
+      busy = b;
+      sendBtn.hidden = b;
+      stopBtn.hidden = !b;
+      win.setTitle(b ? 'Agent — working…' : 'Agent');
+      // Keep the screen awake while the agent works.
+      if (b) void navigator.wakeLock?.request('screen').then((w) => (wake = w), () => undefined);
+      else void wake?.release().catch(() => undefined);
     };
-    const showTodos = () => todoSlot.replaceChildren(...[renderTodos(agent.todos)].filter((n): n is HTMLElement => n !== null));
+    const showTodos = () => todoSlot.replaceChildren(...[renderTodos(todos)].filter((n): n is HTMLElement => n !== null));
     const refreshSessions = async () => {
       const list = await listSessions(os);
       sessions.replaceChildren(
         ...list.map((s) =>
           h(
             'div',
-            { class: `ag-session ${s.id === agent.id ? 'active' : ''}` },
+            { class: `ag-session ${s.id === agent.sid ? 'active' : ''}` },
             h('button', { class: 'ag-session-open', title: fmtTime(s.updated), onclick: () => void openSession(s.id) }, s.title),
             h('button', { class: 'btn ghost small', 'aria-label': `Delete session ${s.title}`, onclick: () => void deleteSession(os, s.id).then(refreshSessions) }, '✕'),
           ),
         ),
       );
     };
-    const persist = async () => {
-      if (!agent.messages.length) return;
-      await saveSession(os, { id: agent.id, title: titleFrom(agent.messages), updated: Date.now(), messages: agent.messages, todos: agent.todos }).catch((err: Error) => os.notify({ title: 'Could not save the session', body: err.message, level: 'warn' }));
-      void refreshSessions();
-    };
-
-    function createAgent(id?: string): Agent {
-      return new Agent(
-        os,
-        {
-          onEvent(e) {
-            log.handle(e);
-            if (e.type === 'todos') showTodos();
-            else if (e.type === 'usage') usage.textContent = `${fmtTokens(e.total.input + e.total.cacheRead)} in · ${fmtTokens(e.total.output)} out`;
-            else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => ctx.launch('settings', { section: 'model' }) } : undefined);
-            else if (e.type === 'done') {
-              setBusy(false);
-              void persist();
-              if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished', { body: titleFrom(agent.messages) });
-            }
-          },
-          ask: (question, options) => log.ask(question, options),
-        },
-        { ppid: ctx.proc.pid, id },
-      );
+    function adopt(handle: AgentHandle): void {
+      agent = handle;
+      handle.onAsk((question, options) => log.ask(question, options));
+      handle.onEvent((e) => {
+        log.handle(e);
+        if (e.type === 'todos') {
+          todos = e.items;
+          showTodos();
+        } else if (e.type === 'usage') usage.textContent = `${fmtTokens(e.total.input + e.total.cacheRead)} in · ${fmtTokens(e.total.output)} out`;
+        else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => ctx.launch('settings', { section: 'model' }) } : undefined);
+        else if (e.type === 'done') {
+          setBusy(false);
+          if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished');
+        }
+      });
     }
 
-    function newSession(): void {
-      if (agent?.busy) return os.notify('Stop the running task first.');
-      agent?.dispose();
-      agent = createAgent();
-      log.clear();
-      empty.hidden = false;
-      usage.textContent = '';
+    /** Shows whatever state the session is in — used when attaching to one that is already running. */
+    async function showState(): Promise<void> {
+      const snap = await agent.snapshot();
+      hasMessages = snap.messages.length > 0;
+      todos = snap.todos;
+      empty.hidden = hasMessages;
+      if (hasMessages) log.restore(snap.messages);
+      else log.clear();
+      usage.textContent = snap.total.output ? `${fmtTokens(snap.total.input + snap.total.cacheRead)} in · ${fmtTokens(snap.total.output)} out` : '';
       showTodos();
+      setBusy(snap.busy);
       void refreshSessions();
+    }
+
+    /** Leaves the current session: idle ones are already saved, so their process can go. */
+    const leave = () => agent.dispose();
+
+    async function newSession(): Promise<void> {
+      if (busy) return os.notify('Stop the running task first.');
+      leave();
+      adopt(await os.agents.create());
+      await showState();
       input.focus();
     }
 
     async function openSession(id: string): Promise<void> {
-      if (agent.busy) return os.notify('Stop the running task first.');
+      if (busy) return os.notify('Stop the running task first.');
       try {
-        const s = await loadSession(os, id);
-        agent.dispose();
-        agent = createAgent(s.id);
-        agent.messages = s.messages;
-        agent.todos = s.todos ?? [];
-        empty.hidden = true;
-        log.restore(s.messages);
-        showTodos();
+        const next = await os.agents.create({ resume: id });
+        leave();
+        adopt(next);
+        await showState();
         root.classList.remove('side-open');
-        void refreshSessions();
       } catch (err) {
         os.notify({ title: 'Could not open that session', body: (err as Error).message, level: 'error' });
       }
@@ -141,13 +149,17 @@ const app: AppModule = {
 
     function submit(text: string): void {
       text = text.trim();
-      if (!text || agent.busy) return;
+      if (!text || busy) return;
       input.value = '';
       input.style.height = '';
       empty.hidden = true;
+      hasMessages = true;
       log.addUser(text);
       setBusy(true);
-      void agent.send(text);
+      void agent.send(text).catch((err: Error) => {
+        log.addNote(`Lost the agent session: ${err.message}`, 'error');
+        setBusy(false);
+      });
     }
 
     input.addEventListener('keydown', (e) => {
@@ -162,12 +174,17 @@ const app: AppModule = {
     });
     ctx.on('settings:change', ({ key }) => key === 'agent.config' && refreshModel());
 
-    agent = createAgent();
+    // Sessions are saved by the kernel; refresh the list when one changes on disk.
+    ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void refreshSessions());
+
     refreshModel();
-    void refreshSessions();
+    // Rejoin a session that is already running in the kernel, otherwise start one.
+    const [live] = await os.agents.live();
+    adopt(live ? await os.agents.attach(live.sid) : await os.agents.create());
+    await showState();
     input.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);
-    return () => agent.dispose();
+    return () => agent.detach();
   },
 };
 

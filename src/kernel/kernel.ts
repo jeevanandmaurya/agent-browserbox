@@ -5,14 +5,16 @@ import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
 import { Secrets } from './secrets';
-import { Settings } from './settings';
+import { loadSettings, persistSetting, Settings } from './settings';
 import type { KernelEvents, Notice } from './types';
 import { HandleFs } from './vfs/handlefs';
 import { MemFs } from './vfs/memfs';
 import { Vfs } from './vfs/vfs';
+import type { AgentsApi, Kernel, ShellsApi } from './api';
 
-export const HOME = '/home/user';
-export const AGENT_HOME = '/home/agent';
+import { AGENT_HOME, HOME } from './paths';
+
+export { AGENT_HOME, HOME };
 
 const WELCOME = `# Welcome to BrowserBox
 
@@ -29,22 +31,35 @@ browser tab. Nothing leaves your machine except the model requests you configure
 The agent works in \`/home/agent\`. Files there survive reloads.
 `;
 
+/** Things only a window can do; the kernel borrows one when a tool needs them. */
+export interface UiBridge {
+  call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak', ...args: unknown[]): Promise<T>;
+}
+
 /**
- * The kernel: owns every shared service. Constructing it is synchronous and
- * cheap so the desktop can paint immediately; storage comes up in the
- * background and filesystem calls simply await `fs.ready`.
+ * The kernel proper. It has no UI and no DOM dependencies, so it runs
+ * headless in a worker; windows talk to it through `RemoteKernel`.
  */
-export class Kernel {
+export class KernelCore implements Kernel {
   readonly version = '0.1.0';
   readonly bootStart = 0;
   readonly bus = new Bus<KernelEvents>();
-  readonly settings = new Settings(this.bus);
+  readonly settings = new Settings(this.bus, (key, value) => {
+    void persistSetting(key, value);
+    this.onSettingWritten?.(key, value);
+  });
+  /** Hook for cross-kernel sync when several kernels share storage (no SharedWorker). */
+  onSettingWritten?: (key: string, value: unknown) => void;
   readonly secrets = new Secrets();
   readonly perms = new Permissions(this.settings);
   readonly procs = new ProcTable(this.bus);
   readonly fs = new Vfs(this.bus);
   readonly kcore = new KCore();
   readonly caps: PlatformCap[] = detectCaps();
+  /** Installed by the worker entry point once the managers exist. */
+  agents!: AgentsApi;
+  shells!: ShellsApi;
+  ui: UiBridge | null = null;
   /** 'opfs' when the root is persistent, 'memory' when it is not. */
   rootKind: 'opfs' | 'memory' = 'memory';
   /** Milestones recorded during boot, in ms since navigation start. */
@@ -71,6 +86,7 @@ export class Kernel {
     const init = this.procs.spawn({ name: 'kernel', kind: 'service', detail: 'event bus, vfs, process table' });
     this.procs.update(init.pid, { state: 'idle' });
     void this.kcore.load().then(() => this.mark('kcore.wasm'));
+    this.settings.hydrate(await loadSettings());
 
     try {
       const root = await navigator.storage.getDirectory();
@@ -103,15 +119,17 @@ export class Kernel {
     );
   }
 
-  /** Mounts a real folder chosen by the user under /mnt (File System Access API). */
+  /** Folder pickers need a window; `RemoteKernel` shows the picker and calls `mountHandle`. */
   async mountNativeFolder(): Promise<string> {
-    const picker = (globalThis as unknown as { showDirectoryPicker?: (o: object) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
-    if (!picker) throw new Error('This browser does not support mounting local folders (File System Access API).');
-    const handle = await picker({ mode: 'readwrite' });
+    throw new Error("Mounting a folder needs a window: use Files → Mount.");
+  }
+
+  mountHandle(handle: FileSystemDirectoryHandle): string {
     const point = `/mnt/${handle.name.replace(/[^\w.-]+/g, '_') || 'folder'}`;
     this.fs.mount(point, new HandleFs(handle, `native:${handle.name}`));
     return point;
   }
 }
 
+export type { Kernel } from './api';
 export type { Notice };

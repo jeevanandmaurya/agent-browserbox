@@ -1,18 +1,47 @@
-# BrowserBox — an agent OS in a browser tab
+# BrowserBox — a headless agent OS in the browser
 
-BrowserBox is a small operating system for AI agents that runs **entirely in the
-browser**. There is no backend: the filesystem, the shell, the code sandboxes,
-the window manager and the agent loop all live in the tab. The only network
-traffic is the model requests you configure (or none at all with an in-browser
-model).
+BrowserBox is an operating system for AI agents that runs **entirely in the
+browser**, with no backend. It is split into independent parts:
+
+| Part | Path (or origin) | What it is |
+|---|---|---|
+| **Kernel** | `/kernel/` | Headless. A SharedWorker running the filesystem, process table, permissions, secrets, shells and agent sessions. No UI. |
+| **Agent** | `/agent/` | The agent in its own browser window. This is the default entry point. |
+| **Desktop** | `/os/` | An optional GUI (files, terminal, task manager…) loaded only on demand. |
+
+The kernel keeps running as long as any BrowserBox window is open. Close the
+agent window and its session carries on; open it again and it reattaches.
+Close the desktop and nothing is lost — it is only a view. Any other frontend
+can replace it by speaking the same protocol (`src/kernel/api.ts`).
 
 ```
 npm install
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:5173/agent/  (desktop: /os/)
 npm run build      # static site in dist/ — host it anywhere
 npm test           # unit tests (vitest)
-npm run smoke      # boots the build in headless Chromium and exercises it end to end
+npm run smoke      # drives the built system end to end in headless Chromium
 ```
+
+### Paths now, origins later
+
+By default the three parts are sibling paths on one origin. To put each on its
+own origin, build with:
+
+```
+VITE_KERNEL_URL=https://kernel.example.com/
+VITE_AGENT_URL=https://agent.example.com/
+VITE_OS_URL=https://os.example.com/
+VITE_ALLOWED_ORIGINS=https://agent.example.com,https://os.example.com
+```
+
+and serve `dist/kernel/` + `dist/assets/`, `dist/agent/`, `dist/os/` from those
+hosts. Nothing else changes: windows already reach the kernel only through a
+hidden bridge frame and a message port. With separate origins that port becomes
+a hard boundary — a window can no longer read the kernel's files or keys
+directly, only ask. The subdomains must share one registrable domain you own
+(not `github.io` or `vercel.app`), otherwise the browser partitions storage and
+each window gets its own kernel. Mounting a local folder currently assumes the
+window and kernel share an origin.
 
 ## What is in it
 
@@ -52,32 +81,42 @@ Pick one in **Settings → Model**:
 
 ```
 src/
-  kernel/     event bus, VFS (OPFS · memory · native folders · /proc), process table,
-              permissions, settings, encrypted secrets, capability detection, kcore bindings
-  sandbox/    isolated JS / Python / WASI execution, WebGPU compute
-  shell/      parser, interpreter, commands/
-  agent/      loop, prompt, sessions, providers/ (anthropic · openai · webllm), tools/
-  ui/         window manager, desktop, dialogs, app host, markdown
-  apps/       one directory per app, each lazy-loaded
-crates/kcore/ Rust → WebAssembly: hashing, line search, word count, token estimate
-public/       sandbox frames, service worker, manifest
+  kernel/         the kernel: event bus, VFS (OPFS · memory · native folders · /proc),
+                  process table, permissions, settings, encrypted secrets; api.ts is its public interface
+  kernel-worker/  worker entry point and the RPC server that exposes the kernel to windows
+  kernel-host/    the hidden bridge page: starts the worker, hands out ports, hosts sandbox frames
+  client/         RemoteKernel — a window's handle on the kernel (mirrors state, forwards calls)
+  rpc/            the message protocol
+  config/         where each part is served from (paths or origins)
+  sandbox/        isolated JS / Python / WASI execution, WebGPU compute
+  shell/          parser, interpreter, commands/, kernel-side shell sessions
+  agent/          loop, sessions, providers/ (anthropic · openai · webllm), tools/
+  pages/          entry points: agent window, desktop
+  ui/             window manager, desktop, dialogs, app host, standalone page host
+  apps/           one directory per app, each lazy-loaded
+crates/kcore/     Rust → WebAssembly: hashing, line search, word count, token estimate
 ```
 
-Modules only meet through the `Kernel` object and its typed event bus. To add an
-app, create `src/apps/<id>/index.ts` exporting an `AppModule` and add one line
-to `APPS` in `src/ui/apps.ts`. To add a shell command or an agent tool, append
-it to the list in `src/shell/commands/*` or `src/agent/tools/*`.
+Apps, the shell and the agent are written against the `Kernel` interface. The
+real kernel (`KernelCore`) implements it in the worker; `RemoteKernel`
+implements it in each window. To add an app, create `src/apps/<id>/index.ts`
+exporting an `AppModule` and add it to `APPS` in `src/ui/apps.ts`; to run an app
+as its own window, mount it with `mountStandalone` as `src/pages/agent.ts` does.
+To add a shell command or an agent tool, append it to the list in
+`src/shell/commands/*` or `src/agent/tools/*`.
 
 ### Why it boots fast
 
-The kernel and desktop are constructed synchronously in one ~14 kB (gzip)
-bundle, so the first frame is the usable desktop (≈50–100 ms in headless
-Chromium). Storage, the WASM core and the service worker start afterwards.
-Every app and every model adapter is a separate chunk fetched on first use, and
-the service worker makes later boots offline-capable.
+The agent window loads about 20 kB (gzip) of script and is usable roughly
+100 ms after navigation in headless Chromium; the kernel worker boots in
+parallel. The desktop, every app and every model adapter are separate chunks
+fetched only when used, and the service worker makes later boots
+offline-capable.
 
 ### Security model
 
+- **Windows are clients, not owners.** The kernel exposes a fixed set of RPC
+  methods; secrets can be written from a window but never read back.
 - **Untrusted code never runs in the app's origin.** `run_js`, `run_python` and
   `run_wasm` execute in a Worker inside an `<iframe sandbox="allow-scripts">`:
   an opaque origin with no access to OPFS, IndexedDB, cookies or the DOM. A CSP
@@ -113,6 +152,12 @@ your browser supports.
 - The shell is not bash; there is no git, package manager or native compiler.
 - Python needs a one-time download of Pyodide from jsDelivr.
 - Without OPFS the root filesystem falls back to memory and is lost on reload.
+- The kernel lives only while at least one BrowserBox window is open; browsers
+  have no true background processes.
+- Browsers without SharedWorker run one kernel per window (files and settings
+  are still shared; the process table is not).
+- Sandboxed code runs in a frame hosted by an open window, so it stops if that
+  window closes mid-run.
 - A browser tab is not a security boundary against the browser itself; the
   sandbox protects your data in this origin from code the agent runs.
 

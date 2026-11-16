@@ -1,10 +1,10 @@
 // BrowserBox service worker: makes the OS boot instantly and work offline.
 // Hashed build assets are immutable → cache-first. The HTML shell is
 // stale-while-revalidate so updates arrive on the next launch.
-const CACHE = 'bbx-v1';
+const CACHE = 'bbx-v2';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './sandbox.html', './sandbox-net.html'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html'])).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

@@ -1,4 +1,5 @@
-import { AGENT_HOME, HOME, type Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
+import { AGENT_HOME, HOME } from '@/kernel/paths';
 import type { AgentConfig } from './config';
 
 /** Built once per session so the prompt prefix stays byte-stable and cacheable. */

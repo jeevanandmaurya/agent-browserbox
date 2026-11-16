@@ -25,6 +25,8 @@ export interface SpawnOptions {
   kind: ProcKind;
   ppid?: number;
   detail?: string;
+  /** Register under a pid allocated by a remote owner (a window's own processes). */
+  pid?: number;
   /** Called when the process is killed or exits; release resources here. */
   onKill?: () => void;
 }
@@ -39,7 +41,7 @@ export class ProcTable {
   spawn(opts: SpawnOptions): Proc {
     const ctl = new AbortController();
     const proc: Proc = {
-      pid: this.#next++,
+      pid: opts.pid ?? this.#next++,
       ppid: opts.ppid ?? 0,
       name: opts.name,
       kind: opts.kind,

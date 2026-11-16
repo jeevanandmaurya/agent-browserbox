@@ -1,4 +1,5 @@
-import { AGENT_HOME, HOME, type Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
+import { AGENT_HOME, HOME } from '@/kernel/paths';
 import { resolve } from '@/kernel/vfs/path';
 import { parse, ShellSyntaxError, splitJobs, type Stage, type Word } from './parse';
 

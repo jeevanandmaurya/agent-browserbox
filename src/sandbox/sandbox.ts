@@ -1,6 +1,7 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { resolve } from '@/kernel/vfs/path';
+import { KERNEL_URL } from '@/config/origins';
 import runtimeSrc from './runtime.js?raw';
 
 export const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/';
@@ -77,7 +78,7 @@ export class Sandbox {
     const frame = (this.#frame = document.createElement('iframe'));
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.style.display = 'none';
-    frame.src = new URL(opts.network ? './sandbox-net.html' : './sandbox.html', document.baseURI).href;
+    frame.src = new URL(opts.network ? 'sandbox-net.html' : 'sandbox.html', KERNEL_URL).href;
     this.#port = new Promise((resolvePort, reject) => {
       const timer = setTimeout(() => reject(new Error('sandbox failed to start')), 15000);
       const onMsg = (e: MessageEvent) => {
@@ -218,7 +219,20 @@ export class Sandbox {
   }
 }
 
+/**
+ * Sandboxes are frames, and frames need a document. The headless kernel has
+ * none, so it installs a host that forwards each run to a window's bridge.
+ */
+export interface SandboxHost {
+  run(kind: 'js' | 'python' | 'wasm', payload: Record<string, unknown>, opts: RunOptions): Promise<RunResult>;
+}
+let host: SandboxHost | null = null;
+export function setSandboxHost(h: SandboxHost): void {
+  host = h;
+}
+
 export async function runJs(os: Kernel, code: string, opts: RunOptions & { network?: boolean; args?: string[]; ppid?: number } = {}): Promise<RunResult> {
+  if (host) return host.run('js', { code, args: opts.args, network: opts.network, ppid: opts.ppid }, opts);
   const sb = new Sandbox(os, { name: 'js', network: opts.network, ppid: opts.ppid });
   try {
     return await sb.run({ op: 'js', code, args: opts.args }, opts);
@@ -228,6 +242,7 @@ export async function runJs(os: Kernel, code: string, opts: RunOptions & { netwo
 }
 
 export async function runWasm(os: Kernel, wasm: Uint8Array, opts: RunOptions & { args?: string[]; stdin?: string; name?: string; ppid?: number } = {}): Promise<RunResult> {
+  if (host) return host.run('wasm', { wasm, args: opts.args, stdin: opts.stdin, name: opts.name, ppid: opts.ppid }, opts);
   const sb = new Sandbox(os, { name: opts.name ?? 'wasm', ppid: opts.ppid });
   try {
     return await sb.run({ op: 'wasm', wasm, args: opts.args, stdin: opts.stdin, name: opts.name }, opts);
@@ -256,6 +271,7 @@ async function snapshot(os: Kernel, cwd: string): Promise<FileBlob[]> {
  * interpreter's working directory and anything it writes is copied back.
  */
 export async function runPython(os: Kernel, code: string, opts: RunOptions & { packages?: string[] } = {}): Promise<RunResult> {
+  if (host) return host.run('python', { code, packages: opts.packages }, opts);
   // Deliberately parentless: the warm interpreter outlives whichever app first used it.
   if (!python?.alive) python = new Sandbox(os, { name: 'python', network: false });
   const cwd = opts.cwd ?? '/tmp';

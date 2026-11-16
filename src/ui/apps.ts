@@ -1,13 +1,26 @@
-import type { Kernel } from '@/kernel/kernel';
+import { AGENT_URL } from '@/config/origins';
+import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { h } from './dom';
-import type { WindowHandle, WindowManager } from './wm';
+import type { WindowManager } from './wm';
+
+/** The part of a window an app may rely on. A desktop window and a standalone page both provide it. */
+export interface AppWindow {
+  readonly body: HTMLElement;
+  title: string;
+  closed: boolean;
+  minimized: boolean;
+  setTitle(title: string): void;
+  focus(): void;
+  close(): void;
+  onClose(fn: () => void): void;
+}
 
 /** What an app receives when it is launched. */
 export interface AppContext {
   os: Kernel;
   /** The app's window. `win.body` is the same element as `root`. */
-  win: WindowHandle;
+  win: AppWindow;
   root: HTMLElement;
   /** Launch arguments, e.g. `{ path: '/home/user/a.txt' }`. */
   args: Record<string, unknown>;
@@ -37,11 +50,13 @@ export interface AppManifest {
   /** Hidden from the launcher (opened by other apps). */
   hidden?: boolean;
   /** Code-split entry: the app's code is only fetched on first launch. */
-  load: () => Promise<{ default: AppModule }>;
+  load?: () => Promise<{ default: AppModule }>;
+  /** Opens in its own browser window at this URL instead of inside the desktop. */
+  external?: string;
 }
 
 export const APPS: AppManifest[] = [
-  { id: 'agent', name: 'Agent', icon: '✦', color: '#7c5cff', width: 860, height: 640, load: () => import('@/apps/agent/index') },
+  { id: 'agent', name: 'Agent', icon: '✦', color: '#7c5cff', width: 520, height: 760, external: AGENT_URL },
   { id: 'terminal', name: 'Terminal', icon: '❯', color: '#1f2937', width: 760, height: 480, load: () => import('@/apps/terminal/index') },
   { id: 'files', name: 'Files', icon: '🗂', color: '#2563eb', width: 780, height: 500, load: () => import('@/apps/files/index') },
   { id: 'editor', name: 'Editor', icon: '✎', color: '#0d9488', width: 820, height: 560, load: () => import('@/apps/editor/index') },
@@ -55,7 +70,7 @@ export const APPS: AppManifest[] = [
 
 /** Launches apps: creates the window and process, lazy-loads the code, wires cleanup. */
 export class AppHost {
-  #singletons = new Map<string, WindowHandle>();
+  #singletons = new Map<string, AppWindow>();
 
   constructor(
     private os: Kernel,
@@ -67,6 +82,11 @@ export class AppHost {
   async launch(id: string, args: Record<string, unknown> = {}): Promise<void> {
     const app = APPS.find((a) => a.id === id);
     if (!app) return this.os.notify({ title: `No such app: ${id}`, level: 'error' });
+    if (app.external || !app.load) {
+      // A real, separate browser window — not a window inside this page.
+      if (!open(app.external, `bbx-${id}`, `popup,width=${app.width},height=${app.height}`)) this.os.notify({ title: `Allow pop-ups to open ${app.name}`, body: 'The browser blocked the new window.', level: 'warn' });
+      return;
+    }
     const existing = this.#singletons.get(id);
     if (existing && !existing.closed) {
       if (!Object.keys(args).length) return existing.focus();

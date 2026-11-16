@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { Kernel } from '@/kernel/api';
 
 export type ProviderId = 'anthropic' | 'openai' | 'webllm';
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';

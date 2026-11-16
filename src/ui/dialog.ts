@@ -79,8 +79,10 @@ const CAP_LABEL: Record<string, string> = {
 };
 
 /** The default permission prompt, shown when a sandboxed actor needs a capability. */
-export function permissionDialog(req: PermRequest): Promise<PermDecision> {
+export function permissionDialog(req: PermRequest, signal?: AbortSignal): Promise<PermDecision> {
   return new Promise((resolve) => {
+    // Answered in another window: just dismiss this copy.
+    signal?.addEventListener('abort', () => close());
     const done = (d: PermDecision) => {
       close();
       resolve(d);

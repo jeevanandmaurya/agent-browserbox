@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { SECRET, type AgentConfig } from '../config';
 import { ProviderError, type Provider } from '../types';
 

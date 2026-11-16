@@ -2,7 +2,7 @@
   "name": "BrowserBox — Agent OS",
   "short_name": "BrowserBox",
   "description": "A sandboxed operating system for AI agents that runs entirely in your browser.",
-  "start_url": "./",
+  "start_url": "./agent/",
   "display": "standalone",
   "background_color": "#0b0d12",
   "theme_color": "#0b0d12",

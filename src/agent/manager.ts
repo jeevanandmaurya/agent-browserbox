@@ -1,0 +1,126 @@
+import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from '@/kernel/api';
+import type { KernelCore } from '@/kernel/kernel';
+import type { Prompter } from '@/kernel/perms';
+import { Agent, type AgentEvent } from './agent';
+import { probeOpenAi, SECRET } from './config';
+import { loadSession, saveSession, titleFrom } from './session';
+
+interface Session {
+  agent: Agent;
+  listeners: Set<(e: AgentEvent) => void>;
+  asker: ((q: string, options?: string[]) => Promise<string>) | null;
+  /** Questions asked while no window was attached. */
+  waiting: Array<{ q: string; options?: string[]; resolve: (a: string) => void }>;
+  prompter?: Prompter;
+  created: number;
+}
+
+/**
+ * Owns every agent session. Sessions live in the kernel, not in a window:
+ * closing the agent window detaches from a session without stopping it, and
+ * any window can attach to it again later.
+ */
+export class AgentManager implements AgentsApi {
+  #sessions = new Map<string, Session>();
+
+  constructor(private os: KernelCore) {
+    os.bus.on('proc:exit', ({ proc }) => {
+      for (const [sid, s] of this.#sessions) if (s.agent.proc.pid === proc.pid) this.#sessions.delete(sid);
+    });
+  }
+
+  async create(opts: { resume?: string; ppid?: number } = {}): Promise<AgentHandle> {
+    const saved = opts.resume ? await loadSession(this.os, opts.resume) : null;
+    const live = saved && this.#sessions.get(saved.id);
+    if (live) return this.#handle(saved.id, live);
+
+    const session: Session = { listeners: new Set(), asker: null, waiting: [], created: Date.now() } as unknown as Session;
+    const agent = new Agent(
+      this.os,
+      {
+        onEvent: (e) => {
+          for (const fn of [...session.listeners]) fn(e);
+          if (e.type === 'done') void this.#save(session);
+        },
+        ask: (q, options) => (session.asker ? session.asker(q, options) : new Promise((resolve) => session.waiting.push({ q, options, resolve }))),
+        get prompter() {
+          return session.prompter;
+        },
+      },
+      { ppid: opts.ppid, id: saved?.id },
+    );
+    session.agent = agent;
+    if (saved) {
+      agent.messages = saved.messages;
+      agent.todos = saved.todos ?? [];
+    }
+    this.#sessions.set(agent.id, session);
+    return this.#handle(agent.id, session);
+  }
+
+  async attach(sid: string): Promise<AgentHandle> {
+    const s = this.#sessions.get(sid);
+    if (!s) throw new Error(`no live agent session: ${sid}`);
+    return this.#handle(sid, s);
+  }
+
+  async live(): Promise<AgentInfo[]> {
+    return [...this.#sessions.entries()]
+      .sort((a, b) => b[1].created - a[1].created)
+      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.messages) }));
+  }
+
+  async probeModels(baseUrl: string): Promise<string[]> {
+    return probeOpenAi(baseUrl, await this.os.secrets.get(SECRET.openai));
+  }
+
+  async #save(s: Session): Promise<void> {
+    if (!s.agent.messages.length) return;
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.messages), updated: Date.now(), messages: s.agent.messages, todos: s.agent.todos }).catch((err: Error) =>
+      this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
+    );
+  }
+
+  #handle(sid: string, s: Session): AgentHandle {
+    const mine = new Set<(e: AgentEvent) => void>();
+    let myAsker: Session['asker'] = null;
+    const sessions = this.#sessions;
+    return {
+      sid,
+      pid: s.agent.proc.pid,
+      send: (text) => s.agent.send(text),
+      stop: () => s.agent.stop(),
+      async snapshot(): Promise<AgentSnapshot> {
+        return { sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.messages), messages: s.agent.messages, todos: s.agent.todos, total: { ...s.agent.total } };
+      },
+      onEvent(fn) {
+        mine.add(fn);
+        s.listeners.add(fn);
+        return () => {
+          mine.delete(fn);
+          s.listeners.delete(fn);
+        };
+      },
+      onAsk(fn) {
+        myAsker = s.asker = fn;
+        for (const w of s.waiting.splice(0)) void fn(w.q, w.options).then(w.resolve);
+      },
+      get prompter() {
+        return s.prompter;
+      },
+      set prompter(p) {
+        s.prompter = p;
+      },
+      detach() {
+        for (const fn of mine) s.listeners.delete(fn);
+        mine.clear();
+        if (s.asker === myAsker) s.asker = null;
+      },
+      dispose() {
+        this.detach();
+        sessions.delete(sid);
+        s.agent.dispose();
+      },
+    };
+  }
+}

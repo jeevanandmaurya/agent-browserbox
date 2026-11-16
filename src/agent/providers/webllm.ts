@@ -1,5 +1,5 @@
 import type { MLCEngineInterface } from '@mlc-ai/web-llm';
-import type { Kernel } from '@/kernel/kernel';
+import type { KernelCore as Kernel } from '@/kernel/kernel';
 import type { AgentConfig } from '../config';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types';
 
@@ -12,21 +12,22 @@ async function getEngine(os: Kernel, model: string, onStatus: (s: string) => voi
   if (loading) await loading.catch(() => undefined);
   if (current && current.model !== model) os.procs.kill(current.pid);
   return (loading = (async () => {
-    const { CreateWebWorkerMLCEngine } = await import('@mlc-ai/web-llm');
-    const worker = new Worker(new URL('./webllm.worker.ts', import.meta.url), { type: 'module' });
+    // The kernel is already a worker, so the engine runs right here on WebGPU.
+    const { CreateMLCEngine } = await import('@mlc-ai/web-llm');
+    let engineRef: MLCEngineInterface | null = null;
     const proc = os.procs.spawn({
       name: 'webllm',
       kind: 'service',
       detail: `${model} · WebGPU`,
       onKill: () => {
-        worker.terminate();
+        void engineRef?.unload().catch(() => undefined);
         if (current?.pid === proc.pid) current = null;
       },
     });
     try {
-      const engine = await CreateWebWorkerMLCEngine(worker, model, {
+      const engine = (engineRef = await CreateMLCEngine(model, {
         initProgressCallback: (p) => onStatus(`Loading ${model}: ${p.text}`),
-      });
+      }));
       current = { model, engine, pid: proc.pid };
       os.procs.update(proc.pid, { state: 'idle' });
       return engine;

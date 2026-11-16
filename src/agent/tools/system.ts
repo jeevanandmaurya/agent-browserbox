@@ -1,18 +1,28 @@
-import { APPS } from '@/ui/apps';
+import { APP_INFO as APPS } from '@/ui/app-list';
 import { fmtBytes } from '@/ui/dom';
-import { clip, obj, tool, type ToolDef } from './types';
+import { clip, obj, tool, type ToolContext, type ToolDef } from './types';
 
-/** Reduces an HTML document to readable text so pages fit in context. */
+/** Clipboard and speech exist only in windows, so the kernel borrows one. */
+function ui(tc: ToolContext) {
+  if (!tc.os.ui) throw new Error('no window is connected to do this');
+  return tc.os.ui;
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+
+/** Reduces an HTML document to readable text so pages fit in context. (No DOM: this runs in the kernel worker.) */
 function htmlToText(html: string): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  doc.querySelectorAll('script, style, noscript, svg, iframe, template').forEach((n) => n.remove());
-  doc.querySelectorAll('a[href]').forEach((a) => {
-    const href = a.getAttribute('href')!;
-    if (/^https?:/.test(href) && a.textContent?.trim()) a.textContent = `${a.textContent.trim()} (${href})`;
-  });
-  doc.querySelectorAll('p, div, br, li, tr, h1, h2, h3, h4, h5, h6, section, article').forEach((n) => n.append('\n'));
-  const title = doc.title ? `# ${doc.title}\n\n` : '';
-  return title + (doc.body?.textContent ?? '').replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*/g, '\n\n').trim();
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim();
+  const text = html
+    .replace(/<(script|style|noscript|svg|iframe|template|head)\b[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<a\b[^>]*\bhref="(https?:[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (_m, href: string, label: string) => `${label} (${href})`)
+    .replace(/<\/(p|div|li|tr|h[1-6]|section|article)>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e: string) => (e[0] === '#' ? String.fromCodePoint(e[1]?.toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e] ?? m)))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n\s*/g, '\n\n')
+    .trim();
+  return (title ? `# ${title}\n\n` : '') + text;
 }
 
 export const systemTools: ToolDef[] = [
@@ -112,13 +122,12 @@ export const systemTools: ToolDef[] = [
   }),
   tool<{ title: string; body?: string }>({
     name: 'notify',
-    description: 'Show the user a notification (in the OS, and as a system notification when the tab is in the background and permission was granted).',
+    description: 'Show the user a notification in every open BrowserBox window.',
     input_schema: obj({ title: { type: 'string' }, body: { type: 'string' } }, ['title']),
     cap: () => null,
     describe: (i) => `Notify: ${i.title}`,
     async run(i, tc) {
       tc.os.notify({ title: i.title, body: i.body });
-      if (document.hidden && globalThis.Notification?.permission === 'granted') new Notification(i.title, { body: i.body });
       return 'Notification shown.';
     },
   }),
@@ -128,8 +137,8 @@ export const systemTools: ToolDef[] = [
     input_schema: obj({ text: { type: 'string' } }, ['text']),
     cap: () => 'clipboard',
     describe: (i) => `Copy ${i.text.length} characters to the clipboard`,
-    async run(i) {
-      await navigator.clipboard.writeText(i.text);
+    async run(i, tc) {
+      await ui(tc).call('clipboard.write', i.text);
       return 'Copied.';
     },
   }),
@@ -139,8 +148,8 @@ export const systemTools: ToolDef[] = [
     input_schema: obj({}),
     cap: () => 'clipboard',
     describe: () => 'Read the clipboard',
-    async run() {
-      return clip(await navigator.clipboard.readText()) || '(clipboard is empty)';
+    async run(_i, tc) {
+      return clip(await ui(tc).call<string>('clipboard.read')) || '(clipboard is empty)';
     },
   }),
   tool<{ text: string }>({
@@ -149,9 +158,8 @@ export const systemTools: ToolDef[] = [
     input_schema: obj({ text: { type: 'string' } }, ['text']),
     cap: () => 'system',
     describe: (i) => `Speak: ${i.text.slice(0, 80)}`,
-    async run(i) {
-      if (!('speechSynthesis' in globalThis)) throw new Error('speech synthesis is not available in this browser');
-      speechSynthesis.speak(new SpeechSynthesisUtterance(i.text.slice(0, 2000)));
+    async run(i, tc) {
+      await ui(tc).call('speak', i.text.slice(0, 2000));
       return 'Speaking.';
     },
   }),

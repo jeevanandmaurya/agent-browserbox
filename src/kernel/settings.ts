@@ -1,59 +1,94 @@
 import type { Bus } from './bus';
 import type { KernelEvents } from './types';
 
-const PREFIX = 'bbx:';
-
 /**
- * Synchronous settings store on localStorage, so the first paint never waits
- * on async storage. Values are small JSON; secrets go in `Secrets` instead.
+ * Settings: small JSON values, readable synchronously from an in-memory map.
+ * The kernel persists them (IndexedDB); each window holds a replica that is
+ * hydrated on connect and kept current by change events.
  */
 export class Settings {
-  #mem = new Map<string, string>();
-  #ls: Storage | null;
+  #values = new Map<string, unknown>();
 
-  constructor(private bus: Bus<KernelEvents>) {
-    try {
-      this.#ls = globalThis.localStorage ?? null;
-      this.#ls?.getItem(PREFIX);
-    } catch {
-      this.#ls = null; // storage blocked (private mode, sandboxed frame)
-    }
+  constructor(
+    private bus: Bus<KernelEvents>,
+    /** Called for local writes: the kernel persists, a window forwards to the kernel. */
+    private onWrite?: (key: string, value: unknown) => void,
+  ) {}
+
+  /** Replaces all values without firing per-key writes. */
+  hydrate(entries: Array<[string, unknown]>): void {
+    this.#values = new Map(entries);
+    for (const [key, value] of entries) this.bus.emit('settings:change', { key, value });
+  }
+
+  entries(): Array<[string, unknown]> {
+    return [...this.#values];
   }
 
   get<T>(key: string, fallback: T): T {
-    const raw = this.#ls ? this.#ls.getItem(PREFIX + key) : (this.#mem.get(key) ?? null);
-    if (raw === null) return fallback;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return fallback;
-    }
+    return this.#values.has(key) ? (this.#values.get(key) as T) : fallback;
   }
 
   set(key: string, value: unknown): void {
-    const raw = JSON.stringify(value);
-    try {
-      if (this.#ls) this.#ls.setItem(PREFIX + key, raw);
-      else this.#mem.set(key, raw);
-    } catch {
-      this.#mem.set(key, raw);
-    }
-    this.bus.emit('settings:change', { key, value });
+    this.applyRemote(key, value);
+    this.onWrite?.(key, value);
   }
 
   delete(key: string): void {
-    this.#ls?.removeItem(PREFIX + key);
-    this.#mem.delete(key);
-    this.bus.emit('settings:change', { key, value: undefined });
+    this.set(key, undefined);
+  }
+
+  /** Applies a change that originated elsewhere (no write-back). */
+  applyRemote(key: string, value: unknown): void {
+    if (value === undefined) this.#values.delete(key);
+    else this.#values.set(key, value);
+    this.bus.emit('settings:change', { key, value });
   }
 
   keys(): string[] {
-    if (!this.#ls) return [...this.#mem.keys()];
-    const out: string[] = [];
-    for (let i = 0; i < this.#ls.length; i++) {
-      const k = this.#ls.key(i);
-      if (k?.startsWith(PREFIX)) out.push(k.slice(PREFIX.length));
-    }
-    return out;
+    return [...this.#values.keys()];
+  }
+}
+
+// ---- Persistence (kernel side) ------------------------------------------------
+
+const DB = 'bbx-settings';
+const STORE = 'kv';
+
+function open(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function loadSettings(): Promise<Array<[string, unknown]>> {
+  try {
+    const db = await open();
+    return await new Promise((resolve, reject) => {
+      const out: Array<[string, unknown]> = [];
+      const req = db.transaction(STORE, 'readonly').objectStore(STORE).openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return resolve(out);
+        out.push([String(c.key), c.value]);
+        c.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return []; // storage unavailable: settings last for this session only
+  }
+}
+
+export async function persistSetting(key: string, value: unknown): Promise<void> {
+  try {
+    const store = (await open()).transaction(STORE, 'readwrite').objectStore(STORE);
+    if (value === undefined) store.delete(key);
+    else store.put(value, key);
+  } catch {
+    /* not persisted */
   }
 }
