@@ -1,18 +1,18 @@
 import './style.css';
-import { describeModel, loadConfig } from '@/agent/config';
-import { deleteSession, listSessions } from '@/agent/session';
+import './chat.css';
+import './workbench.css';
+import { OS_URL } from '@/config/origins';
 import type { AgentHandle } from '@/kernel/api';
-import type { AppModule } from '@/ui/apps';
-import { fmtTime, h } from '@/ui/dom';
 import type { TodoItem } from '@/agent/tools/types';
+import type { AppModule } from '@/ui/apps';
+import { createComposer } from './composer';
+import { applyProfile, getProfile } from './profile';
+import { SettingsModal } from './settings-modal';
+import { createSetup, SETUP_KEY } from './setup';
+import { createShell } from './shell';
+import { createSidebar } from './sidebar';
 import { renderTodos, Transcript } from './view';
-
-const SUGGESTIONS = [
-  'Give me a tour: what can you do in this OS?',
-  'Build a small interactive web page and show it to me',
-  'Write a Python script that plots a sine wave, run it, and show the chart',
-  'Benchmark a WebGPU compute shader against plain JavaScript',
-];
+import { TOOLS, Workbench } from './workbench';
 
 const app: AppModule = {
   async mount(ctx) {
@@ -21,89 +21,68 @@ const app: AppModule = {
     // The session lives in the kernel; this window attaches to it and can leave without stopping it.
     let agent: AgentHandle;
     let busy = false;
-    let hasMessages = false;
     let todos: TodoItem[] = [];
     let wake: WakeLockSentinel | null = null;
 
-    // --- layout ------------------------------------------------------------
-    const modelBtn = h('button', { class: 'btn small ag-model', title: 'Change model', onclick: () => ctx.launch('settings', { section: 'model' }) });
-    const usage = h('span', { class: 'muted ag-usage' });
-    const sessions = h('div', { class: 'ag-sessions' });
-    const side = h('aside', { class: 'ag-side' }, h('button', { class: 'btn primary', onclick: () => void newSession() }, '+ New session'), sessions);
-    const todoSlot = h('div', { class: 'ag-todo-slot' });
-    const empty = h(
-      'div',
-      { class: 'ag-empty' },
-      h('div', { class: 'ag-logo' }, '✦'),
-      h('h2', null, 'What should we work on?'),
-      h('p', { class: 'muted' }, 'The agent can read and write files, run shell commands, JavaScript, Python and GPU code in a sandbox, browse, and open apps — all inside this tab.'),
-      h('div', { class: 'ag-suggest' }, SUGGESTIONS.map((s) => h('button', { class: 'btn', onclick: () => submit(s) }, s))),
-    );
-    const scroller = h('div', { class: 'ag-scroll fill' }, empty, log.el);
-    const input = h('textarea', { class: 'ag-input', rows: 1, placeholder: 'Ask the agent to do something…', 'aria-label': 'Message' });
-    const sendBtn = h('button', { class: 'btn primary', type: 'submit' }, 'Send');
-    const stopBtn = h('button', { class: 'btn danger', type: 'button', hidden: true, onclick: () => agent.stop() }, 'Stop');
-    const composer = h(
-      'form',
-      {
-        class: 'ag-composer',
-        onsubmit: (e: Event) => {
-          e.preventDefault();
-          submit(input.value);
-        },
-      },
-      input,
-      sendBtn,
-      stopBtn,
-    );
-    const header = h(
-      'div',
-      { class: 'toolbar' },
-      h('button', { class: 'btn ghost small ag-side-toggle', 'aria-label': 'Toggle sessions', onclick: () => root.classList.toggle('side-open') }, '☰'),
-      modelBtn,
-      h('span', { class: 'spacer' }),
-      usage,
-      h('button', { class: 'btn ghost small', title: 'Open the agent workspace in Files', onclick: () => ctx.launch('files', { path: '/home/agent' }) }, 'Workspace'),
-    );
-    root.append(h('div', { class: 'ag-root fill' }, side, h('div', { class: 'ag-main' }, header, scroller, todoSlot, composer)));
+    // --- routing: everything opens inside this window ------------------------
+    const openDesktop = () => {
+      if (!open(OS_URL, 'bbx-os')) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
+    };
+    const route = (id: string, args: Record<string, unknown> = {}) => {
+      if (id === 'settings') return settings.open(typeof args.section === 'string' ? args.section : 'model');
+      if (id === 'agent') return composer.focus();
+      if (TOOLS.some((t) => t.id === id)) {
+        workbench.open(id, args);
+        shell.closeDrawer();
+        return;
+      }
+      os.notify({ title: `${id} is only available on the desktop`, body: 'Use “Open desktop” in the sidebar.', level: 'warn' });
+    };
+    const settings = new SettingsModal(os, route);
+    const workbench = new Workbench(os, { onChange: () => shell.syncWorkbench(), route });
+    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelSettings: () => settings.open('model') });
+    const sidebar = createSidebar(os, {
+      newChat: () => void newSession(),
+      openChat: (id) => void openSession(id),
+      settings: () => settings.open('model'),
+      processes: () => route('taskmgr'),
+      openDesktop,
+      collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
+    });
+    const shell = createShell({ sidebar, workbench, composer, log, suggest: (p) => submit(p) });
+    root.append(shell.el);
+    shell.setEmpty(true);
+    // The kernel (or the agent's open_app / show_html tools) asked for an app.
+    // Requests raised by other windows (the desktop launching its own apps) are theirs to handle.
+    ctx.on('app:open', ({ id, args, fromWindow }) => !fromWindow && route(id, args ?? {}));
 
     // --- behaviour ---------------------------------------------------------
-    const refreshModel = () => (modelBtn.textContent = `${describeModel(loadConfig(os))} ▾`);
     const setBusy = (b: boolean) => {
       busy = b;
-      sendBtn.hidden = b;
-      stopBtn.hidden = !b;
-      win.setTitle(b ? 'Agent — working…' : 'Agent');
+      composer.setBusy(b);
+      win.setTitle(b ? 'BrowserBox — working…' : 'BrowserBox');
       // Keep the screen awake while the agent works.
       if (b) void navigator.wakeLock?.request('screen').then((w) => (wake = w), () => undefined);
       else void wake?.release().catch(() => undefined);
     };
-    const showTodos = () => todoSlot.replaceChildren(...[renderTodos(todos)].filter((n): n is HTMLElement => n !== null));
-    const refreshSessions = async () => {
-      const list = await listSessions(os);
-      sessions.replaceChildren(
-        ...list.map((s) =>
-          h(
-            'div',
-            { class: `ag-session ${s.id === agent.sid ? 'active' : ''}` },
-            h('button', { class: 'ag-session-open', title: fmtTime(s.updated), onclick: () => void openSession(s.id) }, s.title),
-            h('button', { class: 'btn ghost small', 'aria-label': `Delete session ${s.title}`, onclick: () => void deleteSession(os, s.id).then(refreshSessions) }, '✕'),
-          ),
-        ),
-      );
-    };
+    const showTodos = () => shell.todoSlot.replaceChildren(...[renderTodos(todos)].filter((n): n is HTMLElement => n !== null));
+    const showUsage = (input: number, output: number) => (shell.usage.textContent = output ? `${fmtTokens(input)} in · ${fmtTokens(output)} out` : '');
+
     function adopt(handle: AgentHandle): void {
       agent = handle;
       handle.onAsk((question, options) => log.ask(question, options));
+      handle.prompter = (req, signal) => log.approve(req, signal);
       handle.onEvent((e) => {
         log.handle(e);
         if (e.type === 'todos') {
           todos = e.items;
           showTodos();
-        } else if (e.type === 'usage') usage.textContent = `${fmtTokens(e.total.input + e.total.cacheRead)} in · ${fmtTokens(e.total.output)} out`;
-        else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => ctx.launch('settings', { section: 'model' }) } : undefined);
+        } else if (e.type === 'usage') showUsage(e.total.input + e.total.cacheRead, e.total.output);
+        else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => settings.open('model') } : undefined);
         else if (e.type === 'done') {
           setBusy(false);
+          void sidebar.refresh(agent.sid);
+          void agent.snapshot().then((s) => shell.setTitle(s.title));
           if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished');
         }
       });
@@ -112,79 +91,92 @@ const app: AppModule = {
     /** Shows whatever state the session is in — used when attaching to one that is already running. */
     async function showState(): Promise<void> {
       const snap = await agent.snapshot();
-      hasMessages = snap.messages.length > 0;
+      const has = snap.messages.length > 0;
       todos = snap.todos;
-      empty.hidden = hasMessages;
-      if (hasMessages) log.restore(snap.messages);
+      shell.setEmpty(!has);
+      shell.setTitle(has ? snap.title : '');
+      if (has) log.restore(snap.messages);
       else log.clear();
-      usage.textContent = snap.total.output ? `${fmtTokens(snap.total.input + snap.total.cacheRead)} in · ${fmtTokens(snap.total.output)} out` : '';
+      showUsage(snap.total.input + snap.total.cacheRead, snap.total.output);
       showTodos();
       setBusy(snap.busy);
-      void refreshSessions();
+      void sidebar.refresh(agent.sid);
     }
 
     /** Leaves the current session: idle ones are already saved, so their process can go. */
     const leave = () => agent.dispose();
 
     async function newSession(): Promise<void> {
+      shell.closeDrawer();
       if (busy) return os.notify('Stop the running task first.');
       leave();
       adopt(await os.agents.create());
       await showState();
-      input.focus();
+      composer.focus();
     }
 
     async function openSession(id: string): Promise<void> {
       if (busy) return os.notify('Stop the running task first.');
+      if (id === agent.sid) return shell.closeDrawer();
       try {
         const next = await os.agents.create({ resume: id });
         leave();
         adopt(next);
         await showState();
-        root.classList.remove('side-open');
+        shell.closeDrawer();
       } catch (err) {
-        os.notify({ title: 'Could not open that session', body: (err as Error).message, level: 'error' });
+        os.notify({ title: 'Could not open that chat', body: (err as Error).message, level: 'error' });
       }
     }
 
-    function submit(text: string): void {
+    function submit(text: string): boolean {
       text = text.trim();
-      if (!text || busy) return;
-      input.value = '';
-      input.style.height = '';
-      empty.hidden = true;
-      hasMessages = true;
+      if (!text || busy) return false;
+      shell.setEmpty(false);
       log.addUser(text);
       setBusy(true);
+      composer.focus();
       void agent.send(text).catch((err: Error) => {
         log.addNote(`Lost the agent session: ${err.message}`, 'error');
         setBusy(false);
       });
+      return true;
     }
 
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        submit(input.value);
-      }
-    });
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
-    });
-    ctx.on('settings:change', ({ key }) => key === 'agent.config' && refreshModel());
+    /** Shows the first-run setup in place of the chat until it is finished or skipped. */
+    const runSetup = () =>
+      new Promise<void>((resolve) => {
+        settings.close();
+        shell.el.hidden = true;
+        const setup = createSetup(os, () => {
+          shell.el.hidden = false;
+          applyProfile(os, root, log, getProfile(os) === 'dev' ? workbench : null);
+          composer.focus();
+          resolve();
+        });
+        root.append(setup.el);
+      });
 
+    ctx.on('settings:change', ({ key, value }) => {
+      if (key === 'agent.config') composer.refreshModel();
+      if (key === 'ui.profile') applyProfile(os, root, log, null);
+      if (key === 'setup.done' && value === false && !root.querySelector('.su')) void runSetup();
+    });
     // Sessions are saved by the kernel; refresh the list when one changes on disk.
-    ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void refreshSessions());
+    ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());
 
-    refreshModel();
+    if (!os.settings.get(SETUP_KEY, false)) await runSetup();
+    else applyProfile(os, root, log, getProfile(os) === 'dev' ? workbench : null);
     // Rejoin a session that is already running in the kernel, otherwise start one.
     const [live] = await os.agents.live();
     adopt(live ? await os.agents.attach(live.sid) : await os.agents.create());
     await showState();
-    input.focus();
+    composer.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);
-    return () => agent.detach();
+    return () => {
+      agent.detach();
+      settings.close();
+    };
   },
 };
 

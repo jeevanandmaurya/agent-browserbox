@@ -3,7 +3,7 @@ import { h } from '@/ui/dom';
 import { icon } from './icons';
 import { mountPanelApp, type PanelApp } from './panel-host';
 
-export type SettingsSection = 'model' | 'permissions' | 'appearance' | 'data';
+export type SettingsSection = 'model' | 'permissions' | 'appearance' | 'tools' | 'data';
 
 /**
  * Settings inside the agent window: the Settings app module in a modal

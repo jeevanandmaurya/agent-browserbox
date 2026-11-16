@@ -3,7 +3,8 @@ import { h } from '@/ui/dom';
 import { dataSection } from './data';
 import { modelSection } from './model';
 import { sectionNav } from './nav';
-import { appearanceSection, permissionsSection } from './permissions';
+import { appearanceSection, toolsSection } from './general';
+import { permissionsSection } from './permissions';
 import './style.css';
 
 const app: AppModule = {
@@ -21,16 +22,20 @@ const app: AppModule = {
       }, 1600);
     };
 
-    const nav = sectionNav(
-      [
-        { id: 'model', label: 'Model', build: () => modelSection(ctx, saved) },
-        { id: 'permissions', label: 'Permissions', build: () => permissionsSection(ctx, saved) },
-        { id: 'appearance', label: 'Appearance', build: () => appearanceSection(ctx, saved) },
-        { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },
-      ],
-      'Settings sections',
-      ctx.proc.pid,
-    );
+    const sections = [
+      { id: 'model', label: 'Model', build: () => modelSection(ctx, saved) },
+      { id: 'permissions', label: 'Permissions', build: () => permissionsSection(ctx, saved) },
+      { id: 'appearance', label: 'Appearance', build: () => appearanceSection(ctx, saved) },
+      { id: 'tools', label: 'Tools', build: () => toolsSection(ctx, saved) },
+      { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },
+    ];
+    // `only` embeds a single section with no nav (the agent window's first-run setup uses the Model section).
+    const only = sections.find((s) => s.id === ctx.args.only);
+    if (only) {
+      ctx.root.append(h('div', { class: 'sn-panel st-only' }, h('div', { class: 'sn-main' }, only.build())), pill);
+      return () => clearTimeout(hideTimer);
+    }
+    const nav = sectionNav(sections, 'Settings sections', ctx.proc.pid);
     ctx.root.append(nav.el, pill);
     nav.show(typeof ctx.args.section === 'string' ? ctx.args.section : 'model');
     return () => clearTimeout(hideTimer);

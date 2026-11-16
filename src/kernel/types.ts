@@ -20,5 +20,6 @@ export interface KernelEvents extends Record<string, unknown> {
   'settings:change': { key: string; value: unknown };
   notify: Notice;
   /** Ask the shell UI to launch an app. */
-  'app:open': { id: string; args?: Record<string, unknown> };
+  /** `fromWindow`: raised by a GUI window (e.g. the desktop), not by the kernel, the shell or the agent. */
+  'app:open': { id: string; args?: Record<string, unknown>; fromWindow?: boolean };
 }

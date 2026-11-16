@@ -51,11 +51,44 @@ const check = async (name, fn) => {
     console.log(`FAIL ${name}: ${JSON.stringify(err.message.slice(0, 400))}`);
   }
 };
+let popups = 0;
+context.on('page', () => popups++);
 const ready = (page) => page.waitForFunction(() => globalThis.bbx?.bootMarks.some((m) => m.name === 'ready'), null, { timeout: 20000 });
 
 // ---- The agent window: no desktop, just the kernel and one page --------------
 let agent = watch(await context.newPage(), 'agent');
 await agent.goto(base);
+// ---- First run: a fresh profile sees the setup before the chat ---------------
+await check('first run: setup shows; completing it lands in the chat', async () => {
+  await agent.waitForSelector('.su', { timeout: 20000 });
+  if (await agent.locator('.composer').isVisible()) throw new Error('the chat is visible behind the setup');
+  const next = () => agent.locator('.su-nav .btn.primary').click();
+  await agent.locator('.su-choice', { hasText: 'Casual' }).click();
+  await next();
+  await agent.waitForSelector('.su-model[data-app="settings"] .st-section', { timeout: 10000 }); // the Settings app's Model section, embedded
+  await next();
+  await agent.locator('.su-choice', { hasText: 'Ask me first' }).click();
+  await next();
+  if (!(await agent.locator('.pk-item', { hasText: 'Python' }).locator('input').isChecked())) throw new Error('python not preselected');
+  if (!(await agent.locator('.pk-item', { hasText: 'Git' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
+  await agent.locator('.su-nav .btn.primary', { hasText: 'Finish' }).click();
+  await ready(agent);
+  await agent.waitForSelector('.composer', { state: 'visible' });
+  return agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), profile: bbx.settings.get('ui.profile', ''), packs: bbx.settings.get('setup.packs', []), perms: bbx.perms.mode }));
+});
+await check('setup does not reappear on reload; "Use defaults" also lands in the chat', async () => {
+  await agent.reload();
+  await ready(agent);
+  if (await agent.locator('.su').count()) throw new Error('setup shown again after finishing');
+  await agent.evaluate(() => bbx.settings.set('setup.done', false)); // Settings → Tools → Run setup again
+  await agent.waitForSelector('.su', { timeout: 5000 });
+  await agent.locator('.su-skip').click();
+  await agent.waitForSelector('.composer', { state: 'visible' });
+  await agent.reload();
+  await ready(agent);
+  if (await agent.locator('.su').count()) throw new Error('setup shown again after "Use defaults"');
+  return 'skipped with defaults, stays done';
+});
 await check('root redirects to the agent window; kernel boots headless', async () => {
   await ready(agent);
   if (!agent.url().endsWith('/agent/')) throw new Error(agent.url());
@@ -93,12 +126,13 @@ await check('windows cannot read secrets back', () =>
 
 // ---- GUI on demand: the desktop is a second window onto the same kernel -------
 let desk;
-await check('desktop opens on demand in its own window', async () => {
-  const popup = context.waitForEvent('page');
-  await agent.getByRole('button', { name: 'Workspace' }).click();
-  desk = watch(await popup, 'desktop');
+await check('desktop opens explicitly in its own window', async () => {
+  desk = watch(await context.newPage(), 'desktop');
+  await desk.goto(base + 'os/');
   await ready(desk);
+  await desk.locator('.desk-icon', { hasText: 'Files' }).dblclick();
   await desk.waitForSelector('.win-body[data-app="files"]', { timeout: 15000 });
+  if (await agent.locator('.wb-pane').count()) throw new Error('the desktop’s own app launch leaked into the agent window');
   return desk.url().replace(base, '/');
 });
 await check('both windows share one kernel', async () => {
@@ -161,24 +195,28 @@ await check('webgpu compute inside the kernel worker', async () => {
 
 // ---- The agent, running in the kernel, driven from its own window -------------
 await check('agent: tool loop, approvals across windows, validation', async () => {
+  const popupsBefore = popups;
   await agent.evaluate(() => bbx.settings.set('agent.config', { provider: 'openai', openaiBaseUrl: 'http://localhost:11434/v1', openaiModel: 'mock' }));
   await agent.bringToFront();
   await agent.locator('.ag-input').fill('make a report');
   await agent.locator('.ag-input').press('Enter');
   // write_file in the agent workspace is free; shell needs approval. The prompt shows in every window.
+  // In the agent window the request is an inline card in the conversation; other windows show a dialog.
   await desk.waitForSelector('.modal.perm');
-  await agent.locator('.modal.perm .btn.primary').click({ timeout: 10000 });
-  await agent.locator('.modal.perm .btn', { hasText: 'Always allow' }).click({ timeout: 10000 }); // run_js → exec, granted for good
+  await agent.locator('.ag-approval:not(.settled) .btn.primary').click({ timeout: 10000 });
+  await agent.locator('.ag-approval:not(.settled) .btn', { hasText: 'Always allow' }).click({ timeout: 10000 }); // run_js → exec, granted for good
   await agent.waitForFunction(() => [...document.querySelectorAll('.ag-text strong')].some((e) => e.textContent === 'done'), null, { timeout: 20000 });
   const results = requests.at(-1).messages.filter((m) => m.role === 'tool').map((m) => m.content);
   const expect = [/Wrote 14 characters/, /^1\n.*report\.md/s, /# REPORT\nHELLO/, /Welcome to BrowserBox/, /ERROR: Unknown tool "nope"/, /ERROR: Invalid input for edit_file: missing required property "old_string"/, /preview window is open/];
   expect.forEach((re, i) => {
     if (!re.test(results[i] ?? '')) throw new Error(`tool result ${i} was ${JSON.stringify(results[i])}`);
   });
-  await desk.waitForSelector('.win-body[data-app="preview"]', { timeout: 10000 }); // show_html reached the desktop
+  // show_html appears inside the agent window's workbench, with no new window.
+  await agent.waitForSelector('.wb-pane[data-app="preview"]:not([hidden]) iframe', { timeout: 10000 });
+  if (popups !== popupsBefore) throw new Error(`${popups - popupsBefore} new window(s) opened`);
   if (await desk.locator('.modal.perm').count()) throw new Error('a prompt answered in the agent window is still showing on the desktop');
   await agent.waitForFunction(() => bbx.fs.readdir('/home/agent/.sessions').then((l) => l.length === 1, () => false), null, { timeout: 5000 });
-  return `${results.length} tool results, preview opened in desktop, session saved by kernel`;
+  return `${results.length} tool results, preview shown in the agent window, session saved by kernel`;
 });
 await check('agent session survives its window closing', async () => {
   await agent.close();
@@ -226,6 +264,40 @@ await check('closing the desktop leaves the kernel and agent running', async () 
   const out = await agent.evaluate(async () => `${bbx.procs.list().map((p) => `${p.name}[${p.kind}]`).join(' ')} | ${await bbx.fs.readText('/home/agent/report.md')}`);
   if (!out.includes('agent[agent]') || !out.includes('# Report')) throw new Error(out);
   return out.split(' | ')[0];
+});
+
+// ---- The agent window is self-contained: settings, files, terminal built in ----
+await check('agent window: settings open inside the page on the Model section', async () => {
+  const before = popups;
+  await agent.bringToFront();
+  await agent.locator('.sb-row', { hasText: 'Settings' }).click();
+  await agent.waitForSelector('.sm-dialog [data-app="settings"] .sn-tab[aria-selected="true"]', { timeout: 10000 });
+  const tab = await agent.locator('.sm-dialog .sn-tab[aria-selected="true"]').textContent();
+  if (tab !== 'Model') throw new Error(`section ${tab}`);
+  await agent.keyboard.press('Escape');
+  await agent.waitForSelector('.sm-overlay', { state: 'detached' });
+  // The composer's model picker leads to the same place.
+  await agent.locator('.mp-btn').click();
+  await agent.locator('.mp-menu .pop-item', { hasText: 'Model settings' }).click();
+  await agent.waitForSelector('.sm-dialog .sn-tab[aria-selected="true"]:text("Model")', { timeout: 10000 });
+  await agent.keyboard.press('Escape');
+  if (popups !== before) throw new Error('a new window opened');
+  return 'modal, Model section, Esc closes';
+});
+await check('agent window: Files and Terminal open in the workbench; a command runs', async () => {
+  const before = popups;
+  await agent.locator('.bb-files').click();
+  await agent.waitForSelector('.wb-pane[data-app="files"]:not([hidden]) .files-table', { timeout: 10000 });
+  await agent.locator('.bb-term').click();
+  const input = agent.locator('.wb-pane[data-app="terminal"] .term-input');
+  await input.waitFor({ timeout: 10000 });
+  await input.fill('echo in-$PWD | wc -c && echo ok-$PWD');
+  await input.press('Enter');
+  await agent.waitForFunction(() => /ok-\/home\/agent/.test(document.querySelector('.wb-pane[data-app="terminal"] .term-out')?.textContent ?? ''), null, { timeout: 15000 });
+  const out = await agent.locator('.wb-pane[data-app="terminal"] .term-out').textContent();
+  if (popups !== before) throw new Error('a new window opened');
+  if (await agent.evaluate(() => bbx.procs.list().some((p) => p.name === 'desktop'))) throw new Error('the desktop started');
+  return out.trim().split('\n').slice(-3).join(' | ');
 });
 
 if (errors.length) {

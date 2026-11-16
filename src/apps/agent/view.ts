@@ -1,8 +1,13 @@
 import type { AgentEvent } from '@/agent/agent';
-import type { TodoItem } from '@/agent/tools/index';
 import type { Msg } from '@/agent/types';
+import type { PermDecision, PermRequest } from '@/kernel/perms';
 import { fmtDuration, h } from '@/ui/dom';
 import { renderMarkdown } from '@/ui/markdown';
+import { approvalCard, askCard } from './cards';
+import { icon } from './icons';
+import { friendlyTool } from './tool-labels';
+
+export { renderTodos } from './cards';
 
 interface ToolCard {
   el: HTMLDetailsElement;
@@ -17,7 +22,10 @@ interface ToolCard {
  */
 export class Transcript {
   readonly el = h('div', { class: 'ag-log', role: 'log', 'aria-live': 'polite' });
+  /** Tool rows start expanded (the "dev" profile). */
+  expandTools = false;
   #turn: HTMLElement | null = null;
+  #turnText: string[] = [];
   #textEl: HTMLElement | null = null;
   #text = '';
   #thinkEl: HTMLElement | null = null;
@@ -28,11 +36,12 @@ export class Transcript {
   clear(): void {
     this.el.replaceChildren();
     this.#turn = this.#textEl = this.#thinkEl = this.#statusEl = null;
+    this.#turnText = [];
     this.#tools.clear();
   }
 
   #scroll(force = false): void {
-    const s = this.el.parentElement;
+    const s = this.el.closest<HTMLElement>('.ag-scroll');
     if (s && (force || s.scrollHeight - s.scrollTop - s.clientHeight < 160)) s.scrollTop = s.scrollHeight;
   }
 
@@ -44,8 +53,37 @@ export class Transcript {
     return this.#turn;
   }
 
+  /** Closes the assistant turn and gives it a copy button when it said anything. */
+  #finishTurn(): void {
+    this.#endBlock();
+    const turn = this.#turn;
+    const text = this.#turnText.join('\n\n').trim();
+    if (turn && text && !turn.querySelector(':scope > .ag-actions')) {
+      const label = h('span', { class: 'sr-only' }, 'Copy response');
+      const btn = h(
+        'button',
+        {
+          class: 'icon-btn ag-copy',
+          type: 'button',
+          title: 'Copy',
+          onclick: () =>
+            void navigator.clipboard?.writeText(text).then(() => {
+              btn.replaceChildren(icon('check', 15), label);
+              setTimeout(() => btn.replaceChildren(icon('copy', 15), label), 1400);
+            }),
+        },
+        icon('copy', 15),
+        label,
+      );
+      turn.append(h('div', { class: 'ag-actions' }, btn));
+    }
+    this.#turn = null;
+    this.#turnText = [];
+  }
+
   #endBlock(): void {
     this.#flush();
+    if (this.#textEl && this.#text) this.#turnText.push(this.#text);
     this.#textEl = this.#thinkEl = null;
     this.#text = '';
   }
@@ -57,60 +95,56 @@ export class Transcript {
 
   #setStatus(text: string): void {
     this.#statusEl?.remove();
-    this.#statusEl = text ? h('div', { class: 'ag-status' }, h('span', { class: 'ag-spinner' }), text) : null;
+    this.#statusEl = text ? h('div', { class: 'ag-status' }, h('span', { class: 'ag-spinner' }), h('span', null, text)) : null;
     if (this.#statusEl) this.el.append(this.#statusEl);
   }
 
-  addUser(text: string): void {
+  #place = (el: HTMLElement) => {
     this.#endBlock();
+    // Whatever the agent does next goes below the card, in a continuation of this turn.
     this.#turn = null;
-    this.el.append(h('div', { class: 'ag-msg user' }, text));
+    this.el.append(el);
+    this.#statusEl && this.el.append(this.#statusEl);
+    this.#scroll(true);
+  };
+
+  addUser(text: string): void {
+    this.#finishTurn();
+    this.el.append(h('div', { class: 'ag-msg user' }, h('div', { class: 'ag-bubble' }, text)));
     this.#setStatus('Thinking…');
     this.#scroll(true);
   }
 
   addNote(text: string, kind: 'note' | 'error' = 'note', action?: { label: string; run: () => void }): void {
     this.#endBlock();
-    this.el.append(h('div', { class: `ag-note ${kind}` }, h('span', null, text), action ? h('button', { class: 'btn small', onclick: action.run }, action.label) : null));
+    this.el.append(h('div', { class: `ag-note ${kind}` }, icon(kind === 'error' ? 'info' : 'spark', 16), h('span', null, text), action ? h('button', { class: 'btn small', type: 'button', onclick: action.run }, action.label) : null));
     this.#scroll();
   }
 
-  /** Inline question from the agent; resolves with the user's answer. */
   ask(question: string, options: string[] = []): Promise<string> {
-    this.#endBlock();
-    return new Promise((resolve) => {
-      const input = h('input', { class: 'input', placeholder: 'Type an answer…', 'aria-label': 'Answer' });
-      const answer = (value: string) => {
-        if (!value.trim()) return;
-        card.replaceChildren(h('div', { class: 'ag-q' }, question), h('div', { class: 'muted' }, `You answered: ${value}`));
-        resolve(value);
-      };
-      const card = h(
-        'form',
-        {
-          class: 'ag-ask card',
-          onsubmit: (e: Event) => {
-            e.preventDefault();
-            answer(input.value);
-          },
-        },
-        h('div', { class: 'ag-q' }, question),
-        options.length ? h('div', { class: 'row ag-opts' }, options.map((o) => h('button', { class: 'btn', type: 'button', onclick: () => answer(o) }, o))) : null,
-        h('div', { class: 'row' }, input, h('button', { class: 'btn primary', type: 'submit' }, 'Answer')),
-      );
-      this.el.append(card);
-      this.#scroll(true);
-      input.focus();
-    });
+    return askCard(question, options, this.#place);
+  }
+
+  approve(req: PermRequest, signal?: AbortSignal): Promise<PermDecision> {
+    return approvalCard(req, signal, this.#place);
   }
 
   #toolCard(id: string, name: string, summary: string, input: unknown): ToolCard {
     const status = h('span', { class: 'ag-tool-status' }, h('span', { class: 'ag-spinner' }));
     const output = h('pre', { class: 'ag-tool-out' });
+    const line = summary.split('\n')[0]!.slice(0, 200);
     const el = h(
       'details',
-      { class: 'ag-tool' },
-      h('summary', null, status, h('span', { class: 'ag-tool-name' }, name), h('span', { class: 'ag-tool-sum' }, summary.split('\n')[0]!.slice(0, 200))),
+      { class: 'ag-tool', open: this.expandTools },
+      h(
+        'summary',
+        null,
+        status,
+        h('span', { class: 'ag-tool-name' }, name),
+        h('span', { class: 'ag-tool-friendly' }, friendlyTool(name, line)),
+        h('span', { class: 'ag-tool-sum' }, line),
+        h('span', { class: 'ag-tool-chev' }, icon('chevron', 14)),
+      ),
       h('div', { class: 'ag-tool-body' }, h('div', { class: 'ag-tool-label' }, 'Input'), h('pre', { class: 'ag-tool-in' }, typeof input === 'string' ? input : JSON.stringify(input, null, 2)), h('div', { class: 'ag-tool-label' }, 'Output'), output),
     );
     const card = { el, status, output, text: '' };
@@ -121,9 +155,9 @@ export class Transcript {
 
   #finishTool(card: ToolCard, result: string, isError: boolean, ms?: number): void {
     card.output.textContent = result.length > 20000 ? result.slice(0, 20000) + '\n… (truncated in view)' : result;
-    card.status.replaceChildren(isError ? '✕' : '✓');
+    card.status.replaceChildren(icon(isError ? 'close' : 'check', 13));
     card.el.classList.add(isError ? 'err' : 'ok');
-    if (ms !== undefined) card.el.querySelector('summary')!.append(h('span', { class: 'ag-tool-ms' }, fmtDuration(ms)));
+    if (ms !== undefined) card.el.querySelector('.ag-tool-chev')!.before(h('span', { class: 'ag-tool-ms' }, fmtDuration(ms)));
   }
 
   handle(e: AgentEvent): void {
@@ -148,8 +182,8 @@ export class Transcript {
         this.#setStatus('');
         if (!this.#thinkEl) {
           this.#endBlock();
-          this.#thinkEl = h('pre', { class: 'ag-think-body' });
-          this.#ensureTurn().append(h('details', { class: 'ag-think' }, h('summary', null, 'Thinking'), this.#thinkEl));
+          this.#thinkEl = h('div', { class: 'ag-think-body' });
+          this.#ensureTurn().append(thinkBlock(this.#thinkEl));
         }
         this.#thinkEl.append(e.delta);
         break;
@@ -181,9 +215,8 @@ export class Transcript {
         this.addNote(e.text);
         break;
       case 'done':
-        this.#endBlock();
         this.#setStatus('');
-        this.#turn = null;
+        this.#finishTurn();
         break;
       default:
         break;
@@ -197,8 +230,8 @@ export class Transcript {
       if (m.role === 'user') {
         for (const b of m.content) {
           if (b.type === 'text') {
-            this.#turn = null;
-            this.el.append(h('div', { class: 'ag-msg user' }, b.text));
+            this.#finishTurn();
+            this.el.append(h('div', { class: 'ag-msg user' }, h('div', { class: 'ag-bubble' }, b.text)));
           } else if (b.type === 'tool_result') {
             const card = this.#tools.get(b.tool_use_id);
             if (card) this.#finishTool(card, b.content, b.is_error ?? false);
@@ -207,31 +240,26 @@ export class Transcript {
       } else {
         const turn = this.#ensureTurn();
         for (const b of m.content) {
-          if (b.type === 'text') turn.append(h('div', { class: 'ag-text md' }, renderMarkdown(b.text)));
-          else if (b.type === 'thinking') turn.append(h('details', { class: 'ag-think' }, h('summary', null, 'Thinking'), h('pre', { class: 'ag-think-body' }, b.text)));
+          if (b.type === 'text') {
+            turn.append(h('div', { class: 'ag-text md' }, renderMarkdown(b.text)));
+            this.#turnText.push(b.text);
+          } else if (b.type === 'thinking') turn.append(thinkBlock(h('div', { class: 'ag-think-body' }, b.text)));
           else if (b.type === 'tool_use') this.#toolCard(b.id, b.name, summarize(b.input), b.input);
           else if (b.type === 'server_note') turn.append(h('div', { class: 'ag-note' }, b.text));
         }
       }
     }
     for (const card of this.#tools.values()) if (!card.el.classList.contains('ok') && !card.el.classList.contains('err')) this.#finishTool(card, '(no result recorded)', true);
-    this.#turn = null;
+    this.#finishTurn();
     this.#scroll(true);
   }
+}
+
+function thinkBlock(body: HTMLElement): HTMLElement {
+  return h('details', { class: 'ag-think' }, h('summary', null, icon('spark', 14), h('span', null, 'Thinking'), icon('chevron', 14)), body);
 }
 
 function summarize(input: Record<string, unknown>): string {
   const v = input.command ?? input.path ?? input.pattern ?? input.url ?? input.question ?? input.task ?? input.app ?? input.code ?? '';
   return String(v);
-}
-
-export function renderTodos(items: TodoItem[]): HTMLElement | null {
-  if (!items.length) return null;
-  const done = items.filter((t) => t.status === 'done').length;
-  return h(
-    'details',
-    { class: 'ag-todos', open: done < items.length },
-    h('summary', null, `Tasks ${done}/${items.length}`),
-    h('ul', null, items.map((t) => h('li', { class: t.status }, h('span', { class: 'ag-todo-mark' }, t.status === 'done' ? '✓' : t.status === 'in_progress' ? '▸' : '○'), t.text))),
-  );
 }

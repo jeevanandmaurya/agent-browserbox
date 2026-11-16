@@ -17,7 +17,7 @@ const MODES: Array<{ id: PermMode; title: string; text: string }> = [
   { id: 'auto', title: 'Allow everything inside the sandbox', text: 'No prompts. The agent can freely change files in the virtual filesystem, run code and make network requests. Best for unattended tasks you trust.' },
 ];
 
-function radioGroup<T extends string>(legend: string, options: Array<{ id: T; title: string; text?: string }>, value: T, onchange: (v: T) => void) {
+export function radioGroup<T extends string>(legend: string, options: Array<{ id: T; title: string; text?: string }>, value: T, onchange: (v: T) => void) {
   const name = nextId('radio');
   const inputs = options.map((o) => h('input', { type: 'radio', name, value: o.id, checked: o.id === value, onchange: () => onchange(o.id) }));
   const el = h(
@@ -105,24 +105,4 @@ export function permissionsSection(ctx: AppContext, saved: () => void): HTMLElem
     h('div', { class: 'row st-wrap' }, notifState, notifBtn),
     notifNote,
   );
-}
-
-export function appearanceSection(ctx: AppContext, saved: () => void): HTMLElement {
-  const { os } = ctx;
-  const theme = radioGroup(
-    'Theme',
-    [
-      { id: 'dark', title: 'Dark' },
-      { id: 'light', title: 'Light' },
-    ],
-    os.settings.get<string>('ui.theme', 'dark') === 'light' ? 'light' : 'dark',
-    (v) => {
-      os.settings.set('ui.theme', v);
-      saved();
-    },
-  );
-  ctx.on('settings:change', ({ key, value }) => {
-    if (key === 'ui.theme') theme.set(value === 'light' ? 'light' : 'dark');
-  });
-  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el);
 }

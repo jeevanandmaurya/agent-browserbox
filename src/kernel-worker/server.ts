@@ -202,7 +202,8 @@ export class KernelServer {
       // Events a window may raise
       'bus.emit': (type: 'notify' | 'app:open', payload: never) => {
         if (type !== 'notify' && type !== 'app:open') throw new Error(`windows may not emit ${String(type)}`);
-        as(() => os.bus.emit(type, payload));
+        // Mark app requests from windows, so the agent window only follows the kernel's own (the agent's tools, the shell).
+        as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: true } as never) : payload));
       },
 
       // Agents

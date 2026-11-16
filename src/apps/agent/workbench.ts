@@ -59,7 +59,7 @@ export class Workbench {
 
   constructor(
     private os: Kernel,
-    private host: { root: HTMLElement; onChange(): void; route(id: string, args: Record<string, unknown>): void },
+    private host: { onChange(): void; route(id: string, args: Record<string, unknown>): void },
   ) {
     const toolButtons = (cls: string, after?: () => void) =>
       TOOLS.map((t) =>
@@ -95,7 +95,7 @@ export class Workbench {
       if (!this.#menu.hidden && !this.#menu.contains(e.target as Node) && !addBtn.contains(e.target as Node)) this.#menu.hidden = true;
     });
     const w = store.get();
-    if (w) host.root.style.setProperty('--wb-w', `${w}px`);
+    if (w) this.el.style.setProperty('--wb-w', `${w}px`);
   }
 
   get isOpen(): boolean {
@@ -112,7 +112,7 @@ export class Workbench {
     if (this.#open) return;
     this.#open = true;
     this.el.hidden = false;
-    this.host.root.classList.add('wb-open');
+    this.el.parentElement?.classList.add('wb-open');
     this.#active?.app?.setHidden(false);
     this.#refresh();
   }
@@ -121,7 +121,7 @@ export class Workbench {
     if (!this.#open) return;
     this.#open = false;
     this.el.hidden = true;
-    this.host.root.classList.remove('wb-open');
+    this.el.parentElement?.classList.remove('wb-open');
     this.#active?.app?.setHidden(true);
     this.host.onChange();
   }
@@ -225,22 +225,21 @@ export class Workbench {
   }
 
   #resizable(handle: HTMLElement): void {
-    const root = this.host.root;
-    const clamp = (w: number) => Math.max(320, Math.min(w, root.clientWidth - 420));
+    const clamp = (w: number) => Math.max(320, Math.min(w, (this.el.parentElement?.clientWidth ?? innerWidth) - 420));
     const set = (w: number) => {
       const v = clamp(w);
-      root.style.setProperty('--wb-w', `${v}px`);
+      this.el.style.setProperty('--wb-w', `${v}px`);
       handle.setAttribute('aria-valuenow', String(Math.round(v)));
       store.set(v);
     };
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
-      root.classList.add('resizing');
+      document.body.classList.add('wb-resizing');
       const right = this.el.getBoundingClientRect().right;
       const move = (ev: PointerEvent) => set(right - ev.clientX);
       const up = () => {
-        root.classList.remove('resizing');
+        document.body.classList.remove('wb-resizing');
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', up);
         handle.removeEventListener('pointercancel', up);

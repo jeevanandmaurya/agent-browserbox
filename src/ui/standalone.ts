@@ -7,23 +7,35 @@ import { h } from './dom';
 
 const THEME_KEY = 'bbx-theme';
 
-/** Paints the right theme before the kernel has answered, then follows the setting. */
+/**
+ * Paints the right theme before the kernel has answered, then follows the
+ * `ui.theme` setting: 'dark', 'light' or 'system' (the OS preference, live).
+ */
 export function followTheme(os: Kernel): void {
   const root = document.documentElement;
-  try {
-    root.dataset.theme = localStorage.getItem(THEME_KEY) ?? 'dark';
-  } catch {
-    root.dataset.theme = 'dark';
-  }
-  os.bus.on('settings:change', ({ key, value }) => {
-    if (key !== 'ui.theme') return;
-    root.dataset.theme = String(value ?? 'dark');
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+  let choice = 'dark';
+  const paint = () => {
+    root.dataset.theme = choice === 'system' ? (dark.matches ? 'dark' : 'light') : choice === 'light' ? 'light' : 'dark';
+  };
+  const choose = (value: unknown) => {
+    choice = value === 'light' || value === 'system' ? value : 'dark';
+    paint();
     try {
-      localStorage.setItem(THEME_KEY, root.dataset.theme);
+      localStorage.setItem(THEME_KEY, choice);
     } catch {
       /* storage blocked */
     }
-  });
+  };
+  try {
+    choice = localStorage.getItem(THEME_KEY) ?? 'dark';
+  } catch {
+    /* storage blocked */
+  }
+  paint();
+  dark.addEventListener('change', paint);
+  os.bus.on('settings:change', ({ key, value }) => key === 'ui.theme' && choose(value));
+  void os.ready.then(() => choose(os.settings.get<string>('ui.theme', choice)), () => undefined);
 }
 
 /** Toasts for kernel notifications; returns a function for toasts with an action button. */
