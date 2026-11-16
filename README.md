@@ -186,7 +186,10 @@ your browser supports.
 
 - Browsers enforce CORS: `http_fetch`/`curl` only reach servers that allow it,
   and most sites cannot be framed in the Browser app.
-- The shell is not bash; there is no git, package manager or native compiler.
+- The shell is not bash; there is no npm, apt or native compiler. Tool packs
+  (`pkg list`) add git for local repositories, `sqlite3` and `zip`/`unzip`.
+  `git clone` needs a relay you configure (`git config http.corsProxy …`),
+  because Git hosts block direct browser access; push is not implemented.
 - Python needs a one-time download of Pyodide from jsDelivr.
 - Without OPFS the root filesystem falls back to memory and is lost on reload.
 - The kernel lives only while at least one BrowserBox window is open; browsers

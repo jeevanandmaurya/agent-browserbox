@@ -70,7 +70,8 @@ await check('first run: setup shows; completing it lands in the chat', async () 
   await agent.locator('.su-choice', { hasText: 'Ask me first' }).click();
   await next();
   if (!(await agent.locator('.pk-item', { hasText: 'Python' }).locator('input').isChecked())) throw new Error('python not preselected');
-  if (!(await agent.locator('.pk-item', { hasText: 'Git' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
+  if (!(await agent.locator('.pk-item', { hasText: 'C compiler' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
+  for (const name of ['Git', 'SQLite', 'Zip']) await agent.locator('.pk-item', { hasText: name }).locator('input').uncheck(); // installed later with `pkg install`
   await agent.locator('.su-nav .btn.primary', { hasText: 'Finish' }).click();
   await ready(agent);
   await agent.waitForSelector('.composer', { state: 'visible' });
@@ -191,6 +192,14 @@ await check('webgpu compute inside the kernel worker', async () => {
   await desk.evaluate(() => bbx.fs.writeFile('/tmp/sq.wgsl', '@group(0) @binding(0) var<storage, read> input: array<f32>;\n@group(0) @binding(1) var<storage, read_write> output: array<f32>;\n@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3u) { if (id.x < arrayLength(&output)) { output[id.x] = input[id.x] * input[id.x]; } }'));
   const out = await term('echo "[1,2,3,4]" | gpu /tmp/sq.wgsl 4; echo gpu=$?', 'gpu=');
   if (!out.includes('[1,4,9,16]')) throw new Error(out.slice(-300));
+});
+
+await check('tool packs: pkg, git, sqlite3, zip', async () => {
+  const gated = await term('git init /tmp/nope; echo gated=$?', 'gated=');
+  if (!gated.includes('pack is not installed')) throw new Error(gated.slice(-200));
+  const out = await term('pkg install git sqlite zip && mkdir -p /tmp/repo && cd /tmp/repo && git init && echo one > a.txt && git add . && git commit -m first && echo two >> a.txt && git status && git diff && git commit -a -m second && git log --oneline && sqlite3 t.db "create table t(x); insert into t values (41),(1); select sum(x) from t" && sqlite3 t.db .tables && zip -r /tmp/r.zip a.txt && unzip -l /tmp/r.zip && cd /tmp && echo packs-done', 'packs-done', 60000);
+  for (const want of ['] first', '] second', 'M  a.txt', '+two', '\n42\n', '\nt\n', '1 files → /tmp/r.zip']) if (!out.includes(want)) throw new Error(`missing ${JSON.stringify(want)} in ${out.slice(-700)}`);
+  return out.split('\n').filter((l) => /^[0-9a-f]{7} /.test(l)).join(' | ');
 });
 
 // ---- The agent, running in the kernel, driven from its own window -------------

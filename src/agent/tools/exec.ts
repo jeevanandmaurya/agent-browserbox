@@ -19,7 +19,7 @@ export const execTools: ToolDef[] = [
   tool<{ command: string }>({
     name: 'shell',
     description:
-      'Run a command line in the BrowserBox shell (not bash, but POSIX-flavoured): pipes, redirects, &&, ||, ;, $VARS and globs work. Commands include ls, cat, grep, find, head, tail, wc, sort, uniq, mkdir, rm, cp, mv, tree, du, curl, js, python, wasm, gpu, ps, kill, open, sha256sum, gzip. Run `help` to list them all. The working directory persists between calls (cd works). There is no git, npm, apt or compiler.',
+      'Run a command line in the BrowserBox shell (not bash, but POSIX-flavoured): pipes, redirects, &&, ||, ;, $VARS and globs work. Commands include ls, cat, grep, find, head, tail, wc, sort, uniq, mkdir, rm, cp, mv, tree, du, curl, js, python, wasm, gpu, ps, kill, open, sha256sum, gzip. Run `help` to list them all. Installed tool packs add more (git, sqlite3, zip/unzip — see `pkg list`). The working directory persists between calls (cd works). There is no npm, apt or native compiler.',
     input_schema: obj({ command: { type: 'string' } }, ['command']),
     cap: () => 'exec',
     describe: (i) => i.command,
