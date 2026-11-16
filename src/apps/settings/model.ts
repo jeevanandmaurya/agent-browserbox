@@ -19,8 +19,8 @@ import { errText, heading, nextId } from './nav';
 const CUSTOM = '__custom__';
 const EFFORTS: Array<{ id: Effort; label: string }> = [
   { id: 'low', label: 'Low — quickest, fewest tokens' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High — recommended' },
+  { id: 'medium', label: 'Medium — default, balanced' },
+  { id: 'high', label: 'High — deeper reasoning' },
   { id: 'xhigh', label: 'Extra high' },
   { id: 'max', label: 'Max — most thorough, slowest' },
 ];

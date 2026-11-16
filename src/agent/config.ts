@@ -24,7 +24,7 @@ export interface AgentConfig {
 export const DEFAULT_CONFIG: AgentConfig = {
   provider: 'anthropic',
   anthropicModel: 'claude-opus-5-5',
-  effort: 'high',
+  effort: 'medium',
   openaiBaseUrl: 'http://localhost:11434/v1',
   openaiModel: '',
   webllmModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',

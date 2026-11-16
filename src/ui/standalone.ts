@@ -77,7 +77,7 @@ export function openInDesktop(os: Kernel, id: string, args: Record<string, unkno
  * Runs a single app as a whole page, with no desktop and no window manager.
  * This is how the agent gets its own real browser window.
  */
-export async function mountStandalone(os: Kernel, app: AppModule, name: string, root: HTMLElement): Promise<void> {
+export async function mountStandalone(os: Kernel, app: AppModule, name: string, root: HTMLElement, opts: { embedsApps?: boolean } = {}): Promise<void> {
   const offer = mountToasts(os);
   os.perms.setPrompter(dialogPrompter);
   await os.ready;
@@ -99,9 +99,11 @@ export async function mountStandalone(os: Kernel, app: AppModule, name: string, 
     onClose: (fn) => void closers.push(fn),
   };
   // The kernel (or the agent) asked for an app: hand it to the desktop, or offer to start one.
-  os.bus.on('app:open', ({ id, args }) => {
-    if (!desktopOpen(os)) offer('The agent wants to show you something', `Open ${id} in the desktop`, { label: 'Open desktop', run: () => openInDesktop(os, id, args) });
-  });
+  // Pages that host apps themselves (the agent window's workbench) handle `app:open` on their own.
+  if (!opts.embedsApps)
+    os.bus.on('app:open', ({ id, args }) => {
+      if (!desktopOpen(os)) offer('The agent wants to show you something', `Open ${id} in the desktop`, { label: 'Open desktop', run: () => openInDesktop(os, id, args) });
+    });
   const ctx: AppContext = { os, win, root, args: Object.fromEntries(new URLSearchParams(location.search)), proc, launch: (id, args) => openInDesktop(os, id, args), on: (type, fn) => os.bus.on(type, fn) };
   root.dataset.app = name.toLowerCase();
   const cleanup = await app.mount(ctx);
