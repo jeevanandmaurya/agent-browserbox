@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net; worker-src blob:; connect-src https://cdn.jsdelivr.net https://pypi.org https://files.pythonhosted.org">
+<title>BrowserBox sandbox</title>
+<script>
+// Runs in an opaque origin (iframe sandbox="allow-scripts"): no cookies, storage,
+// OPFS or IndexedDB of the host. It only spawns the worker the host sends.
+let worker;
+addEventListener("message", (e) => {
+  if (e.source !== parent || !e.data) return;
+  if (e.data.type === "boot" && !worker) {
+    worker = new Worker(URL.createObjectURL(new Blob([e.data.src], { type: "text/javascript" })));
+    worker.onerror = (ev) => parent.postMessage({ type: "crash", error: String(ev.message || ev) }, "*");
+    worker.postMessage({ type: "port" }, [e.ports[0]]);
+  }
+});
+parent.postMessage({ type: "hello" }, "*");
+</script>

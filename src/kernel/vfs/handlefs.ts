@@ -1,0 +1,119 @@
+import { basename, dirname } from './path';
+import { FsError, type FsBackend, type Stat } from './types';
+
+/**
+ * Filesystem over a FileSystemDirectoryHandle. Used for both the Origin
+ * Private File System (persistent root) and user-granted native folders
+ * mounted through the File System Access API.
+ */
+export class HandleFs implements FsBackend {
+  #dirs = new Map<string, FileSystemDirectoryHandle>();
+
+  constructor(
+    root: FileSystemDirectoryHandle,
+    readonly label: string,
+  ) {
+    this.#dirs.set('/', root);
+  }
+
+  async #dir(path: string, create = false): Promise<FileSystemDirectoryHandle> {
+    const cached = this.#dirs.get(path);
+    if (cached) return cached;
+    const parent = await this.#dir(dirname(path), create);
+    try {
+      const h = await parent.getDirectoryHandle(basename(path), { create });
+      this.#dirs.set(path, h);
+      return h;
+    } catch (err) {
+      throw this.#wrap(err, path);
+    }
+  }
+
+  #wrap(err: unknown, path: string): FsError {
+    const name = (err as DOMException)?.name;
+    if (name === 'NotFoundError') return new FsError('ENOENT', path);
+    if (name === 'TypeMismatchError') return new FsError('ENOTDIR', path);
+    if (name === 'NotAllowedError' || name === 'SecurityError') return new FsError('EACCES', path);
+    if (name === 'InvalidModificationError') return new FsError('ENOTEMPTY', path);
+    return new FsError('EIO', path, (err as Error)?.message);
+  }
+
+  async readFile(path: string): Promise<Uint8Array> {
+    try {
+      const dir = await this.#dir(dirname(path));
+      const fh = await dir.getFileHandle(basename(path));
+      return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+    } catch (err) {
+      if (err instanceof FsError) throw err;
+      const e = this.#wrap(err, path);
+      throw e.code === 'ENOTDIR' ? new FsError('EISDIR', path) : e;
+    }
+  }
+
+  async writeFile(path: string, data: Uint8Array): Promise<void> {
+    try {
+      const dir = await this.#dir(dirname(path));
+      const fh = await dir.getFileHandle(basename(path), { create: true });
+      const w = await fh.createWritable();
+      await w.write(data as Uint8Array<ArrayBuffer>);
+      await w.close();
+    } catch (err) {
+      throw err instanceof FsError ? err : this.#wrap(err, path);
+    }
+  }
+
+  async readdir(path: string): Promise<Stat[]> {
+    const dir = await this.#dir(path);
+    const prefix = path === '/' ? '/' : path + '/';
+    const jobs: Promise<Stat>[] = [];
+    for await (const [name, handle] of dir.entries()) {
+      const p = prefix + name;
+      if (handle.kind === 'directory') jobs.push(Promise.resolve({ path: p, name, kind: 'dir', size: 0, mtime: 0 }));
+      else
+        jobs.push(
+          (handle as FileSystemFileHandle)
+            .getFile()
+            .then((f): Stat => ({ path: p, name, kind: 'file', size: f.size, mtime: f.lastModified }))
+            .catch((): Stat => ({ path: p, name, kind: 'file', size: 0, mtime: 0 })),
+        );
+    }
+    return Promise.all(jobs);
+  }
+
+  async stat(path: string): Promise<Stat | null> {
+    if (path === '/') return { path, name: '', kind: 'dir', size: 0, mtime: 0 };
+    let dir: FileSystemDirectoryHandle;
+    try {
+      dir = await this.#dir(dirname(path));
+    } catch {
+      return null;
+    }
+    const name = basename(path);
+    try {
+      const f = await (await dir.getFileHandle(name)).getFile();
+      return { path, name, kind: 'file', size: f.size, mtime: f.lastModified };
+    } catch {
+      try {
+        await dir.getDirectoryHandle(name);
+        return { path, name, kind: 'dir', size: 0, mtime: 0 };
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  async mkdir(path: string): Promise<void> {
+    await this.#dir(path, true);
+  }
+
+  async remove(path: string, recursive: boolean): Promise<void> {
+    if (path === '/') throw new FsError('EACCES', path);
+    try {
+      const dir = await this.#dir(dirname(path));
+      await dir.removeEntry(basename(path), { recursive });
+    } catch (err) {
+      throw err instanceof FsError ? err : this.#wrap(err, path);
+    }
+    for (const key of [...this.#dirs.keys()]) if (key === path || key.startsWith(path + '/')) this.#dirs.delete(key);
+  }
+}
