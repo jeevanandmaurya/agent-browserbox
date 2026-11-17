@@ -5,7 +5,10 @@ import { OS_URL } from '@/config/origins';
 import type { AgentHandle } from '@/kernel/api';
 import type { TodoItem } from '@/agent/tools/types';
 import type { AppModule } from '@/ui/apps';
+import { loadConfig } from '@/agent/config';
+import { openMenu } from '@/ui/menu';
 import { createComposer } from './composer';
+import { modelLabel, modelMenuEntries } from './model-picker';
 import { contextMeter } from './context-meter';
 import type { SlashCommand } from './slash';
 import { SettingsModal } from './settings-modal';
@@ -68,7 +71,8 @@ const app: AppModule = {
       { name: 'model', description: 'Model settings', kind: 'built-in', run: () => settings.open('model') },
       { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
     ];
-    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelSettings: () => settings.open('model'), commands });
+    const openModel = (anchor: HTMLElement) => openMenu(anchor, modelMenuEntries(os, () => settings.open('model'), refreshModel), 'Model');
+    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelMenu: openModel, commands });
     const meter = contextMeter({ load: () => (agent ? agent.context() : Promise.resolve(null)), compact: () => void compactNow() });
     const sidebar = createSidebar(os, {
       newChat: () => void newSession(),
@@ -78,8 +82,29 @@ const app: AppModule = {
       openDesktop,
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
     });
-    const shell = createShell({ sidebar, workbench, composer, log });
+    const more = (anchor: HTMLElement) =>
+      openMenu(
+        anchor,
+        [
+          { label: 'New chat', icon: 'newChat', onSelect: () => void newSession() },
+          { separator: true },
+          { label: 'Files', icon: 'folder', onSelect: () => route('files') },
+          { label: 'Terminal', icon: 'terminal', onSelect: () => route('terminal') },
+          { label: 'Preview', icon: 'eye', onSelect: () => route('preview') },
+          { label: 'Processes', icon: 'activity', onSelect: () => route('taskmgr') },
+          { separator: true },
+          { label: 'Context', icon: 'info', hint: 'What fills the context window', onSelect: () => meter.open() },
+          { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
+          { separator: true },
+          { label: 'Settings', icon: 'gear', onSelect: () => settings.open('model') },
+          { label: 'Open desktop', icon: 'external', onSelect: openDesktop },
+        ],
+        'More',
+      );
+    const shell = createShell({ sidebar, workbench, composer, log, actions: { more, model: openModel, name: () => os.settings.get<string>('user.name', '') } });
+    const refreshModel = () => shell.setSubtitle(modelLabel(loadConfig(os)));
     shell.meterSlot.append(meter.el);
+    refreshModel();
     root.append(shell.el);
     shell.setEmpty(true);
     // The kernel (or the agent's open_app / show_html tools) asked for an app.
@@ -90,13 +115,13 @@ const app: AppModule = {
     const setBusy = (b: boolean) => {
       busy = b;
       composer.setBusy(b);
+      shell.setBusy(b);
       win.setTitle(b ? 'BrowserBox — working…' : 'BrowserBox');
       // Keep the screen awake while the agent works.
       if (b) void navigator.wakeLock?.request('screen').then((w) => (wake = w), () => undefined);
       else void wake?.release().catch(() => undefined);
     };
     const showTodos = () => shell.todoSlot.replaceChildren(...[renderTodos(todos)].filter((n): n is HTMLElement => n !== null));
-    const showUsage = (input: number, output: number) => (shell.usage.textContent = output ? `${fmtTokens(input)} in · ${fmtTokens(output)} out` : '');
 
     function adopt(handle: AgentHandle): void {
       agent = handle;
@@ -109,7 +134,6 @@ const app: AppModule = {
           todos = e.items;
           showTodos();
         } else if (e.type === 'usage') {
-          showUsage(e.total.input + e.total.cacheRead, e.total.output);
           meter.refresh();
         } else if (e.type === 'compact') {
           log.addNote(`${e.auto ? 'The context was nearly full, so the conversation was summarised' : 'Conversation summarised'}: about ${e.before.toLocaleString()} → ${e.after.toLocaleString()} tokens. The full history stays visible here.`);
@@ -135,7 +159,6 @@ const app: AppModule = {
       shell.setTitle(has ? snap.title : '');
       if (has) log.restore(snap.messages);
       else log.clear();
-      showUsage(snap.total.input + snap.total.cacheRead, snap.total.output);
       showTodos();
       meter.refresh();
       setBusy(snap.busy);
@@ -194,7 +217,7 @@ const app: AppModule = {
     }
 
     ctx.on('settings:change', ({ key }) => {
-      if (key === 'agent.config') composer.refreshModel();
+      if (key === 'agent.config') refreshModel();
     });
     // Sessions are saved by the kernel; refresh the list when one changes on disk.
     ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());
@@ -215,8 +238,5 @@ const app: AppModule = {
   },
 };
 
-function fmtTokens(n: number): string {
-  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
 
 export default app;

@@ -3,8 +3,7 @@ import type { AppManifest } from '@/ui/app-manifest';
 export default {
   id: 'files',
   name: 'Files',
-  icon: '🗂',
-  color: '#2563eb',
+  icon: 'folder',
   width: 780,
   height: 500,
   order: 3,

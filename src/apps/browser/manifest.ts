@@ -3,8 +3,7 @@ import type { AppManifest } from '@/ui/app-manifest';
 export default {
   id: 'browser',
   name: 'Browser',
-  icon: '◍',
-  color: '#0284c7',
+  icon: 'globe',
   width: 900,
   height: 600,
   order: 6,

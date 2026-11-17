@@ -1,7 +1,7 @@
 import type { Kernel } from '@/kernel/api';
 import { fmtBytes, h } from '@/ui/dom';
+import { openMenu } from '@/ui/menu';
 import { icon } from './icons';
-import { modelPicker } from './model-picker';
 import { expandCommand, slashMenu, type SlashCommand } from './slash';
 
 export const UPLOAD_DIR = '/home/agent/uploads';
@@ -11,7 +11,6 @@ export interface Composer {
   input: HTMLTextAreaElement;
   setBusy(busy: boolean): void;
   focus(): void;
-  refreshModel(): void;
   setText(text: string): void;
 }
 
@@ -26,23 +25,25 @@ async function freePath(os: Kernel, name: string): Promise<string> {
   }
 }
 
+type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; onresult: ((e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error: string }) => void) | null };
+const SpeechRecognition = (globalThis as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition }).SpeechRecognition ?? (globalThis as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
+
 /**
- * The message box: auto-growing textarea, file attachments (copied into the
- * agent's uploads folder and referenced by path), model picker, send/stop.
+ * The message box: a single rounded bar with + (attach, model, commands),
+ * an auto-growing text field, dictation and a round send/stop button.
  */
-export function createComposer(os: Kernel, opts: { onSubmit(text: string): boolean; onStop(): void; openModelSettings(): void; commands: SlashCommand[] }): Composer {
+export function createComposer(os: Kernel, opts: { onSubmit(text: string): boolean; onStop(): void; openModelMenu(anchor: HTMLElement): void; commands: SlashCommand[] }): Composer {
   const attached: Array<{ path: string; size: number }> = [];
   let busy = false;
 
-  const input = h('textarea', { class: 'ag-input', rows: 1, placeholder: 'Message BrowserBox…', 'aria-label': 'Message', enterkeyhint: 'send' });
+  const input = h('textarea', { class: 'ag-input', rows: 1, placeholder: 'Message BrowserBox', 'aria-label': 'Message', enterkeyhint: 'send' });
   const chips = h('div', { class: 'cp-chips', hidden: true });
   const file = h('input', { type: 'file', multiple: true, hidden: true, tabindex: -1, 'aria-hidden': 'true' });
-  const attachBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Attach files', 'aria-label': 'Attach files', onclick: () => file.click() }, icon('clip', 18));
-  const picker = modelPicker(os, opts.openModelSettings);
-  const sendBtn = h('button', { class: 'cp-send', type: 'submit', title: 'Send (Enter)', 'aria-label': 'Send message', disabled: true }, icon('send', 18));
+  const plusBtn = h('button', { class: 'cp-round cp-plus', type: 'button', title: 'Add', 'aria-label': 'Attach files, model and commands', 'aria-haspopup': 'menu', onclick: () => plusMenu() }, icon('plus', 20));
+  const micBtn = h('button', { class: 'cp-round cp-mic', type: 'button', title: 'Dictate', 'aria-label': 'Dictate', 'aria-pressed': 'false', hidden: !SpeechRecognition, onclick: () => toggleDictation() }, icon('mic', 20));
+  const sendBtn = h('button', { class: 'cp-send', type: 'submit', title: 'Send (Enter)', 'aria-label': 'Send message', disabled: true }, icon('send', 20));
   const stopBtn = h('button', { class: 'cp-send stop', type: 'button', title: 'Stop', 'aria-label': 'Stop the agent', hidden: true, onclick: () => opts.onStop() }, icon('stop', 16));
 
-  const slash = slashMenu(os, input, opts.commands);
   const el = h(
     'form',
     {
@@ -52,21 +53,64 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
         submit();
       },
     },
-    slash.el,
     chips,
-    input,
-    h('div', { class: 'cp-bar' }, attachBtn, picker.el, h('span', { class: 'spacer' }), sendBtn, stopBtn),
+    h('div', { class: 'cp-row' }, plusBtn, input, micBtn, sendBtn, stopBtn),
     file,
   );
+  const slash = slashMenu(os, input, opts.commands);
+  el.prepend(slash.el);
   el.addEventListener('click', (e) => {
-    if (e.target === el) input.focus();
+    if (e.target === el || (e.target as HTMLElement).classList.contains('cp-row')) input.focus();
   });
 
   const grow = () => {
     input.style.height = 'auto';
-    input.style.height = `${Math.min(input.scrollHeight, 240)}px`;
+    input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
+    el.classList.toggle('multiline', input.scrollHeight > 44);
     sendBtn.disabled = busy || (!input.value.trim() && !attached.length);
   };
+
+  function plusMenu(): void {
+    openMenu(
+      plusBtn,
+      [
+        { label: 'Attach files', icon: 'clip', onSelect: () => file.click() },
+        { label: 'Model', icon: 'chip', hint: 'Switch model or effort', onSelect: () => opts.openModelMenu(plusBtn) },
+        { label: 'Commands', icon: 'slash', hint: '/compact, /context, your own…', onSelect: () => setText('/') },
+      ],
+      'Add',
+    );
+  }
+
+  // --- dictation (Web Speech API, where the browser has it) --------------------
+  let rec: Recognition | null = null;
+  function toggleDictation(): void {
+    if (rec) return rec.stop();
+    if (!SpeechRecognition) return;
+    rec = new SpeechRecognition();
+    rec.lang = navigator.language;
+    rec.interimResults = true;
+    rec.continuous = true;
+    const base = input.value ? `${input.value.replace(/\s+$/, '')} ` : '';
+    rec.onresult = (e) => {
+      let text = '';
+      for (let i = 0; i < e.results.length; i++) text += e.results[i]![0]!.transcript;
+      input.value = base + text;
+      grow();
+    };
+    rec.onerror = (e) => {
+      if (e.error !== 'aborted' && e.error !== 'no-speech') os.notify({ title: 'Dictation stopped', body: e.error === 'not-allowed' ? 'Microphone permission was denied.' : e.error, level: 'warn' });
+    };
+    rec.onend = () => {
+      rec = null;
+      micBtn.setAttribute('aria-pressed', 'false');
+      micBtn.classList.remove('on');
+      input.focus();
+    };
+    rec.start();
+    micBtn.setAttribute('aria-pressed', 'true');
+    micBtn.classList.add('on');
+  }
 
   function renderChips(): void {
     chips.hidden = !attached.length;
@@ -115,6 +159,7 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
 
   function submit(): void {
     if (busy) return;
+    rec?.stop();
     let text = input.value.trim();
     if (!text && !attached.length) return;
     const cmd = !attached.length ? slash.find(text) : null;
@@ -139,12 +184,19 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
 
   input.addEventListener('keydown', (e) => {
     if (slash.key(e)) return e.preventDefault();
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    // On touch keyboards Enter inserts a line; the send button sends.
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) {
       e.preventDefault();
       submit();
     }
   });
   input.addEventListener('input', grow);
+
+  function setText(text: string): void {
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    input.focus();
+  }
 
   return {
     el,
@@ -157,11 +209,6 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
       grow();
     },
     focus: () => input.focus({ preventScroll: true }),
-    refreshModel: picker.refresh,
-    setText(text) {
-      input.value = text;
-      grow();
-      input.focus();
-    },
+    setText,
   };
 }

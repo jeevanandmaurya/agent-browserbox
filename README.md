@@ -82,13 +82,17 @@ says which package provides it.
 `/agent/` is the chat app; nothing in it opens another window unless you click
 “Open desktop”.
 
-- **Sidebar** (a drawer on phones): new chat, search, recent chats, Settings,
-  kernel status.
+- **Header**: menu (chats) on the left, the chat title with the model name
+  under it (tap to switch model), a spinner while the agent works, and ⋮ for
+  files, terminal, preview, processes, context, compaction and settings.
+- **Empty chat**: the BrowserBox mark and a greeting (Settings → Appearance
+  takes a name for it).
+- **Composer**: one rounded bar — **+** (attach files, model, commands), the
+  message, dictation via the browser's speech recognition where available,
+  and a round send button. Menus open as bottom sheets on phones.
 - **Conversation**: Markdown replies (rendered to DOM nodes, never
   `innerHTML`), collapsible thinking, tool calls as `tool argument` rows that
   expand to input and output, inline permission and question cards.
-- **Composer**: Enter sends, Shift+Enter adds a line, `/` lists commands.
-  Attachments are copied into `/home/agent/uploads/`.
 - **Workbench**: a side panel (a full-screen sheet on phones) hosting the
   regular apps — Preview, Files, Editor, Terminal, Processes and others.
 - **Settings**: a modal with Model, Permissions, Appearance, Connectors,

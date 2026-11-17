@@ -285,9 +285,9 @@ await check('agent window: settings open inside the page on the Model section', 
   if (tab !== 'Model') throw new Error(`section ${tab}`);
   await agent.keyboard.press('Escape');
   await agent.waitForSelector('.sm-overlay', { state: 'detached' });
-  // The composer's model picker leads to the same place.
-  await agent.locator('.mp-btn').click();
-  await agent.locator('.mp-menu .pop-item', { hasText: 'Model settings' }).click();
+  // The model name under the title leads to the same place.
+  await agent.locator('.bb-sub').click();
+  await agent.locator('.menu .pop-item', { hasText: 'Model settings' }).click();
   await agent.waitForSelector('.sm-dialog .sn-tab[aria-selected="true"]:text("Model")', { timeout: 10000 });
   await agent.keyboard.press('Escape');
   if (popups !== before) throw new Error('a new window opened');
@@ -295,9 +295,11 @@ await check('agent window: settings open inside the page on the Model section', 
 });
 await check('agent window: Files and Terminal open in the workbench; a command runs', async () => {
   const before = popups;
-  await agent.locator('.bb-files').click();
+  await agent.locator('.bb-more').click();
+  await agent.locator('.menu .pop-item', { hasText: 'Files' }).click();
   await agent.waitForSelector('.wb-pane[data-app="files"]:not([hidden]) .files-table', { timeout: 10000 });
-  await agent.locator('.bb-term').click();
+  await agent.locator('.bb-more').click();
+  await agent.locator('.menu .pop-item', { hasText: 'Terminal' }).click();
   const input = agent.locator('.wb-pane[data-app="terminal"] .term-input');
   await input.waitFor({ timeout: 10000 });
   await input.fill('echo ok-$AGENT_HOME-$USER && pwd');

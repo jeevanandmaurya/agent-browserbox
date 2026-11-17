@@ -1,8 +1,9 @@
 import { h } from './dom';
+import { icon, type IconName } from './icons';
 
 export interface WindowOptions {
   title: string;
-  icon?: string;
+  icon?: IconName;
   width?: number;
   height?: number;
   minWidth?: number;
@@ -21,7 +22,7 @@ export class WindowHandle {
   closed = false;
   minimized = false;
   title: string;
-  readonly icon: string;
+  readonly icon: IconName;
 
   constructor(
     private wm: WindowManager,
@@ -29,19 +30,19 @@ export class WindowHandle {
     opts: WindowOptions,
   ) {
     this.title = opts.title;
-    this.icon = opts.icon ?? '▫️';
+    this.icon = opts.icon ?? 'file';
     this.#titleEl = h('span', { class: 'win-title-text' }, opts.title);
     const bar = h(
       'header',
       { class: 'win-bar', ondblclick: () => this.toggleMaximize() },
-      h('span', { class: 'win-icon' }, this.icon),
+      h('span', { class: 'win-icon' }, icon(this.icon, 15)),
       this.#titleEl,
       h(
         'span',
         { class: 'win-ctl' },
-        h('button', { title: 'Minimize', 'aria-label': 'Minimize', onclick: () => this.minimize() }, '–'),
-        h('button', { title: 'Maximize', 'aria-label': 'Maximize', onclick: () => this.toggleMaximize() }, '▢'),
-        h('button', { class: 'close', title: 'Close', 'aria-label': 'Close', onclick: () => this.close() }, '✕'),
+        h('button', { title: 'Minimize', 'aria-label': 'Minimize', onclick: () => this.minimize() }, icon('minus', 14)),
+        h('button', { title: 'Maximize', 'aria-label': 'Maximize', onclick: () => this.toggleMaximize() }, icon('square', 13)),
+        h('button', { class: 'close', title: 'Close', 'aria-label': 'Close', onclick: () => this.close() }, icon('close', 14)),
       ),
     );
     this.body = h('div', { class: 'win-body' });

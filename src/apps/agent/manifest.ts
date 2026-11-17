@@ -4,8 +4,7 @@ import type { AppManifest } from '@/ui/app-manifest';
 export default {
   id: 'agent',
   name: 'Agent',
-  icon: '✦',
-  color: '#7c5cff',
+  icon: 'spark',
   width: 520,
   height: 760,
   order: 1,

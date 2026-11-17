@@ -2,6 +2,7 @@ import type { Kernel } from '@/kernel/api';
 import { APPS, AppHost, type AppManifest } from './apps';
 import { permissionDialog } from './dialog';
 import { h } from './dom';
+import { icon, mark } from './icons';
 import { WindowManager } from './wm';
 
 /** Builds the desktop: wallpaper, icons, windows, taskbar, launcher, toasts. */
@@ -11,7 +12,7 @@ export function createDesktop(os: Kernel, mountPoint: HTMLElement): AppHost {
   const apps = new AppHost(os, wm);
   const visible = APPS.filter((a) => !a.hidden);
 
-  const tile = (a: AppManifest) => h('span', { class: 'tile', style: `background:${a.color}` }, a.icon);
+  const tile = (a: AppManifest) => h('span', { class: 'tile' }, icon(a.icon, 22));
 
   // Desktop icons
   const icons = h(
@@ -83,7 +84,7 @@ export function createDesktop(os: Kernel, mountPoint: HTMLElement): AppHost {
   const bar = h(
     'footer',
     { class: 'taskbar' },
-    h('button', { class: 'start', title: 'Apps (Ctrl+K)', 'aria-label': 'Open launcher', onclick: () => toggleLauncher() }, '◆'),
+    h('button', { class: 'start', title: 'Apps (Ctrl+K)', 'aria-label': 'Open launcher', onclick: () => toggleLauncher() }, mark(20)),
     tasks,
     h('div', { class: 'tray' }, procCount, clock),
   );
@@ -99,7 +100,7 @@ export function createDesktop(os: Kernel, mountPoint: HTMLElement): AppHost {
             onclick: () => (wm.focused === w && !w.minimized ? w.minimize() : w.focus()),
             onauxclick: (e: MouseEvent) => e.button === 1 && w.close(),
           },
-          h('span', { class: 'task-icon' }, w.icon),
+          h('span', { class: 'task-icon' }, icon(w.icon, 15)),
           h('span', { class: 'task-title' }, w.title),
         ),
       ),

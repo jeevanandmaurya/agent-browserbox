@@ -1,3 +1,5 @@
+import type { IconName } from './icons';
+
 /**
  * Describes an app without loading it. Lives in src/apps/<id>/manifest.ts next
  * to the app's code (index.ts); both are discovered automatically, so adding an
@@ -6,10 +8,8 @@
 export interface AppManifest {
   id: string;
   name: string;
-  /** Glyph for the desktop icon. */
-  icon: string;
-  /** Tile colour for the icon. */
-  color: string;
+  /** Line icon (see src/ui/icons.ts). */
+  icon: IconName;
   width: number;
   height: number;
   /** Position in launchers. */

@@ -3,8 +3,7 @@ import type { AppManifest } from '@/ui/app-manifest';
 export default {
   id: 'settings',
   name: 'Settings',
-  icon: '⚙',
-  color: '#64748b',
+  icon: 'gear',
   width: 720,
   height: 560,
   order: 9,

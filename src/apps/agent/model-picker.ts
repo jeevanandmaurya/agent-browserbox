@@ -1,7 +1,7 @@
 import { ANTHROPIC_MODELS, describeModel, loadConfig, saveConfig, type AgentConfig, type Effort } from '@/agent/config';
 import type { Kernel } from '@/kernel/api';
 import { h } from '@/ui/dom';
-import { icon } from './icons';
+import type { MenuEntry } from '@/ui/menu';
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'X-High', max: 'Max' };
@@ -32,107 +32,47 @@ export function modelLabel(cfg: AgentConfig): string {
   return cfg.webllmModel.replace(/-q4f16_1-MLC$/, '');
 }
 
-/** The composer's model dropdown: switch among configured models, set effort, or open full settings. */
-export function modelPicker(os: Kernel, openSettings: () => void): { el: HTMLElement; refresh(): void } {
-  const label = h('span', { class: 'mp-label' });
-  const btn = h('button', { class: 'mp-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: () => (menu.hidden ? openMenu() : closeMenu(true)) }, label, icon('chevron', 14));
-  const menu = h('div', { class: 'popover mp-menu', role: 'menu', 'aria-label': 'Model', hidden: true });
-  const el = h('div', { class: 'mp' }, btn, menu);
-
-  const refresh = () => {
-    const cfg = loadConfig(os);
-    label.textContent = modelLabel(cfg);
-    btn.title = `Model: ${describeModel(cfg)}`;
-    btn.setAttribute('aria-label', `Model: ${modelLabel(cfg)}. Change model`);
-  };
-
-  function build(): void {
-    const cfg = loadConfig(os);
-    const items: HTMLElement[] = [];
-    let group = '';
-    for (const c of choices(cfg)) {
-      if (c.group !== group) items.push(h('div', { class: 'pop-group' }, (group = c.group)));
-      const on = c.active(cfg);
-      items.push(
-        h(
-          'button',
-          { class: `pop-item mp-item ${on ? 'on' : ''}`, type: 'button', role: 'menuitemradio', 'aria-checked': String(on), onclick: () => pick(c.patch) },
-          h('span', { class: 'mp-item-text' }, h('span', { class: 'mp-name' }, c.name), c.hint ? h('span', { class: 'mp-hint' }, c.hint) : null),
-          on ? icon('check', 16) : null,
+/** Menu entries for switching model and effort; `refresh` runs after a change. */
+export function modelMenuEntries(os: Kernel, openSettings: () => void, refresh: () => void): MenuEntry[] {
+  const cfg = loadConfig(os);
+  const entries: MenuEntry[] = [];
+  let group = '';
+  for (const c of choices(cfg)) {
+    if (c.group !== group) entries.push({ group: (group = c.group) });
+    entries.push({
+      label: c.name,
+      hint: c.hint,
+      checked: c.active(cfg),
+      onSelect: () => {
+        saveConfig(os, c.patch);
+        refresh();
+      },
+    });
+  }
+  if (cfg.provider === 'anthropic') {
+    const row = h('div', { class: 'mp-effort', role: 'group', 'aria-label': 'Effort' });
+    const paint = () =>
+      row.replaceChildren(
+        ...EFFORTS.map((e) =>
+          h(
+            'button',
+            {
+              class: `mp-eff ${loadConfig(os).effort === e ? 'on' : ''}`,
+              type: 'button',
+              'aria-pressed': String(loadConfig(os).effort === e),
+              onclick: () => {
+                saveConfig(os, { effort: e });
+                paint();
+                refresh();
+              },
+            },
+            EFFORT_LABEL[e],
+          ),
         ),
       );
-    }
-    if (cfg.provider === 'anthropic') {
-      items.push(
-        h('div', { class: 'pop-group' }, 'Effort'),
-        h(
-          'div',
-          { class: 'mp-effort', role: 'group', 'aria-label': 'Effort' },
-          EFFORTS.map((e) => h('button', { class: `mp-eff ${cfg.effort === e ? 'on' : ''}`, type: 'button', 'aria-pressed': String(cfg.effort === e), onclick: () => pick({ effort: e }) }, EFFORT_LABEL[e])),
-        ),
-      );
-    }
-    items.push(
-      h('div', { class: 'pop-sep' }),
-      h(
-        'button',
-        {
-          class: 'pop-item',
-          type: 'button',
-          role: 'menuitem',
-          onclick: () => {
-            closeMenu(false);
-            openSettings();
-          },
-        },
-        icon('gear', 16),
-        h('span', null, 'Model settings…'),
-      ),
-    );
-    menu.replaceChildren(...items);
+    paint();
+    entries.push({ group: 'Effort' }, { element: row });
   }
-
-  function pick(patch: Partial<AgentConfig>): void {
-    saveConfig(os, patch);
-    refresh();
-    if (patch.effort) build();
-    else closeMenu(true);
-  }
-
-  function openMenu(): void {
-    build();
-    menu.hidden = false;
-    btn.setAttribute('aria-expanded', 'true');
-    (menu.querySelector<HTMLElement>('.pop-item.on') ?? menu.querySelector<HTMLElement>('.pop-item'))?.focus();
-    document.addEventListener('pointerdown', outside, true);
-  }
-
-  function closeMenu(refocus: boolean): void {
-    if (menu.hidden) return;
-    menu.hidden = true;
-    btn.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('pointerdown', outside, true);
-    if (refocus) btn.focus();
-  }
-
-  const outside = (e: Event) => {
-    if (!el.contains(e.target as Node)) closeMenu(false);
-  };
-
-  menu.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      closeMenu(true);
-      return;
-    }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const items = [...menu.querySelectorAll<HTMLElement>('button')];
-    const i = items.indexOf(document.activeElement as HTMLElement);
-    items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
-  });
-
-  refresh();
-  return { el, refresh };
+  entries.push({ separator: true }, { label: 'Model settings…', icon: 'gear', onSelect: openSettings });
+  return entries;
 }

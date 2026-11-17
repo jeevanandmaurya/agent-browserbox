@@ -1,47 +1,48 @@
 :root {
-  /* Neutral greys with one quiet accent. Primary actions are monochrome; the
-     accent is reserved for focus, links and selection so it stays meaningful. */
-  --bg: #0d0d0e;
-  --panel: #141415;
-  --panel-2: #1a1a1c;
-  --panel-3: #242427;
-  --border: #29292d;
-  --text: #ededee;
-  --muted: #8d8d93;
-  --accent: #8e8cf7;
-  --accent-text: #0d0d0e;
-  --ok: #3fb97f;
-  --warn: #d9a23a;
-  --err: #ef6b6b;
+  /* Warm neutral greys; one accent (teal) used sparingly for the mark, links, focus and selection. */
+  --bg: #131312;
+  --panel: #1a1a19;
+  --panel-2: #232321;
+  --panel-3: #2d2d2a;
+  --border: #31312e;
+  --text: #eceae4;
+  --muted: #9c9a92;
+  --accent: #4fb89c;
+  --accent-text: #0f1a17;
+  --ok: #56b886;
+  --warn: #d6a54a;
+  --err: #e5786d;
   --radius: 8px;
   --radius-lg: 14px;
   --mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
-  --sans: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  /* Display serif for the greeting only. */
+  --serif: ui-serif, 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Noto Serif', Georgia, serif;
   --shadow: 0 12px 40px rgb(0 0 0 / 0.5);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
-  --wall: radial-gradient(1100px 700px at 20% 0%, #1b1b20 0%, transparent 60%), #0d0d0e;
+  --wall: #131312;
   --accent-soft: color-mix(in srgb, var(--text) 8%, transparent);
-  --raised: #1a1a1c;
+  --raised: #232321;
   --hover: color-mix(in srgb, var(--text) 6%, transparent);
   color-scheme: dark;
 }
 :root[data-theme='light'] {
-  --bg: #f6f6f4;
-  --panel: #ffffff;
-  --panel-2: #f5f5f3;
-  --panel-3: #eaeae7;
-  --border: #e4e4e0;
-  --text: #1b1b1a;
-  --muted: #6c6c69;
-  --accent: #4b47d6;
+  --bg: #f1f0eb;
+  --panel: #f9f8f4;
+  --panel-2: #efeee8;
+  --panel-3: #e5e3dc;
+  --border: #e0ded6;
+  --text: #22211e;
+  --muted: #6f6d66;
+  --accent: #1f7f69;
   --accent-text: #ffffff;
-  --ok: #18794e;
-  --warn: #9a6700;
-  --err: #cf3a3a;
-  --shadow: 0 12px 40px rgb(20 20 20 / 0.14);
-  --shadow-sm: 0 1px 2px rgb(20 20 20 / 0.06);
+  --ok: #1f7f4d;
+  --warn: #946200;
+  --err: #c2463b;
+  --shadow: 0 12px 40px rgb(30 28 20 / 0.14);
+  --shadow-sm: 0 1px 2px rgb(30 28 20 / 0.06);
   --raised: #ffffff;
-  --wall: radial-gradient(1100px 700px at 20% 0%, #ffffff 0%, transparent 60%), #f1f1ee;
+  --wall: #f1f0eb;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -56,10 +57,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #desk { height: 100%; display: grid; grid-template-rows: 1fr 44px; }
 .desk-area { position: relative; overflow: hidden; }
 .desk-icons { position: absolute; inset: 14px auto 14px 14px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 84px); gap: 6px; }
-.desk-icon { width: 84px; height: 84px; display: grid; justify-items: center; align-content: center; gap: 6px; background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: default; font-size: 12px; text-shadow: 0 1px 3px rgb(0 0 0 / 0.5); }
+.desk-icon { width: 84px; height: 84px; display: grid; justify-items: center; align-content: center; gap: 6px; background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: default; font-size: 12px; color: var(--text); }
 :root[data-theme='light'] .desk-icon { text-shadow: none; }
 .desk-icon:hover, .desk-icon:focus-visible { background: color-mix(in srgb, var(--text) 9%, transparent); border-color: color-mix(in srgb, var(--text) 14%, transparent); }
-.tile { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 20px; color: #fff; box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 3px 8px rgb(0 0 0 / 0.3); text-shadow: none; }
+.tile { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); text-shadow: none; }
 
 /* Windows */
 .win { position: absolute; display: grid; grid-template-rows: 36px 1fr; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; contain: layout paint; animation: win-in 0.12s ease-out; }
@@ -70,7 +71,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .win.max { inset: 0 !important; width: auto !important; height: auto !important; border-radius: 0; border: 0; }
 .win-bar { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); user-select: none; touch-action: none; }
 .win:not(.focus) .win-bar { color: var(--muted); }
-.win-icon { font-size: 14px; }
+.win-icon { display: grid; color: var(--muted); }
+.task-icon { display: grid; color: var(--muted); }
+.win-ctl button { display: inline-grid; place-items: center; }
 .win-title-text { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .win-ctl { display: flex; gap: 2px; }
 .win-ctl button { width: 30px; height: 26px; border: 0; background: none; border-radius: 6px; cursor: pointer; color: var(--muted); }
@@ -90,7 +93,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Taskbar */
 .taskbar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--border); z-index: 1000; }
-.start { width: 34px; height: 32px; border: 0; border-radius: 8px; background: var(--text); color: var(--panel); font-size: 15px; cursor: pointer; }
+.start { display: grid; place-items: center; width: 36px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--accent); cursor: pointer; }
+.start:hover { background: var(--hover); }
 .tasks { flex: 1; display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .task { display: flex; align-items: center; gap: 6px; max-width: 170px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; flex-shrink: 0; }
 .task:hover { background: var(--panel-2); }
@@ -215,3 +219,19 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 }
 .boot-console { background: var(--bg); color: var(--text); }
 .boot-console .term-scroll { padding: 14px 16px max(14px, env(safe-area-inset-bottom)); }
+
+/* Menus: popovers on wide screens, bottom sheets on phones (src/ui/menu.ts) */
+.menu-scrim { position: fixed; inset: 0; z-index: 1400; }
+.menu { position: fixed; z-index: 1401; min-width: 220px; max-width: min(320px, calc(100vw - 24px)); max-height: min(70vh, 560px); overflow: auto; padding: 6px; background: var(--raised); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.menu .pop-item .menu-text { display: grid; min-width: 0; flex: 1; }
+.menu .menu-hint { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.menu .menu-check { margin-left: auto; color: var(--accent); }
+@media (max-width: 760px) {
+  .menu-scrim { background: rgb(0 0 0 / 0.45); animation: sheet-fade 0.15s ease-out; }
+  .menu { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none; max-height: 80vh; padding: 8px 10px max(14px, env(safe-area-inset-bottom)); border: 0; border-radius: 20px 20px 0 0; animation: sheet-up 0.18s ease-out; }
+  .menu::before { content: ''; display: block; width: 36px; height: 4px; margin: 2px auto 8px; border-radius: 2px; background: var(--panel-3); }
+  .menu .pop-item { min-height: 50px; padding: 10px 12px; font-size: 15px; border-radius: 12px; }
+}
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } }
+@keyframes sheet-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .menu, .menu-scrim { animation: none; } }

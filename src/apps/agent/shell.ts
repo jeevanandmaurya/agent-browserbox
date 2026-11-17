@@ -1,6 +1,6 @@
 import { h } from '@/ui/dom';
 import type { Composer } from './composer';
-import { icon, type IconName } from './icons';
+import { icon, mark } from './icons';
 import type { Sidebar } from './sidebar';
 import type { Transcript } from './view';
 import type { Workbench } from './workbench';
@@ -11,38 +11,55 @@ const MOBILE = '(max-width: 760px)';
 export interface Shell {
   el: HTMLElement;
   todoSlot: HTMLElement;
-  usage: HTMLElement;
   /** Holds the context meter. */
   meterSlot: HTMLElement;
   /** Whether the chat has no messages yet. */
   setEmpty(empty: boolean): void;
   setTitle(title: string): void;
+  /** The model name under the title. */
+  setSubtitle(text: string): void;
+  setBusy(busy: boolean): void;
   closeDrawer(): void;
   /** Updates header buttons after the workbench changes. */
   syncWorkbench(): void;
 }
 
-export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; composer: Composer; log: Transcript }): Shell {
-  const { sidebar, workbench, composer, log } = parts;
+export interface ShellActions {
+  /** The ⋮ menu. */
+  more(anchor: HTMLElement): void;
+  /** Tapping the model name. */
+  model(anchor: HTMLElement): void;
+  /** Name for the greeting, if the user gave one. */
+  name(): string;
+}
+
+function greeting(name: string): string {
+  const hr = new Date().getHours();
+  const part = hr < 5 ? 'Good evening' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+  return name ? `${part}, ${name}` : part;
+}
+
+export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; composer: Composer; log: Transcript; actions: ShellActions }): Shell {
+  const { sidebar, workbench, composer, log, actions } = parts;
   const mobile = matchMedia(MOBILE);
 
-  const toggleBtn = h('button', { class: 'icon-btn bb-sb-toggle', type: 'button', title: 'Open sidebar', 'aria-label': 'Open sidebar', 'aria-expanded': 'false', onclick: () => openSidebar() }, icon('menu', 20));
-  const title = h('h1', { class: 'bb-title' }, 'New chat');
-  const usage = h('span', { class: 'bb-usage tech' });
+  // Header: menu · title (model underneath) · status · ⋮
+  const toggleBtn = h('button', { class: 'icon-btn bb-sb-toggle', type: 'button', title: 'Chats', 'aria-label': 'Open chats', 'aria-expanded': 'false', onclick: () => openSidebar() }, icon('menu', 22));
+  const title = h('h1', { class: 'bb-title' });
+  const subtitle = h('button', { class: 'bb-sub', type: 'button', 'aria-haspopup': 'menu', title: 'Change model', onclick: () => actions.model(subtitle) });
+  const titleBox = h('div', { class: 'bb-titlebox' }, title, subtitle);
+  const spinner = h('span', { class: 'bb-spin', role: 'status', 'aria-label': 'Working', hidden: true });
   const meterSlot = h('span', { class: 'bb-meter' });
-  const headBtn = (label: string, ic: IconName, onclick: () => void, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', title: label, 'aria-label': label, onclick }, icon(ic, 18));
-  const filesBtn = headBtn('Files', 'folder', () => workbench.open('files'), 'bb-files');
-  const termBtn = headBtn('Terminal', 'terminal', () => workbench.open('terminal'), 'bb-term');
-  const wbBtn = headBtn('Toggle workbench', 'panel', () => workbench.toggle(), 'bb-wb-toggle');
-  wbBtn.setAttribute('aria-pressed', 'false');
-  const head = h('header', { class: 'bb-head' }, toggleBtn, title, h('span', { class: 'spacer' }), usage, meterSlot, filesBtn, termBtn, wbBtn);
+  const wbBtn = h('button', { class: 'icon-btn bb-wb-toggle', type: 'button', title: 'Workbench', 'aria-label': 'Toggle workbench', 'aria-pressed': 'false', onclick: () => workbench.toggle() }, icon('panel', 20));
+  const moreBtn = h('button', { class: 'icon-btn bb-more', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', onclick: () => actions.more(moreBtn) }, icon('more', 22));
+  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, meterSlot, wbBtn, moreBtn));
 
-  // Shown only while the chat is empty: one quiet line, no hero.
-  const hero = h('p', { class: 'bb-hero' }, 'New chat. Type / for commands.');
+  // An empty chat is just the mark and a greeting.
+  const greet = h('h2', { class: 'bb-greet' });
+  const hero = h('section', { class: 'bb-hero', 'aria-label': 'New chat' }, mark(36), greet);
   const scroller = h('div', { class: 'ag-scroll' }, h('div', { class: 'bb-col' }, hero, log.el));
   const todoSlot = h('div', { class: 'bb-todos' });
-  const dockSlot = h('div', { class: 'bb-dock-slot' });
-  const dock = h('div', { class: 'bb-dock' }, todoSlot, dockSlot, );
+  const dock = h('div', { class: 'bb-dock' }, todoSlot, composer.el);
   const main = h('main', { class: 'bb-main' }, head, scroller, dock);
   const scrim = h('div', { class: 'bb-scrim', onclick: () => closeDrawer() });
   const el = h('div', { class: 'bb' }, sidebar.el, scrim, main, workbench.el);
@@ -106,21 +123,24 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     meterSlot,
     el,
     todoSlot,
-    usage,
     setEmpty(empty) {
       el.classList.toggle('is-empty', empty);
       hero.hidden = !empty;
-      if (composer.el.parentElement !== dockSlot) dockSlot.append(composer.el);
+      if (empty) greet.textContent = greeting(actions.name());
     },
     setTitle(text) {
-      title.textContent = text || 'New chat';
+      title.textContent = text;
+      title.hidden = !text;
+    },
+    setSubtitle(text) {
+      subtitle.textContent = text;
+    },
+    setBusy(busy) {
+      spinner.hidden = !busy;
     },
     closeDrawer,
     syncWorkbench() {
-      const id = workbench.activeId;
       wbBtn.setAttribute('aria-pressed', String(workbench.isOpen));
-      filesBtn.classList.toggle('on', id === 'files');
-      termBtn.classList.toggle('on', id === 'terminal');
     },
   };
 }

@@ -25,5 +25,10 @@ export function appearanceSection(ctx: AppContext, saved: () => void): HTMLEleme
   ctx.on('settings:change', ({ key }) => {
     if (key === 'ui.theme') theme.set(readTheme(os));
   });
-  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el);
+  const name = h('input', { class: 'input', id: nextId('name'), value: os.settings.get<string>('user.name', ''), placeholder: 'Optional', autocomplete: 'given-name', maxlength: 40 });
+  name.addEventListener('change', () => {
+    os.settings.set('user.name', name.value.trim());
+    saved();
+  });
+  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el, h('div', { class: 'field' }, h('label', { for: name.id }, 'Your name, for the greeting'), name));
 }
