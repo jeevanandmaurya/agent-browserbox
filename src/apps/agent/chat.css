@@ -134,3 +134,20 @@
   .mp-menu { position: fixed; left: 12px; right: 12px; bottom: 84px; top: auto; width: auto; max-width: none; }
   .bb.is-empty .mp-menu { top: auto; bottom: 84px; }
 }
+
+/* Long conversations: skip layout and paint for turns that are off screen. */
+.ag-log > .ag-msg { content-visibility: auto; contain-intrinsic-size: auto 160px; }
+@media (hover: none) { .ag-actions { opacity: 1; } }
+@media (pointer: coarse) {
+  .ag-input { font-size: 16px; }
+  .cp-send { width: 42px; height: 42px; border-radius: 12px; }
+  .mp-btn { height: 40px; }
+  .mp-eff { height: 38px; }
+  .ag-actions .icon-btn { width: 40px; height: 40px; }
+  .ag-tool summary { min-height: 46px; }
+  .ag-card .btn { height: 42px; }
+  .ag-ask-row .input { height: 42px; }
+  .cp-chip { height: 36px; }
+  .cp-chip-x { width: 30px; height: 30px; }
+  .ag-think summary { padding: 8px 10px 8px 6px; }
+}

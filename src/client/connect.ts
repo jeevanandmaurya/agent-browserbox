@@ -16,11 +16,16 @@ export interface KernelLink {
  */
 export function connectKernel(): Promise<KernelLink> {
   return new Promise((resolve, reject) => {
-    const frame = document.createElement('iframe');
-    frame.src = new URL('bridge.html', KERNEL_URL).href;
-    frame.title = 'BrowserBox kernel bridge';
-    frame.setAttribute('aria-hidden', 'true');
-    frame.style.display = 'none';
+    const src = new URL('bridge.html', KERNEL_URL).href;
+    // The page's HTML normally pre-starts the bridge so the kernel boots in parallel with our script.
+    const early = document.getElementById('bbx-bridge') as HTMLIFrameElement | null;
+    const frame = early?.src === src ? early : document.createElement('iframe');
+    if (frame !== early) {
+      frame.src = src;
+      frame.title = 'BrowserBox kernel bridge';
+      frame.setAttribute('aria-hidden', 'true');
+      frame.hidden = true;
+    }
     const origin = kernelOrigin();
     const timer = setTimeout(() => reject(new Error(`The kernel at ${KERNEL_URL} did not respond.`)), 20000);
     addEventListener('message', function onMessage(e: MessageEvent) {
@@ -35,6 +40,7 @@ export function connectKernel(): Promise<KernelLink> {
         reject(new Error(`The kernel refused this origin (${location.origin}). Add it to VITE_ALLOWED_ORIGINS.`));
       }
     });
-    (document.body ?? document.documentElement).append(frame);
+    if (frame === early) frame.contentWindow?.postMessage({ type: 'bbx:connect' }, origin); // it may already be listening
+    else (document.body ?? document.documentElement).append(frame);
   });
 }

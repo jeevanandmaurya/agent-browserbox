@@ -101,6 +101,20 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     }
   });
   mobile.addEventListener('change', () => closeDrawer());
+  // Swipe the drawer away. (Opening by edge-swipe is left to the menu button: the screen edge belongs to the system's back gesture.)
+  let swipe: { x: number; y: number } | null = null;
+  for (const target of [sidebar.el, scrim]) {
+    target.addEventListener('touchstart', (e) => (swipe = { x: e.touches[0]!.clientX, y: e.touches[0]!.clientY }), { passive: true });
+    target.addEventListener(
+      'touchend',
+      (e) => {
+        const t = e.changedTouches[0]!;
+        if (swipe && swipe.x - t.clientX > 56 && Math.abs(t.clientY - swipe.y) < 48) closeDrawer();
+        swipe = null;
+      },
+      { passive: true },
+    );
+  }
 
   return {
     el,

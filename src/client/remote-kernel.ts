@@ -44,6 +44,7 @@ export class RemoteKernel implements Kernel {
   readonly bus = new Bus<KernelEvents>();
   readonly settings = new Settings(this.bus, (key, value) => void this.call('settings.set', key, value));
   readonly perms = new Permissions(this.settings);
+  /** Not loaded here: windows use its JS fallbacks; the WASM core runs in the kernel. */
   readonly kcore = new KCore();
   readonly caps: PlatformCap[] = detectCaps();
   readonly ready: Promise<void>;
@@ -68,7 +69,6 @@ export class RemoteKernel implements Kernel {
       return peer;
     });
     this.ready = this.#peer.then(async (peer) => this.#hydrate(await peer.call<Hello>('hello', role)));
-    void this.kcore.load();
   }
 
   /** Calls a kernel method once connected. */
@@ -204,6 +204,7 @@ export class RemoteKernel implements Kernel {
     },
     kill: (pid, reason = 'killed') => {
       if (!this.#procs.has(pid)) return false;
+      if (this.#owned.has(pid)) this.#procs.delete(pid);
       this.#reap(pid, reason);
       void this.call('procs.kill', pid, reason);
       return true;

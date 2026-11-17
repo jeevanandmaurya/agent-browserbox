@@ -13,7 +13,28 @@ const app: AppModule = {
     const input = h('input', { class: 'term-input', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Command line' });
     const line = h('div', { class: 'term-line' }, promptEl, input);
     const scroller = h('div', { class: 'term fill', onclick: () => !getSelection()?.toString() && input.focus() }, screen, line);
-    root.append(scroller);
+    // Shown only on touch devices (see style.css): keys a phone keyboard does not have.
+    const key = (label: string, title: string, act: () => void) => h('button', { class: 'term-key', type: 'button', title, 'aria-label': title, onclick: act }, label);
+    const press = (k: string, ctrlKey = false) => () => input.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey, bubbles: true, cancelable: true }));
+    const type = (text: string) => () => {
+      input.setRangeText(text, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, 'end');
+    };
+    const keys = h(
+      'div',
+      { class: 'term-keys', role: 'toolbar', 'aria-label': 'Terminal keys' },
+      key('Tab', 'Complete', press('Tab')),
+      key('↑', 'Previous command', press('ArrowUp')),
+      key('↓', 'Next command', press('ArrowDown')),
+      key('^C', 'Interrupt', () => {
+        input.value = '';
+        press('c', true)();
+      }),
+      key('^L', 'Clear screen', press('l', true)),
+      ...['|', '/', '-', '~', '"', '&&', '>'].map((c) => key(c, `Insert ${c}`, type(c))),
+    );
+    // Tapping a key must not take focus (and the on-screen keyboard) away from the command line.
+    keys.addEventListener('pointerdown', (e) => e.preventDefault());
+    root.append(scroller, keys);
 
     // --- output: ANSI → spans, flushed once per frame ----------------------
     let pending = '';

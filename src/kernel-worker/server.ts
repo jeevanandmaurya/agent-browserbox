@@ -36,7 +36,8 @@ export interface Ask {
 interface Client {
   id: number;
   peer: Peer;
-  role: 'ui' | 'host';
+  /** 'new' until the client says hello. Only 'ui' clients are windows a person can see. */
+  role: 'ui' | 'host' | 'new';
   agents: Map<string, AgentHandle>;
   shells: Map<string, ShellHandle>;
 }
@@ -75,7 +76,7 @@ export class KernelServer {
   }
 
   #broadcast(name: string, payload: unknown, except: number | null = null): void {
-    for (const c of this.#clients.values()) if (c.id !== except) c.peer.emit(name, payload);
+    for (const c of this.#clients.values()) if (c.id !== except && c.role === 'ui') c.peer.emit(name, payload);
   }
 
   /** Asks windows something and waits for the first answer. */
@@ -121,7 +122,7 @@ export class KernelServer {
   /** Accepts a new connection from a window (or from a window's sandbox host). */
   connect(port: MessagePort): void {
     const peer = new Peer(port);
-    const client: Client = { id: this.#nextClient++, peer, role: 'ui', agents: new Map(), shells: new Map() };
+    const client: Client = { id: this.#nextClient++, peer, role: 'new', agents: new Map(), shells: new Map() };
     const os = this.os;
     const fs = os.fs;
     const server = this;
@@ -146,7 +147,27 @@ export class KernelServer {
     const adoptAgent = (h: AgentHandle) => {
       client.agents.get(h.sid)?.detach();
       client.agents.set(h.sid, h);
-      h.onEvent((event) => peer.emit('agent', { sid: h.sid, event }));
+      // Streaming deltas arrive token by token; coalesce them so a slow device
+      // handles ~30 messages a second instead of hundreds.
+      let held: { type: 'text' | 'thinking'; delta: string } | null = null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const flush = () => {
+        clearTimeout(timer);
+        timer = undefined;
+        if (held) peer.emit('agent', { sid: h.sid, event: held });
+        held = null;
+      };
+      h.onEvent((event) => {
+        if (event.type === 'text' || event.type === 'thinking') {
+          if (held && held.type !== event.type) flush();
+          if (held) held.delta += event.delta;
+          else held = { type: event.type, delta: event.delta };
+          timer ??= setTimeout(flush, 33);
+          return;
+        }
+        flush();
+        peer.emit('agent', { sid: h.sid, event });
+      });
       h.onAsk((question, options) => this.#ask<string>({ kind: 'user', sid: h.sid, payload: { question, options } }, undefined, client));
       h.prompter = (req: PermRequest, signal) => this.#ask<PermDecision>({ kind: 'perm', sid: h.sid, payload: req }, signal).catch(() => 'deny');
       return { sid: h.sid, pid: h.pid };

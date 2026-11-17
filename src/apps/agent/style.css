@@ -95,3 +95,13 @@
   .bb .sb { transition: none; }
   .ag-scroll { scroll-behavior: auto; }
 }
+
+@media (pointer: coarse) {
+  .sb-row { min-height: 46px; }
+  .sb-chat-open { min-height: 46px; font-size: 15px; }
+  .sb-chat-del { width: 42px; height: 42px; }
+  .sb-search-wrap { height: 44px; }
+  .sb-desktop { padding: 10px 6px; font-size: 13px; }
+  .bb-chip { height: 42px; }
+  .bb .sb { overscroll-behavior: contain; }
+}

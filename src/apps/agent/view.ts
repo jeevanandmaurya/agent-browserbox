@@ -32,6 +32,7 @@ export class Transcript {
   #statusEl: HTMLElement | null = null;
   #tools = new Map<string, ToolCard>();
   #dirty = false;
+  #cost = 0;
 
   clear(): void {
     this.el.replaceChildren();
@@ -172,10 +173,19 @@ export class Transcript {
         this.#text += e.delta;
         if (!this.#dirty) {
           this.#dirty = true;
-          requestAnimationFrame(() => {
-            this.#flush();
-            this.#scroll();
-          });
+          // Re-rendering Markdown gets slower as a reply grows. Wait three times
+          // as long as the last render took, so it never uses more than about a
+          // quarter of a slow phone's time; short replies still update every frame.
+          setTimeout(
+            () =>
+              requestAnimationFrame(() => {
+                const t = performance.now();
+                this.#flush();
+                this.#cost = performance.now() - t;
+                this.#scroll();
+              }),
+            this.#cost > 4 ? Math.min(this.#cost * 3, 400) : 0,
+          );
         }
         break;
       case 'thinking':

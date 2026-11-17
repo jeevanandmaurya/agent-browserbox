@@ -54,3 +54,8 @@
   [data-app='files'] .files-actions .lbl { display: none; }
   [data-app='files'] .files-store { display: none; }
 }
+
+@media (pointer: coarse) {
+  [data-app='files'] .path-input { height: 40px; }
+  [data-app='files'] tbody td { padding-top: 11px; padding-bottom: 11px; }
+}

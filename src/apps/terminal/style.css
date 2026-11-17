@@ -16,3 +16,11 @@
 :root[data-theme='light'] [data-app='terminal'] .a-blue { color: #2563eb; }
 :root[data-theme='light'] [data-app='terminal'] .a-magenta { color: #9333ea; }
 :root[data-theme='light'] [data-app='terminal'] .a-cyan { color: #0e7490; }
+
+[data-app='terminal'] .term-keys { display: none; }
+@media (pointer: coarse) {
+  [data-app='terminal'] .term-keys { display: flex; gap: 6px; flex-shrink: 0; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--border); background: var(--panel-2); }
+  [data-app='terminal'] .term-key { flex-shrink: 0; min-width: 44px; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: 13px var(--mono); }
+  [data-app='terminal'] .term-key:active { background: var(--panel-3); }
+  [data-app='terminal'] .term, [data-app='terminal'] .term-input { font-size: 14px; }
+}

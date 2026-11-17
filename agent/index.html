@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0b0d12" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data:; connect-src *; frame-src 'self' blob: data: https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
@@ -11,10 +11,17 @@
     <link rel="icon" href="../icon.svg" type="image/svg+xml" />
     <style>
       html, body { height: 100%; margin: 0; background: #0b0d12; }
+      .boot { height: 100%; display: grid; place-items: center; }
+      .boot i { width: 44px; height: 44px; border-radius: 13px; background: #7c5cff; opacity: 0.9; animation: boot 1.2s ease-in-out infinite alternate; }
+      @keyframes boot { to { opacity: 0.35; transform: scale(0.92); } }
+      @media (prefers-reduced-motion: reduce) { .boot i { animation: none; } }
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <!-- Painted before any script runs; replaced when the app mounts. -->
+    <div id="app"><div class="boot" role="status" aria-label="Starting BrowserBox"><i></i></div></div>
+    <!-- Starts the kernel while the page's own script is still downloading. See src/client/connect.ts. -->
+    <iframe id="bbx-bridge" src="../kernel/bridge.html" title="BrowserBox kernel bridge" aria-hidden="true" hidden></iframe>
     <script type="module" src="/src/pages/agent.ts"></script>
   </body>
 </html>

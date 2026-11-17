@@ -8,11 +8,12 @@ import type { AppModule } from '@/ui/apps';
 import { createComposer } from './composer';
 import { applyProfile, getProfile } from './profile';
 import { SettingsModal } from './settings-modal';
-import { createSetup, SETUP_KEY } from './setup';
 import { createShell } from './shell';
 import { createSidebar } from './sidebar';
 import { renderTodos, Transcript } from './view';
 import { TOOLS, Workbench } from './workbench';
+
+const SETUP_KEY = 'setup.done';
 
 const app: AppModule = {
   async mount(ctx) {
@@ -144,8 +145,10 @@ const app: AppModule = {
     }
 
     /** Shows the first-run setup in place of the chat until it is finished or skipped. */
-    const runSetup = () =>
-      new Promise<void>((resolve) => {
+    const runSetup = async () => {
+      // Only first-time visitors pay for the setup code.
+      const { createSetup } = await import('./setup');
+      return new Promise<void>((resolve) => {
         settings.close();
         shell.el.hidden = true;
         const setup = createSetup(os, () => {
@@ -156,6 +159,7 @@ const app: AppModule = {
         });
         root.append(setup.el);
       });
+    };
 
     ctx.on('settings:change', ({ key, value }) => {
       if (key === 'agent.config') composer.refreshModel();

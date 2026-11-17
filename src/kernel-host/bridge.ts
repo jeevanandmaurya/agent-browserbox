@@ -56,9 +56,12 @@ void os.handle({
 
 // --- port handoff to the embedding window --------------------------------------
 const allowed = new Set([location.origin, ...ALLOWED_ORIGINS]);
+let handed = false;
 addEventListener('message', (e) => {
-  if (e.source !== parent || e.data?.type !== 'bbx:connect') return;
+  // The window may ask twice (once eagerly, once on our ready signal); answer once.
+  if (e.source !== parent || e.data?.type !== 'bbx:connect' || handed) return;
   if (!allowed.has(e.origin)) return parent.postMessage({ type: 'bbx:refused' }, e.origin);
+  handed = true;
   parent.postMessage({ type: 'bbx:port', lock, shared }, e.origin, [kernelPort()]);
 });
 if (parent !== window) parent.postMessage({ type: 'bbx:ready' }, '*');
