@@ -96,9 +96,9 @@ await check('first boot: setup in the console connects to a local model server',
   // local server · URL · first model from the server's list · context window · no prompts · theme · packages
   const answers = ['2', 'http://localhost:11436/v1', '1', '8192', 'n', '', 'python zip'];
   for (const a of answers) {
-    await page.waitForSelector('.boot-line:not([hidden])', { timeout: 30000 });
-    await page.locator('.boot-input').fill(a);
-    await page.locator('.boot-input').press('Enter');
+    await page.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 30000 });
+    await page.locator('.boot-console .term-input').fill(a);
+    await page.locator('.boot-console .term-input').press('Enter');
   }
   await page.waitForSelector('.ag-input', { timeout: 120000 });
   const out = await page.evaluate(() => ({ cfg: bbx.settings.get('agent.config', {}), perms: bbx.perms.mode, installed: bbx.settings.get('pkg.installed', []) }));

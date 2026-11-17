@@ -196,9 +196,22 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 :root[data-theme='light'] .ansi .a-magenta { color: #7a3fb8; }
 :root[data-theme='light'] .ansi .a-cyan { color: #0e6e80; }
 
-/* Boot console */
-.boot-console { height: 100%; overflow-y: auto; padding: 14px 16px max(14px, env(safe-area-inset-bottom)); background: var(--bg); color: var(--text); font: 13px/1.55 var(--mono); }
-.boot-line { display: flex; flex-wrap: wrap; align-items: baseline; white-space: pre-wrap; }
-/* A long prompt wraps instead of squeezing the answer field to nothing on a phone. */
-.boot-input { flex: 1 0 12ch; min-width: 12ch; padding: 0; border: 0; outline: 0; background: none; font: inherit; color: inherit; caret-color: var(--text); }
-@media (pointer: coarse) { .boot-console { font-size: 13.5px; } .boot-input { font-size: 16px; } }
+
+/* Terminal component (src/ui/terminal.ts): boot console and Terminal app */
+.term { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.term-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; font: 13px/1.5 var(--mono); cursor: text; }
+.term-line { display: flex; flex-wrap: wrap; align-items: baseline; white-space: pre-wrap; }
+/* While a program runs only the prompt goes away: the input stays focused so ^C still reaches it. */
+.term-line.busy .term-prompt { display: none; }
+/* A long prompt wraps instead of squeezing the input to nothing on a phone. */
+.term-input { flex: 1 0 12ch; min-width: 12ch; padding: 0; border: 0; outline: 0; background: none; font: inherit; color: inherit; caret-color: var(--text); }
+.term-keys { display: none; }
+@media (pointer: coarse) {
+  .term-keys { display: flex; gap: 6px; flex-shrink: 0; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--border); background: var(--panel-2); }
+  .term-key { flex-shrink: 0; min-width: 44px; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font: 13px var(--mono); }
+  .term-key:active { background: var(--panel-3); }
+  .term-scroll { font-size: 14px; }
+  .term-input { font-size: 16px; }
+}
+.boot-console { background: var(--bg); color: var(--text); }
+.boot-console .term-scroll { padding: 14px 16px max(14px, env(safe-area-inset-bottom)); }

@@ -1,158 +1,46 @@
 import './style.css';
 import type { AppModule } from '@/ui/apps';
-import { AnsiView } from '@/ui/ansi-view';
-import { h } from '@/ui/dom';
+import { Terminal } from '@/ui/terminal';
 
-
+/** The Terminal app: a Terminal component running an interactive loop on a kernel shell. */
 const app: AppModule = {
   async mount(ctx) {
     const { os, root, win, proc } = ctx;
-    const view = new AnsiView('term-out', { maxLines: 3000, onFlush: () => (scroller.scrollTop = scroller.scrollHeight) });
-    const screen = view.el;
-    const promptEl = h('span', { class: 'term-prompt' });
-    const input = h('input', { class: 'term-input', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Command line' });
-    const line = h('div', { class: 'term-line' }, promptEl, input);
-    const scroller = h('div', { class: 'term fill', onclick: () => !getSelection()?.toString() && input.focus() }, screen, line);
-    // Shown only on touch devices (see style.css): keys a phone keyboard does not have.
-    const key = (label: string, title: string, act: () => void) => h('button', { class: 'term-key', type: 'button', title, 'aria-label': title, onclick: act }, label);
-    const press = (k: string, ctrlKey = false) => () => input.dispatchEvent(new KeyboardEvent('keydown', { key: k, ctrlKey, bubbles: true, cancelable: true }));
-    const type = (text: string) => () => {
-      input.setRangeText(text, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, 'end');
-    };
-    const keys = h(
-      'div',
-      { class: 'term-keys', role: 'toolbar', 'aria-label': 'Terminal keys' },
-      key('Tab', 'Complete', press('Tab')),
-      key('↑', 'Previous command', press('ArrowUp')),
-      key('↓', 'Next command', press('ArrowDown')),
-      key('^C', 'Interrupt', () => {
-        input.value = '';
-        press('c', true)();
-      }),
-      key('^L', 'Clear screen', press('l', true)),
-      ...['|', '/', '-', '~', '"', '&&', '>'].map((c) => key(c, `Insert ${c}`, type(c))),
-    );
-    // Tapping a key must not take focus (and the on-screen keyboard) away from the command line.
-    keys.addEventListener('pointerdown', (e) => e.preventDefault());
-    root.append(scroller, keys);
-
-    // --- output --------------------------------------------------------------
-    const write = (text: string) => view.write(text);
-
-    // --- line discipline ---------------------------------------------------
-    let reader: ((value: string | null) => void) | null = null;
-    let running: AbortController | null = null;
-    let histIndex = -1;
-    let draft = '';
-    const clearScreen = () => view.clear();
-    // The shell itself is a kernel process; this window only renders it.
     const shell = await os.shells.open({ cwd: typeof ctx.args.cwd === 'string' ? ctx.args.cwd : undefined, ppid: proc.pid });
-    shell.onReadLine((prompt, secret) => {
-      input.type = secret ? 'password' : 'text';
-      setPrompt(prompt);
-      return new Promise((resolve) => (reader = resolve));
+    const term = new Terminal({
+      cls: 'fill',
+      keyBar: true,
+      complete: (line) => shell.complete(line),
+      history: { load: () => os.settings.get<string[]>('terminal.history', []), save: (lines) => os.settings.set('terminal.history', lines) },
     });
-    shell.onClear(clearScreen);
-    const history: string[] = os.settings.get<string[]>('terminal.history', []);
-    const promptText = () => {
-      const home = shell.home;
-      const cwd = shell.cwd === home ? '~' : shell.cwd.startsWith(home + '/') ? '~' + shell.cwd.slice(home.length) : shell.cwd;
+    term.attach(shell);
+    root.append(term.el);
+
+    const prompt = () => {
+      const cwd = shell.cwd === shell.home ? '~' : shell.cwd.startsWith(shell.home + '/') ? '~' + shell.cwd.slice(shell.home.length) : shell.cwd;
       return `\x1b[32muser@bbx\x1b[0m \x1b[34m${cwd}\x1b[0m ❯ `;
     };
-    function setPrompt(text: string | null): void {
-      promptEl.replaceChildren();
-      line.classList.toggle('busy', text === null);
-      if (text === null) return;
-      // Prompts may be coloured: render them with the same view logic.
-      const p = new AnsiView();
-      p.write(text);
-      p.flush();
-      promptEl.append(...(p.el.firstElementChild?.childNodes ?? []));
-    }
-
-    async function execute(cmd: string): Promise<void> {
-      write(promptText() + cmd + '\n');
-      if (!cmd.trim()) return;
-      if (history.at(-1) !== cmd) history.push(cmd);
-      os.settings.set('terminal.history', history.slice(-200));
-      histIndex = -1;
-      running = new AbortController();
-      proc.signal.addEventListener('abort', () => running?.abort(), { once: true });
-      setPrompt(null);
-      os.procs.update(proc.pid, { state: 'running', detail: cmd.slice(0, 60) });
+    const exec = async (line: string) => {
+      os.procs.update(proc.pid, { state: 'running', detail: line.slice(0, 60) });
       const started = performance.now();
-      await shell.run(cmd, { out: write, err: (t) => write(`\x1b[31m${t}\x1b[0m`), signal: running.signal }).catch((err: Error) => write(`\x1b[31m${err.message}\x1b[0m\n`));
+      await term.run(shell, line);
       os.procs.account(proc.pid, performance.now() - started);
       os.procs.update(proc.pid, { state: 'idle', detail: shell.cwd });
-      running = null;
-      reader = null;
-      view.flush();
-      if (view.currentLine) write('\n');
-      setPrompt(promptText());
       win.setTitle(`Terminal — ${shell.cwd}`);
-    }
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const value = input.value;
-        input.value = '';
-        if (reader) {
-          const r = reader;
-          reader = null;
-          write(promptEl.textContent + (input.type === 'password' && value ? '••••••••' : value) + '\n');
-          input.type = 'text';
-          setPrompt(null);
-          r(value);
-        } else if (!running) void execute(value);
-      } else if (e.key === 'c' && e.ctrlKey && !input.selectionEnd) {
-        e.preventDefault();
-        if (running) {
-          running.abort();
-          reader?.(null);
-        } else {
-          write(promptText() + input.value + '^C\n');
-          input.value = '';
-        }
-      } else if (e.key === 'l' && e.ctrlKey) {
-        e.preventDefault();
-        clearScreen();
-      } else if (e.key === 'd' && e.ctrlKey && !input.value && reader) {
-        e.preventDefault();
-        reader(null);
-      } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !reader && !running) {
-        e.preventDefault();
-        if (histIndex < 0) draft = input.value;
-        const n = history.length;
-        histIndex = e.key === 'ArrowUp' ? (histIndex < 0 ? n - 1 : Math.max(0, histIndex - 1)) : histIndex < 0 || histIndex >= n - 1 ? -1 : histIndex + 1;
-        input.value = histIndex < 0 ? draft : (history[histIndex] ?? '');
-        requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
-      } else if (e.key === 'Tab' && !reader && !running) {
-        e.preventDefault();
-        const upto = input.value.slice(0, input.selectionStart ?? input.value.length);
-        void shell.complete(upto).then(({ start, options }) => {
-          if (!options.length) return;
-          if (options.length === 1) {
-            input.value = upto.slice(0, start) + options[0] + input.value.slice(upto.length);
-          } else {
-            // Complete the common prefix and list the candidates.
-            let prefix = options[0]!;
-            for (const o of options) while (!o.startsWith(prefix)) prefix = prefix.slice(0, -1);
-            if (prefix.length > upto.length - start) input.value = upto.slice(0, start) + prefix + input.value.slice(upto.length);
-            else write(promptText() + input.value + '\n' + options.map((o) => o.trim()).join('  ') + '\n');
-          }
-        });
-      }
-    });
-
-    write(`\x1b[1mBrowserBox ${os.version}\x1b[0m \x1b[2m— type \x1b[0mhelp\x1b[2m for commands, \x1b[0magent\x1b[2m to talk to the AI.\x1b[0m\n`);
-    setPrompt(promptText());
-    input.focus();
-    if (typeof ctx.args.command === 'string') void execute(ctx.args.command);
-    return () => {
-      running?.abort();
-      shell.close();
     };
+
+    term.write(`\x1b[1mBrowserBox ${os.version}\x1b[0m \x1b[2m— type \x1b[0mhelp\x1b[2m for commands, \x1b[0magent\x1b[2m to talk to the AI.\x1b[0m\n`);
+    if (typeof ctx.args.command === 'string') {
+      term.write(prompt() + ctx.args.command + '\n');
+      await exec(ctx.args.command);
+    }
+    void (async () => {
+      while (!proc.signal.aborted) {
+        const line = await term.readLine(prompt(), { command: true });
+        if (line?.trim()) await exec(line);
+      }
+    })();
+    return () => shell.close();
   },
 };
 export default app;

@@ -63,16 +63,16 @@ await agent.goto(base);
 async function firstBoot(page, answers) {
   const prompts = [];
   for (const answer of answers) {
-    await page.waitForSelector('.boot-line:not([hidden])', { timeout: 20000 });
-    prompts.push(await page.locator('.boot-prompt').textContent());
-    await page.locator('.boot-input').fill(answer);
-    await page.locator('.boot-input').press('Enter');
+    await page.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 20000 });
+    prompts.push(await page.locator('.boot-console .term-prompt').textContent());
+    await page.locator('.boot-console .term-input').fill(answer);
+    await page.locator('.boot-console .term-input').press('Enter');
   }
   return prompts;
 }
 await check('first boot: kernel log, then setup in the console, then the agent window', async () => {
   await agent.waitForSelector('.boot-console', { timeout: 20000 });
-  await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-out').textContent), null, { timeout: 20000 });
+  await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-console .term-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-console .term-out').textContent), null, { timeout: 20000 });
   // model: decide later · permissions: ask · theme: default · packages: none
   const prompts = await firstBoot(agent, ['4', 'y', '', 'none']);
   await ready(agent);
@@ -84,7 +84,7 @@ await check('first boot: kernel log, then setup in the console, then the agent w
 await check('later boots show the log but do not ask again', async () => {
   await agent.reload();
   await ready(agent);
-  if (await agent.locator('.boot-line:not([hidden])').count()) throw new Error('setup asked again');
+  if (await agent.locator('.boot-console .term-line:not(.busy)').count()) throw new Error('setup asked again');
   return 'straight to the agent window';
 });
 await check('root redirects to the agent window; kernel boots headless', async () => {
