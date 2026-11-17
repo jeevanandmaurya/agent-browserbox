@@ -1,14 +1,14 @@
 import './style.css';
 import type { AppModule } from '@/ui/apps';
+import { AnsiView } from '@/ui/ansi-view';
 import { h } from '@/ui/dom';
 
-const SGR: Record<string, string> = { '1': 'a-bold', '2': 'a-dim', '31': 'a-red', '32': 'a-green', '33': 'a-yellow', '34': 'a-blue', '35': 'a-magenta', '36': 'a-cyan' };
-const MAX_NODES = 6000;
 
 const app: AppModule = {
   async mount(ctx) {
     const { os, root, win, proc } = ctx;
-    const screen = h('div', { class: 'term-out', 'aria-live': 'polite' });
+    const view = new AnsiView('term-out', { maxLines: 3000, onFlush: () => (scroller.scrollTop = scroller.scrollHeight) });
+    const screen = view.el;
     const promptEl = h('span', { class: 'term-prompt' });
     const input = h('input', { class: 'term-input', spellcheck: false, autocapitalize: 'off', autocomplete: 'off', 'aria-label': 'Command line' });
     const line = h('div', { class: 'term-line' }, promptEl, input);
@@ -36,54 +36,19 @@ const app: AppModule = {
     keys.addEventListener('pointerdown', (e) => e.preventDefault());
     root.append(scroller, keys);
 
-    // --- output: ANSI → spans, flushed once per frame ----------------------
-    let pending = '';
-    let scheduled = false;
-    let style: string[] = [];
-    const flush = () => {
-      scheduled = false;
-      const text = pending;
-      pending = '';
-      const frag = document.createDocumentFragment();
-      const re = /\x1b\[([0-9;]*)m/g;
-      let last = 0;
-      const emit = (s: string) => {
-        if (!s) return;
-        frag.append(style.length ? h('span', { class: style.join(' ') }, s) : s);
-      };
-      for (const m of text.matchAll(re)) {
-        emit(text.slice(last, m.index));
-        last = m.index + m[0].length;
-        for (const code of (m[1] || '0').split(';')) {
-          if (code === '0' || code === '') style = [];
-          else if (SGR[code]) style.push(SGR[code]);
-        }
-      }
-      emit(text.slice(last));
-      screen.append(frag);
-      while (screen.childNodes.length > MAX_NODES) screen.firstChild!.remove();
-      scroller.scrollTop = scroller.scrollHeight;
-    };
-    const write = (text: string) => {
-      pending += text;
-      if (!scheduled) {
-        scheduled = true;
-        requestAnimationFrame(flush);
-      }
-    };
+    // --- output --------------------------------------------------------------
+    const write = (text: string) => view.write(text);
 
     // --- line discipline ---------------------------------------------------
     let reader: ((value: string | null) => void) | null = null;
     let running: AbortController | null = null;
     let histIndex = -1;
     let draft = '';
-    const clearScreen = () => {
-      pending = '';
-      screen.replaceChildren();
-    };
+    const clearScreen = () => view.clear();
     // The shell itself is a kernel process; this window only renders it.
     const shell = await os.shells.open({ cwd: typeof ctx.args.cwd === 'string' ? ctx.args.cwd : undefined, ppid: proc.pid });
-    shell.onReadLine((prompt) => {
+    shell.onReadLine((prompt, secret) => {
+      input.type = secret ? 'password' : 'text';
       setPrompt(prompt);
       return new Promise((resolve) => (reader = resolve));
     });
@@ -98,15 +63,11 @@ const app: AppModule = {
       promptEl.replaceChildren();
       line.classList.toggle('busy', text === null);
       if (text === null) return;
-      // Reuse the ANSI path so prompts can be coloured.
-      let cls: string[] = [];
-      let last = 0;
-      for (const m of text.matchAll(/\x1b\[([0-9;]*)m/g)) {
-        if (m.index > last) promptEl.append(cls.length ? h('span', { class: cls.join(' ') }, text.slice(last, m.index)) : text.slice(last, m.index));
-        last = m.index + m[0].length;
-        cls = m[1] === '0' || !m[1] ? [] : [...cls, SGR[m[1]] ?? ''];
-      }
-      promptEl.append(text.slice(last));
+      // Prompts may be coloured: render them with the same view logic.
+      const p = new AnsiView();
+      p.write(text);
+      p.flush();
+      promptEl.append(...(p.el.firstElementChild?.childNodes ?? []));
     }
 
     async function execute(cmd: string): Promise<void> {
@@ -125,7 +86,8 @@ const app: AppModule = {
       os.procs.update(proc.pid, { state: 'idle', detail: shell.cwd });
       running = null;
       reader = null;
-      if (pending && !pending.endsWith('\n')) write('\n');
+      view.flush();
+      if (view.currentLine) write('\n');
       setPrompt(promptText());
       win.setTitle(`Terminal — ${shell.cwd}`);
     }
@@ -138,7 +100,8 @@ const app: AppModule = {
         if (reader) {
           const r = reader;
           reader = null;
-          write(promptEl.textContent + value + '\n');
+          write(promptEl.textContent + (input.type === 'password' && value ? '••••••••' : value) + '\n');
+          input.type = 'text';
           setPrompt(null);
           r(value);
         } else if (!running) void execute(value);

@@ -2,7 +2,7 @@ import type { AgentHandle, ShellHandle } from '@/kernel/api';
 import type { KernelCore } from '@/kernel/kernel';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
-import type { KernelEvents } from '@/kernel/types';
+import type { KernelEvents, KernelLogLine } from '@/kernel/types';
 import { Peer } from '@/rpc/peer';
 import { setSandboxHost, type RunOptions, type RunResult } from '@/sandbox/sandbox';
 
@@ -18,6 +18,7 @@ export interface Hello {
   procs: WireProc[];
   mounts: Array<{ point: string; label: string; readonly: boolean }>;
   bootMarks: Array<{ name: string; at: number }>;
+  log: KernelLogLine[];
 }
 
 /** Each window allocates pids for its own processes from a private block. */
@@ -43,7 +44,7 @@ interface Client {
 }
 
 const wire = (p: Proc): WireProc => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, started: p.started, state: p.state, detail: p.detail, cpuMs: p.cpuMs, memBytes: p.memBytes });
-const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'pack:change'];
+const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'kmsg'];
 
 /**
  * Exposes the kernel to windows over message ports. Each connection is a
@@ -187,6 +188,7 @@ export class KernelServer {
           procs: os.procs.list().map(wire),
           mounts: fs.mounts().map((m) => ({ point: m.point, label: m.fs.label, readonly: m.fs.readonly ?? false })),
           bootMarks: os.bootMarks,
+          log: os.kernelLog,
         };
       },
 
@@ -227,11 +229,6 @@ export class KernelServer {
         as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: true } as never) : payload));
       },
 
-      // Tool packs
-      'packs.list': () => os.packs.list(),
-      'packs.install': (id: string) => os.packs.install(id),
-      'packs.remove': (id: string) => os.packs.remove(id),
-
       // Agents
       'agent.create': async (opts?: { resume?: string; ppid?: number }) => adoptAgent(await os.agents.create(opts)),
       'agent.attach': async (sid: string) => adoptAgent(await os.agents.attach(sid)),
@@ -256,7 +253,7 @@ export class KernelServer {
       'shell.open': async (opts?: { cwd?: string; ppid?: number }) => {
         const h = await os.shells.open(opts);
         client.shells.set(h.id, h);
-        h.onReadLine((prompt) => this.#ask<string | null>({ kind: 'tty', shellId: h.id, payload: prompt }, undefined, client));
+        h.onReadLine((prompt, secret) => this.#ask<string | null>({ kind: 'tty', shellId: h.id, payload: { prompt, secret } }, undefined, client));
         h.onClear(() => peer.emit('shell:clear', h.id));
         return { id: h.id, cwd: h.cwd, home: h.home };
       },

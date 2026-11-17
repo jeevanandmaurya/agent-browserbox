@@ -2,13 +2,13 @@ import { McpHub } from '@/agent/ext/mcp';
 import { Bus } from './bus';
 import { detectCaps, type PlatformCap } from './caps';
 import { KCore } from './kcore';
-import { PackManager } from './packs';
+import { PackageManager } from './packages';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
 import { Secrets } from './secrets';
 import { loadSettings, persistSetting, Settings } from './settings';
-import type { KernelEvents, Notice } from './types';
+import type { KernelEvents, KernelLogLine, Notice } from './types';
 import { HandleFs } from './vfs/handlefs';
 import { MemFs } from './vfs/memfs';
 import { Vfs } from './vfs/vfs';
@@ -64,7 +64,9 @@ export class KernelCore implements Kernel {
   ui: UiBridge | null = null;
   /** Connections to remote MCP servers (connectors). */
   readonly mcp = new McpHub(this);
-  readonly packs = new PackManager(this);
+  readonly packages = new PackageManager(this);
+  /** The kernel log (`dmesg`): what the kernel did, with times since it started. */
+  readonly kernelLog: KernelLogLine[] = [];
   /** 'opfs' when the root is persistent, 'memory' when it is not. */
   rootKind: 'opfs' | 'memory' = 'memory';
   /** Milestones recorded during boot, in ms since navigation start. */
@@ -72,6 +74,13 @@ export class KernelCore implements Kernel {
 
   mark(name: string): void {
     this.bootMarks.push({ name, at: Math.round(performance.now() * 10) / 10 });
+  }
+
+  log(src: string, msg: string): void {
+    const line = { t: Math.round(performance.now()), src, msg };
+    this.kernelLog.push(line);
+    if (this.kernelLog.length > 500) this.kernelLog.shift();
+    this.bus.emit('kmsg', line);
   }
 
   hasCap(id: string): boolean {
@@ -88,30 +97,42 @@ export class KernelCore implements Kernel {
 
   /** Brings up storage and background services. Never rejects. */
   async start(): Promise<void> {
+    this.log('kernel', `BrowserBox ${this.version}`);
     const init = this.procs.spawn({ name: 'kernel', kind: 'service', detail: 'event bus, vfs, process table' });
     this.procs.update(init.pid, { state: 'idle' });
-    void this.kcore.load().then(() => this.mark('kcore.wasm'));
+    void this.kcore.load().then(() => this.log('kcore', this.kcore.loaded ? 'WebAssembly core loaded' : 'WebAssembly unavailable, using JavaScript fallbacks'));
     this.settings.hydrate(await loadSettings());
+    this.log('settings', `${this.settings.keys().length} keys loaded`);
 
     try {
       const root = await navigator.storage.getDirectory();
       this.fs.mount('/', new HandleFs(root, 'opfs'));
       this.rootKind = 'opfs';
+      this.log('vfs', 'mounted opfs on / (persistent)');
     } catch {
       this.fs.mount('/', new MemFs());
+      this.log('vfs', 'OPFS unavailable: mounted memfs on / (not persistent)');
     }
     this.fs.mount('/tmp', new MemFs());
     this.fs.mount('/proc', new ProcFs(this));
     this.fs.markReady();
-    this.mark('filesystem');
+    this.log('vfs', 'mounted memfs on /tmp, procfs on /proc');
 
     try {
       await this.#seed();
     } catch (err) {
-      console.error('[kernel] seeding the filesystem failed', err);
+      this.log('init', `seeding the filesystem failed: ${(err as Error).message}`);
     }
+    const pkgs = this.packages.installed();
+    this.log('pkg', pkgs.length ? `installed: ${pkgs.join(', ')}` : 'no packages installed');
+    const gpu = this.hasCap('webgpu') ? 'WebGPU available' : 'no WebGPU';
+    this.log('caps', `${this.caps.filter((c) => c.ok).length}/${this.caps.length} platform features · ${gpu} · ${navigator.hardwareConcurrency ?? '?'} cores`);
     // Ask the browser not to evict our data; harmless if refused.
-    void navigator.storage?.persist?.().catch(() => false);
+    void navigator.storage
+      ?.persist?.()
+      .then((ok) => this.log('vfs', ok ? 'storage marked persistent' : 'storage may be evicted under pressure'))
+      .catch(() => false);
+    this.log('kernel', 'ready');
   }
 
   async #seed(): Promise<void> {

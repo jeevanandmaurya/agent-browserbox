@@ -1,4 +1,4 @@
-import { APP_INFO as APPS } from '@/ui/app-list';
+import { APP_MANIFESTS as APPS } from '@/ui/app-manifest';
 import { fmtBytes, fmtDuration } from '@/ui/dom';
 import type { Command } from '../shell';
 import { C } from '../ansi';

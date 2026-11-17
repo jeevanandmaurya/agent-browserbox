@@ -6,7 +6,8 @@ import { parse, ShellSyntaxError, splitJobs, type Stage, type Word } from './par
 /** An interactive terminal, when the shell has one. */
 export interface Tty {
   /** Reads a line from the user; null on EOF / cancel. */
-  readLine(prompt: string): Promise<string | null>;
+  /** `secret` hides what is typed (API keys). */
+  readLine(prompt: string, opts?: { secret?: boolean }): Promise<string | null>;
   clear(): void;
 }
 
@@ -130,7 +131,17 @@ export class Shell {
       const last = i === stages.length - 1;
       const argv = await this.#expand(stage.argv);
       const name = argv[0]!;
-      const cmd = this.commands.get(name);
+      let cmd = this.commands.get(name);
+      if (!cmd) {
+        // Not built in: an installed package may provide it.
+        try {
+          const fromPackage = await this.os.packages.command(name);
+          if (fromPackage) this.commands.set(name, (cmd = fromPackage));
+        } catch (err) {
+          io.err(`bbsh: ${(err as Error).message}\n`);
+          return 127;
+        }
+      }
       if (!cmd) {
         io.err(`bbsh: ${name}: command not found\n`);
         return 127;

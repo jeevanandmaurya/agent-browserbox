@@ -11,7 +11,7 @@ export class ShellManager implements ShellsApi {
 
   async open(opts: { cwd?: string; ppid?: number } = {}): Promise<ShellHandle> {
     const os = this.os;
-    let reader: ((prompt: string) => Promise<string | null>) | null = null;
+    let reader: ((prompt: string, secret: boolean) => Promise<string | null>) | null = null;
     let clear: (() => void) | null = null;
     let running: AbortController | null = null;
     const proc = os.procs.spawn({ name: 'bbsh', kind: 'shell', ppid: opts.ppid, onKill: () => running?.abort() });
@@ -20,7 +20,7 @@ export class ShellManager implements ShellsApi {
       new Shell(os, {
         cwd: opts.cwd,
         ppid: proc.pid,
-        tty: { readLine: (prompt) => (reader ? reader(prompt) : Promise.resolve(null)), clear: () => clear?.() },
+        tty: { readLine: (prompt, o) => (reader ? reader(prompt, o?.secret ?? false) : Promise.resolve(null)), clear: () => clear?.() },
       }),
     );
     const handle: ShellHandle = {

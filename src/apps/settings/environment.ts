@@ -58,8 +58,8 @@ export function environmentSection(ctx: AppContext, saved: () => void): HTMLElem
   return h(
     'div',
     { class: 'st-section' },
-    heading('Environment', 'Variables available to the agent’s programs: $NAME in the shell, env.NAME in run_js, os.environ in Python. Changes apply to new shells and the next agent message.'),
-    h('p', { class: 'st-callout muted' }, 'Values are stored as plain settings in this browser and the agent can read them. Do not put passwords or API keys here; use the key fields in Model and Connectors, which are encrypted and never shown to programs.'),
+    heading('Environment', '$NAME in the shell, env.NAME in run_js, os.environ in Python.'),
+    h('p', { class: 'st-note muted' }, 'Not encrypted, and readable by the agent. Keep keys in Model or Connectors.'),
     rows,
     error,
     h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => rows.append(row()) }, 'Add variable')),

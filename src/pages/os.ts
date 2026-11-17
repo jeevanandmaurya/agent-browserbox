@@ -2,6 +2,7 @@ import '../ui/base.css';
 import { connectKernel } from '@/client/connect';
 import { RemoteKernel } from '@/client/remote-kernel';
 import { createDesktop } from '@/ui/desktop';
+import { bootConsole } from '@/ui/boot';
 import { followTheme } from '@/ui/standalone';
 
 /**
@@ -13,7 +14,7 @@ const os = new RemoteKernel(connectKernel());
 followTheme(os);
 os.mark('page');
 
-void os.ready.then(
+void bootConsole(os, document.getElementById('desk')!).then(
   () => {
     const apps = createDesktop(os, document.getElementById('desk')!);
     // Announces that a desktop is available, so other windows route "open app" requests here.

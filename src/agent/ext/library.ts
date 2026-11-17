@@ -65,19 +65,7 @@ export function template(kind: ExtKind, name: string): string {
   return `---\ndescription: What this command does.\n---\n\nThe prompt sent to the agent when you type /${name}. Use $ARGUMENTS where the text after the command should go.\n`;
 }
 
-/** Example extensions written on first run so the folders are not empty. */
-export const SEED: Array<[string, string]> = [
-  [
-    `${EXT_DIRS.skill}/web-page/SKILL.md`,
-    `---\nname: web-page\ndescription: Build a self-contained web page, chart or small interactive tool and show it in the preview.\n---\n\n# Building a web page\n\n1. Write one complete HTML file in the working directory. Inline the CSS and JavaScript; do not depend on CDNs, because the preview may be offline.\n2. Use system fonts, a readable type scale and enough contrast; make it work at 380px wide.\n3. Draw charts with inline SVG or \`<canvas>\`.\n4. Show it with show_html using the file path, so the user can also open and edit the file.\n5. Say where the file is saved.\n`,
-  ],
-  [
-    `${EXT_DIRS.skill}/data-analysis/SKILL.md`,
-    `---\nname: data-analysis\ndescription: Explore, clean and summarise a CSV or JSON file, with numbers checked by running code.\n---\n\n# Analysing data\n\n1. Look before computing: read the first lines of the file and report its shape and columns.\n2. Do the arithmetic in code (run_python with pandas when the Python pack is installed, otherwise run_js) — never estimate figures by eye.\n3. State how missing or malformed values were handled.\n4. Report the findings first, then the method. If a chart helps, build it as an HTML page and show it.\n5. Save derived files next to the source and name them in the answer.\n`,
-  ],
-  [
-    `${EXT_DIRS.agent}/explorer.md`,
-    `---\nname: explorer\ndescription: Read-only investigator for searching and summarising many files without changing anything.\ntools: read_file, list_dir, glob, grep\n---\n\nYou investigate a question by reading files. You cannot modify anything. Search broadly first (glob, grep), then read only what matters. Finish with a short report: the answer, the evidence as file paths with line numbers, and anything you could not determine.\n`,
-  ],
-  [`${EXT_DIRS.command}/explain.md`, `---\ndescription: Explain a file or folder in plain language.\n---\n\nExplain $ARGUMENTS in plain language: what it is for, how it is organised, and anything surprising. Read the relevant files first.\n`],
-];
+// Example extensions copied into /home/agent on first run, so the folders are
+// not empty. They are ordinary files: src/agent/ext/seed/<skills|agents|commands>/…
+const seeds = import.meta.glob<string>('./seed/**/*.md', { eager: true, query: '?raw', import: 'default' });
+export const SEED: Array<[string, string]> = Object.entries(seeds).map(([path, text]) => [`${AGENT_HOME}/${path.slice('./seed/'.length)}`, text]);

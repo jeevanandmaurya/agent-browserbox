@@ -138,7 +138,7 @@ export class Agent {
       const provider = await createProvider(this.os, cfg);
       const lite = provider.id === 'webllm';
       const allowed = this.#persona?.tools.length ? new Set(this.#persona.tools) : null;
-      const tools = [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.mcp.tools())]
+      const tools = [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.tools()), ...(lite ? [] : await this.os.mcp.tools())]
         .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
         .filter((t) => !allowed || allowed.has(t.name));
       this.#tools = tools;

@@ -5,7 +5,6 @@ import { fmtDuration, h } from '@/ui/dom';
 import { renderMarkdown } from '@/ui/markdown';
 import { approvalCard, askCard } from './cards';
 import { icon } from './icons';
-import { friendlyTool } from './tool-labels';
 
 export { renderTodos } from './cards';
 
@@ -140,7 +139,6 @@ export class Transcript {
         null,
         status,
         h('span', { class: 'ag-tool-name' }, name),
-        h('span', { class: 'ag-tool-friendly' }, friendlyTool(name, line)),
         h('span', { class: 'ag-tool-sum' }, line),
         h('span', { class: 'ag-tool-chev' }, icon('chevron', 14)),
       ),

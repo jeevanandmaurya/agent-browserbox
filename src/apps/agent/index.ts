@@ -14,7 +14,6 @@ import { createSidebar } from './sidebar';
 import { renderTodos, Transcript } from './view';
 import { TOOLS, Workbench } from './workbench';
 
-const SETUP_KEY = 'setup.done';
 const LAST_KEY = 'bbx-agent-last-chat';
 
 /** The chat this window showed last (per browser, not synced: it is a navigation convenience). */
@@ -79,7 +78,7 @@ const app: AppModule = {
       openDesktop,
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
     });
-    const shell = createShell({ sidebar, workbench, composer, log, suggest: (p) => submit(p) });
+    const shell = createShell({ sidebar, workbench, composer, log });
     shell.meterSlot.append(meter.el);
     root.append(shell.el);
     shell.setEmpty(true);
@@ -194,39 +193,12 @@ const app: AppModule = {
       return true;
     }
 
-    /** After setup, fetch the chosen tools now so they are ready to use (progress shows in the sidebar and Settings → Tools). */
-    async function downloadSelectedPacks(): Promise<void> {
-      const pending = (await os.packs.list()).filter((p) => p.selected && !p.cached && p.available);
-      if (!pending.length) return;
-      os.notify({ title: `Downloading ${pending.map((p) => p.name).join(', ')}`, body: 'Progress is shown in the sidebar and in Settings → Tools.' });
-      for (const p of pending) await os.packs.install(p.id).catch((err: Error) => os.notify({ title: `Could not download ${p.name}`, body: err.message, level: 'warn' }));
-    }
-
-    /** Shows the first-run setup in place of the chat until it is finished or skipped. */
-    const runSetup = async () => {
-      // Only first-time visitors pay for the setup code.
-      const { createSetup } = await import('./setup');
-      return new Promise<void>((resolve) => {
-        settings.close();
-        shell.el.hidden = true;
-        const setup = createSetup(os, () => {
-          void downloadSelectedPacks();
-          shell.el.hidden = false;
-          composer.focus();
-          resolve();
-        });
-        root.append(setup.el);
-      });
-    };
-
-    ctx.on('settings:change', ({ key, value }) => {
+    ctx.on('settings:change', ({ key }) => {
       if (key === 'agent.config') composer.refreshModel();
-      if (key === 'setup.done' && value === false && !root.querySelector('.su')) void runSetup();
     });
     // Sessions are saved by the kernel; refresh the list when one changes on disk.
     ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());
 
-    if (!os.settings.get(SETUP_KEY, false)) await runSetup();
     // Rejoin a session that is already running in the kernel; failing that, reopen the chat
     // this window last showed (the kernel restarts when every window closes, e.g. on reload,
     // and phones discard background tabs); failing that, start a new one.

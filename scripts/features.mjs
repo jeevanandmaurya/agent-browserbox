@@ -92,11 +92,18 @@ const term = async (cmd, waitFor, timeout = 60000) => {
 };
 
 await page.goto(base + 'agent/');
-await page.getByRole('button', { name: 'Use defaults' }).click({ timeout: 30000 });
-await page.waitForSelector('.ag-input');
-await page.evaluate(() => {
-  bbx.settings.set('agent.config', { provider: 'openai', openaiBaseUrl: 'http://localhost:11436/v1', openaiModel: 'mock', contextWindow: 8192 });
-  bbx.perms.mode = 'auto';
+await check('first boot: setup in the console connects to a local model server', async () => {
+  // local server · URL · first model from the server's list · context window · no prompts · theme · packages
+  const answers = ['2', 'http://localhost:11436/v1', '1', '8192', 'n', '', 'python zip'];
+  for (const a of answers) {
+    await page.waitForSelector('.boot-line:not([hidden])', { timeout: 30000 });
+    await page.locator('.boot-input').fill(a);
+    await page.locator('.boot-input').press('Enter');
+  }
+  await page.waitForSelector('.ag-input', { timeout: 120000 });
+  const out = await page.evaluate(() => ({ cfg: bbx.settings.get('agent.config', {}), perms: bbx.perms.mode, installed: bbx.settings.get('pkg.installed', []) }));
+  if (out.cfg.openaiModel !== 'mock' || out.cfg.contextWindow !== 8192 || out.perms !== 'auto' || out.installed.join() !== 'python,zip') throw new Error(JSON.stringify(out));
+  return `model ${out.cfg.openaiModel} @ ${out.cfg.openaiBaseUrl}; installed ${out.installed.join(', ')}`;
 });
 
 await check('example skills, agents and commands are seeded', () =>
@@ -107,23 +114,16 @@ await check('example skills, agents and commands are seeded', () =>
   }),
 );
 
-await check('tool packs: install with measured progress, then listed as installed', async () => {
+await check('pkg: remove, install with a progress bar, list and info', async () => {
   await page.evaluate(() => bbx.openApp('terminal'));
   await page.waitForSelector('.term-input');
-  const out = await term('pkg remove zip; pkg install zip && pkg list', 'Create and extract zip');
-  if (!/zip: \d+% of [\d.]+ KB/.test(out) || !/installed\s+\x1b?.*zip|installed {3}\s+zip/.test(out.replace(/\x1b\[[0-9;]*m/g, ''))) throw new Error(out.slice(-600));
-  const cached = await page.evaluate(async () => (await (await caches.open('bbx-packs')).keys()).map((r) => r.url.split('/').pop()).filter((n) => n.startsWith('pack-zip')).length);
-  if (!cached) throw new Error('zip files are not in the pack cache');
-  return out.replace(/\x1b\[[0-9;]*m/g, '').split('\n').find((l) => /installed .*zip/.test(l))?.trim();
-});
-
-await check('Settings → Tools shows real state and sizes', async () => {
-  await page.evaluate(() => bbx.openApp('settings', { section: 'tools' }));
-  await page.waitForSelector('.pm-row[data-pack="zip"]');
-  const zip = await page.locator('.pm-row[data-pack="zip"] .pm-status').textContent();
-  if (!/Installed · [\d.]+ KB on this device/.test(zip)) throw new Error(zip);
-  await page.keyboard.press('Escape');
-  return zip;
+  const out = await term('pkg remove zip; pkg install zip && pkg list && pkg info zip', 'commands: zip, unzip');
+  if (!/zip\s+\[#{24}\] 100%/.test(out)) throw new Error(`no completed progress bar: ${out.slice(-600)}`);
+  if (/\[#{0,23}\.+\]/.test(out)) throw new Error('intermediate progress lines were not redrawn in place');
+  if (!/i zip\s+\d+(\.\d)? KB/.test(out)) throw new Error(`list: ${out.slice(-500)}`);
+  const cached = await page.evaluate(async () => (await (await caches.open('bbx-packs')).keys()).some((r) => /pkg-zip-/.test(r.url)));
+  if (!cached) throw new Error('zip files are not in the package cache');
+  return out.split('\n').find((l) => /^size:/.test(l));
 });
 
 await check('environment variables reach the shell, JavaScript and Python', async () => {

@@ -43,39 +43,58 @@ directly, only ask. The subdomains must share one registrable domain you own
 each window gets its own kernel. Mounting a local folder currently assumes the
 window and kernel share an origin.
 
+## Boot
+
+Every window starts with a boot console: the kernel log (`dmesg`) as the
+kernel mounts storage, loads its WebAssembly core and checks the platform. On
+first boot the console then runs `setup`, which asks in plain text which model
+to use (and its API key, read without echo and stored encrypted), whether the
+agent should ask before acting, the theme, and which packages to install. The
+GUI loads only after that. Run `setup` in any terminal to change the answers.
+
+## Packages
+
+Optional software is installed with `pkg`, like any package manager:
+
+```
+pkg list            # i = installed, with sizes
+pkg info python
+pkg install git sqlite
+pkg remove zip
+```
+
+A package is one folder, `src/packages/<id>/`:
+
+- `manifest.ts` — id, version, summary, the shell commands and agent tools it
+  provides, and any remote files (Python's runtime comes from a CDN);
+- `index.ts` — the code, exporting `{ commands, tools }`.
+
+Nothing else needs changing to add one. The kernel finds manifests at build
+time; the build gives each package its own chunk and records which files it
+needs and how big they are (`kernel/packages.json`). Installing downloads
+exactly those files into Cache Storage with a progress bar, so installed
+packages work offline. Typing a command from a package that is not installed
+says which package provides it.
+
 ## The agent window
 
-`/agent/` is a self-contained chat app; nothing in it opens another window
-unless you click “Open desktop”.
+`/agent/` is the chat app; nothing in it opens another window unless you click
+“Open desktop”.
 
-- **Sidebar** (a drawer on phones): New chat, search over saved chats, recent
-  chats grouped by date (delete on hover), Settings, kernel status (opens the
-  process list) and a low-key “Open desktop” link.
-- **Conversation**: an empty state with a centered composer and suggestions;
-  after the first message the composer docks at the bottom. Replies stream as
-  Markdown (rendered to DOM nodes, never `innerHTML`), with collapsible
-  thinking, compact tool rows that expand to input and output, inline
-  permission and `ask_user` cards, notes, errors, a task list and a copy button.
-- **Composer**: auto-growing; Enter sends, Shift+Enter adds a line. Attach
-  copies files into `/home/agent/uploads/` and adds their paths to the message.
-  The model picker switches between configured models and effort, and links to
-  model settings.
-- **Workbench** (right panel, resizable; a full-screen sheet on phones): tabs
-  that host the regular app modules inside the page — Preview (where
-  `show_html` output appears), Files, Editor, Terminal, Processes, Browser,
-  GPU Lab, System. Each app is fetched on first use, keeps running while its
-  tab is hidden, and gets its own kernel process. The agent's `open_app` /
-  `show_html` requests open here (`src/apps/agent/panel-host.ts`).
-- **Settings** open in a modal (full-screen on phones), deep-linkable by
-  section: model, permissions, appearance, tools, data.
-- **First-run setup**: style (casual or developer profile, theme), model,
-  permissions and optional tool packs (`src/agent/packs.ts`). Skippable with
-  “Use defaults”; run it again from Settings → Tools. The developer profile is
-  denser, opens Terminal and Files beside the chat, expands tool calls and
-  shows kernel status; casual keeps tool calls to one-line summaries.
+- **Sidebar** (a drawer on phones): new chat, search, recent chats, Settings,
+  kernel status.
+- **Conversation**: Markdown replies (rendered to DOM nodes, never
+  `innerHTML`), collapsible thinking, tool calls as `tool argument` rows that
+  expand to input and output, inline permission and question cards.
+- **Composer**: Enter sends, Shift+Enter adds a line, `/` lists commands.
+  Attachments are copied into `/home/agent/uploads/`.
+- **Workbench**: a side panel (a full-screen sheet on phones) hosting the
+  regular apps — Preview, Files, Editor, Terminal, Processes and others.
+- **Settings**: a modal with Model, Permissions, Appearance, Connectors,
+  Skills, Agents, Commands, Environment and Data.
 
 The session lives in the kernel: closing the window detaches without stopping
-it, reopening reattaches, and “New chat” starts a fresh one.
+it, and reopening returns to the same chat.
 
 ## What is in it
 
@@ -122,7 +141,6 @@ Pick one in **Settings → Model**:
 | Slash commands | Type `/`; `/home/agent/commands/<name>.md` | Built-ins act on the window; custom commands are prompt templates (`$ARGUMENTS`). |
 | Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Claude* has Anthropic's API connect to it (Claude models only). Local stdio servers cannot run in a browser. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
-| Tool packs | Settings → Tools; `pkg list/install/remove` | Python, Git, SQLite, Zip. Installing downloads the files with a progress bar (sizes are measured, not estimated) and keeps them in Cache Storage for offline use. |
 
 Example skills, an `explorer` agent and an `/explain` command are created on first run; edit or delete them freely.
 
@@ -142,15 +160,17 @@ src/
   agent/          loop, sessions, providers/ (anthropic · openai · webllm), tools/
   pages/          entry points: agent window, desktop
   ui/             window manager, desktop, dialogs, app host, standalone page host
-  apps/           one directory per app, each lazy-loaded; apps/agent/ is the agent window
-                  (shell, sidebar, composer, transcript, workbench + panel host, settings modal, setup)
+  packages/       one directory per package (manifest + code), discovered automatically
+  apps/           one directory per app (manifest + code), discovered automatically;
+                  apps/agent/ is the agent window
 crates/kcore/     Rust → WebAssembly: hashing, line search, word count, token estimate
 ```
 
 Apps, the shell and the agent are written against the `Kernel` interface. The
 real kernel (`KernelCore`) implements it in the worker; `RemoteKernel`
-implements it in each window. To add an app, create `src/apps/<id>/index.ts`
-exporting an `AppModule` and add it to `APPS` in `src/ui/apps.ts`; to run an app
+implements it in each window. To add an app, create `src/apps/<id>/` with a
+`manifest.ts` and an `index.ts` exporting an `AppModule`; to add a package,
+create `src/packages/<id>/` the same way. To run an app
 as its own window, mount it with `mountStandalone` as `src/pages/agent.ts` does;
 to embed it in a pane of another page, use `mountPanelApp` from
 `src/apps/agent/panel-host.ts`.
@@ -201,7 +221,7 @@ your browser supports.
 
 - Browsers enforce CORS: `http_fetch`/`curl` only reach servers that allow it,
   and most sites cannot be framed in the Browser app.
-- The shell is not bash; there is no npm, apt or native compiler. Tool packs
+- The shell is not bash; there is no npm, apt or native compiler. Packages
   (`pkg list`) add Python, git for local repositories, `sqlite3` and `zip`/`unzip`.
   `git clone` needs a relay you configure (`git config http.corsProxy …`),
   because Git hosts block direct browser access; push is not implemented.

@@ -5,20 +5,8 @@ import type { Sidebar } from './sidebar';
 import type { Transcript } from './view';
 import type { Workbench } from './workbench';
 
-const SUGGESTIONS: Array<{ icon: IconName; label: string; prompt: string }> = [
-  { icon: 'spark', label: 'Give me a tour', prompt: 'Give me a tour: what can you do in this OS?' },
-  { icon: 'eye', label: 'Build a web page', prompt: 'Build a small interactive web page and show it to me' },
-  { icon: 'terminal', label: 'Plot with Python', prompt: 'Write a Python script that plots a sine wave, run it, and show the chart' },
-  { icon: 'cube', label: 'Benchmark WebGPU', prompt: 'Benchmark a WebGPU compute shader against plain JavaScript' },
-];
-
 const COLLAPSE_KEY = 'bbx-agent-sidebar';
 const MOBILE = '(max-width: 760px)';
-
-function greeting(): string {
-  const hr = new Date().getHours();
-  return hr < 5 ? 'Working late?' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-}
 
 export interface Shell {
   el: HTMLElement;
@@ -26,7 +14,7 @@ export interface Shell {
   usage: HTMLElement;
   /** Holds the context meter. */
   meterSlot: HTMLElement;
-  /** Empty state (centered composer, suggestions) vs. conversation (docked composer). */
+  /** Whether the chat has no messages yet. */
   setEmpty(empty: boolean): void;
   setTitle(title: string): void;
   closeDrawer(): void;
@@ -34,7 +22,7 @@ export interface Shell {
   syncWorkbench(): void;
 }
 
-export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; composer: Composer; log: Transcript; suggest(prompt: string): void }): Shell {
+export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; composer: Composer; log: Transcript }): Shell {
   const { sidebar, workbench, composer, log } = parts;
   const mobile = matchMedia(MOBILE);
 
@@ -49,17 +37,12 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   wbBtn.setAttribute('aria-pressed', 'false');
   const head = h('header', { class: 'bb-head' }, toggleBtn, title, h('span', { class: 'spacer' }), usage, meterSlot, filesBtn, termBtn, wbBtn);
 
-  const chips = h(
-    'div',
-    { class: 'bb-chips' },
-    SUGGESTIONS.map((s) => h('button', { class: 'bb-chip', type: 'button', title: s.prompt, onclick: () => parts.suggest(s.prompt) }, icon(s.icon, 16), h('span', null, s.label))),
-  );
-  const heroSlot = h('div', { class: 'bb-hero-slot' });
-  const hero = h('section', { class: 'bb-hero', 'aria-label': 'Start a chat' }, h('div', { class: 'bb-hero-mark', 'aria-hidden': 'true' }, icon('cube', 28)), h('h2', { class: 'bb-greet' }, greeting()), heroSlot, chips);
+  // Shown only while the chat is empty: one quiet line, no hero.
+  const hero = h('p', { class: 'bb-hero' }, 'New chat. Type / for commands.');
   const scroller = h('div', { class: 'ag-scroll' }, h('div', { class: 'bb-col' }, hero, log.el));
   const todoSlot = h('div', { class: 'bb-todos' });
   const dockSlot = h('div', { class: 'bb-dock-slot' });
-  const dock = h('div', { class: 'bb-dock' }, todoSlot, dockSlot, h('p', { class: 'bb-foot' }, 'Runs in a sandbox in this tab. The agent can make mistakes — check important work.'));
+  const dock = h('div', { class: 'bb-dock' }, todoSlot, dockSlot, );
   const main = h('main', { class: 'bb-main' }, head, scroller, dock);
   const scrim = h('div', { class: 'bb-scrim', onclick: () => closeDrawer() });
   const el = h('div', { class: 'bb' }, sidebar.el, scrim, main, workbench.el);
@@ -127,7 +110,7 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     setEmpty(empty) {
       el.classList.toggle('is-empty', empty);
       hero.hidden = !empty;
-      (empty ? heroSlot : dockSlot).append(composer.el);
+      if (composer.el.parentElement !== dockSlot) dockSlot.append(composer.el);
     },
     setTitle(text) {
       title.textContent = text || 'New chat';

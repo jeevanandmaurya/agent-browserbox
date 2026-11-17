@@ -11,15 +11,13 @@
     <link rel="icon" href="../icon.svg" type="image/svg+xml" />
     <style>
       html, body { height: 100%; margin: 0; background: #0b0d12; }
-      .boot { height: 100%; display: grid; place-items: center; }
-      .boot i { width: 28px; height: 28px; border-radius: 8px; background: #8d8d93; opacity: 0.5; animation: boot 1.2s ease-in-out infinite alternate; }
-      @keyframes boot { to { opacity: 0.2; transform: scale(0.92); } }
-      @media (prefers-reduced-motion: reduce) { .boot i { animation: none; } }
+      .boot { margin: 0; padding: 14px 16px; color: #8d8d93; font: 13px/1.55 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
     </style>
   </head>
   <body>
     <!-- Painted before any script runs; replaced when the app mounts. -->
-    <div id="app"><div class="boot" role="status" aria-label="Starting BrowserBox"><i></i></div></div>
+    <div id="app"><pre class="boot" role="status">BrowserBox
+starting kernel…</pre></div>
     <!-- Starts the kernel while the page's own script is still downloading. See src/client/connect.ts. -->
     <iframe id="bbx-bridge" src="../kernel/bridge.html" title="BrowserBox kernel bridge" aria-hidden="true" hidden></iframe>
     <script type="module" src="/src/pages/agent.ts"></script>

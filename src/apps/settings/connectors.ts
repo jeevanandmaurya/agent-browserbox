@@ -113,7 +113,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
     h('strong', null, 'Add a connector'),
     h('div', { class: 'field' }, h('label', { for: nameIn.id }, 'Name'), nameIn),
     h('div', { class: 'field' }, h('label', { for: urlIn.id }, 'Server URL (Streamable HTTP)'), urlIn),
-    h('div', { class: 'field' }, h('label', { for: tokenIn.id }, 'Token'), tokenIn, h('p', { class: 'muted st-note' }, 'Encrypted in this browser, sent only to this server (or to Anthropic, which forwards it, for “through Claude”).')),
+    h('div', { class: 'field' }, h('label', { for: tokenIn.id }, 'Token'), tokenIn, h('p', { class: 'muted st-note' }, 'Stored encrypted.')),
     h('div', { class: 'field' }, h('label', { for: viaSel.id }, 'Connect'), viaSel),
     formError,
     h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'submit' }, 'Add connector')),
@@ -125,12 +125,8 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
   return h(
     'div',
     { class: 'st-section' },
-    heading('Connectors', 'Remote MCP (Model Context Protocol) servers whose tools the agent can use. Every call asks for network permission unless you have allowed it.'),
-    h(
-      'p',
-      { class: 'st-callout muted' },
-      'Direct connectors are called from this browser, so the server must allow cross-origin requests. If it does not, choose “Through Claude”: Anthropic’s API connects to the server instead (Claude models only, and the server must be reachable from the internet). Servers that run as local programs (stdio) cannot be used from a browser.',
-    ),
+    heading('Connectors', 'Remote MCP servers (Streamable HTTP).'),
+    h('p', { class: 'st-note muted' }, 'Direct: called from this browser (the server must allow CORS). Through Claude: Anthropic’s API connects instead.'),
     list,
     form,
   );

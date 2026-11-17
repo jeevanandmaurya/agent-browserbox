@@ -1,8 +1,7 @@
 import { gpuCompute } from '@/sandbox/gpu';
-import { runJs, runPython, runWasm, type RunResult } from '@/sandbox/sandbox';
+import { runJs, runWasm, type RunResult } from '@/sandbox/sandbox';
 import { userEnv } from '@/agent/tools/exec';
 import { flags, type Command, type CommandContext } from '../shell';
-import { stepProgress } from './packs';
 
 function finish(ctx: CommandContext, r: RunResult): number {
   if (r.value !== undefined && r.value !== 'undefined') ctx.out(r.value + '\n');
@@ -27,17 +26,6 @@ export const execCommands: Command[] = [
       const { opts, rest } = flags(ctx.args);
       const { code, args } = await source(ctx, rest, opts);
       return finish(ctx, await runJs(ctx.os, code, { cwd: ctx.shell.cwd, env: userEnv(ctx.shell.env), args, network: opts.has('net'), signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, timeoutMs: 120000 }));
-    },
-  },
-  {
-    name: 'python',
-    summary: 'run Python (CPython on WebAssembly)',
-    usage: 'python file.py  |  python -c "code"   (files in the cwd are visible; changes are written back)',
-    async run(ctx) {
-      const { opts, rest } = flags(ctx.args);
-      const { code } = await source(ctx, rest, opts);
-      await ctx.os.packs.ensure('python', stepProgress('python', (line) => ctx.err(line)));
-      return finish(ctx, await runPython(ctx.os, code, { cwd: ctx.shell.cwd, env: userEnv(ctx.shell.env), signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err }));
     },
   },
   {

@@ -58,37 +58,34 @@ const ready = (page) => page.waitForFunction(() => globalThis.bbx?.bootMarks.som
 // ---- The agent window: no desktop, just the kernel and one page --------------
 let agent = watch(await context.newPage(), 'agent');
 await agent.goto(base);
-// ---- First run: a fresh profile sees the setup before the chat ---------------
-await check('first run: setup shows; completing it lands in the chat', async () => {
-  await agent.waitForSelector('.su', { timeout: 20000 });
-  if (await agent.locator('.composer').isVisible()) throw new Error('the chat is visible behind the setup');
-  const next = () => agent.locator('.su-nav .btn.primary').click();
-  await agent.locator('.su-custom summary').click();
-  if (!(await agent.locator('.pk-item', { hasText: 'Python' }).locator('input').isChecked())) throw new Error('developer setup does not preselect the tools');
-  if (!(await agent.locator('.pk-item', { hasText: 'C compiler' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
-  await agent.locator('.su-big .su-choice', { hasText: 'Light' }).click(); // nothing preinstalled; tools are added later with `pkg install`
-  if (await agent.locator('.pk-item', { hasText: 'Git' }).locator('input').isChecked()) throw new Error('light setup still selects tools');
-  await next();
-  await agent.waitForSelector('.su-model[data-app="settings"] .st-section', { timeout: 10000 }); // the Settings app's Model section, embedded
-  await next();
-  await agent.locator('.su-choice', { hasText: 'Ask me first' }).click();
-  await agent.locator('.su-nav .btn.primary', { hasText: 'Finish' }).click();
+// ---- First boot: kernel log, then `setup` asks its questions in the console ----
+/** Answers boot-console prompts in order ('' accepts the default) until the GUI appears. */
+async function firstBoot(page, answers) {
+  const prompts = [];
+  for (const answer of answers) {
+    await page.waitForSelector('.boot-line:not([hidden])', { timeout: 20000 });
+    prompts.push(await page.locator('.boot-prompt').textContent());
+    await page.locator('.boot-input').fill(answer);
+    await page.locator('.boot-input').press('Enter');
+  }
+  return prompts;
+}
+await check('first boot: kernel log, then setup in the console, then the agent window', async () => {
+  await agent.waitForSelector('.boot-console', { timeout: 20000 });
+  await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-out').textContent), null, { timeout: 20000 });
+  // model: decide later · permissions: ask · theme: default · packages: none
+  const prompts = await firstBoot(agent, ['4', 'y', '', 'none']);
   await ready(agent);
   await agent.waitForSelector('.composer', { state: 'visible' });
-  return agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), packs: bbx.settings.get('setup.packs', []), perms: bbx.perms.mode }));
+  const log = await agent.evaluate(() => bbx.kernelLog.map((l) => `${l.src}: ${l.msg}`).join(' | '));
+  if (!/kernel: ready/.test(log)) throw new Error(log);
+  return `${prompts.length} prompts answered; ${agent.evaluate ? (await agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), installed: bbx.settings.get('pkg.installed', []), perms: bbx.perms.mode }))) : ''}`;
 });
-await check('setup does not reappear on reload; "Use defaults" also lands in the chat', async () => {
+await check('later boots show the log but do not ask again', async () => {
   await agent.reload();
   await ready(agent);
-  if (await agent.locator('.su').count()) throw new Error('setup shown again after finishing');
-  await agent.evaluate(() => bbx.settings.set('setup.done', false)); // Settings → Tools → Run setup again
-  await agent.waitForSelector('.su', { timeout: 5000 });
-  await agent.locator('.su-skip').click();
-  await agent.waitForSelector('.composer', { state: 'visible' });
-  await agent.reload();
-  await ready(agent);
-  if (await agent.locator('.su').count()) throw new Error('setup shown again after "Use defaults"');
-  return 'skipped with defaults, stays done';
+  if (await agent.locator('.boot-line:not([hidden])').count()) throw new Error('setup asked again');
+  return 'straight to the agent window';
 });
 await check('root redirects to the agent window; kernel boots headless', async () => {
   await ready(agent);
@@ -186,8 +183,8 @@ await check('sandbox: wasi program', async () => {
   const out = await term('echo piped | wasm /tmp/hello.wasm one two; echo wasm=$?', 'wasm=3');
   if (!out.includes('hello from wasi; args=["one", "two"]; stdin="piped"')) throw new Error(out.slice(-300));
 });
-await check('sandbox: python (pyodide)', async () => {
-  const out = await term(`python -c "import sys, json; open('py.json','w').write(json.dumps({'v': sum(range(10))})); print('py', sys.version_info.major)" && cat py.json && echo py-done`, 'py-done', 90000);
+await check('package: python installs with progress and runs (pyodide)', async () => {
+  const out = await term(`pkg install python && python -c "import sys, json; open('py.json','w').write(json.dumps({'v': sum(range(10))})); print('py', sys.version_info.major)" && cat py.json && echo py-done`, 'py-done', 90000);
   if (!out.includes('py 3') || !out.includes('{"v": 45}')) throw new Error(out.slice(-300));
 });
 await check('webgpu compute inside the kernel worker', async () => {
@@ -199,7 +196,7 @@ await check('webgpu compute inside the kernel worker', async () => {
 
 await check('tool packs: pkg, git, sqlite3, zip', async () => {
   const gated = await term('git init /tmp/nope; echo gated=$?', 'gated=');
-  if (!gated.includes('pack is not installed')) throw new Error(gated.slice(-200));
+  if (!gated.includes('provided by the git package, which is not installed')) throw new Error(gated.slice(-300));
   const out = await term('pkg install git sqlite zip && mkdir -p /tmp/repo && cd /tmp/repo && git init && echo one > a.txt && git add . && git commit -m first && echo two >> a.txt && git status && git diff && git commit -a -m second && git log --oneline && sqlite3 t.db "create table t(x); insert into t values (41),(1); select sum(x) from t" && sqlite3 t.db .tables && zip -r /tmp/r.zip a.txt && unzip -l /tmp/r.zip && cd /tmp && echo packs-done', 'packs-done', 60000);
   for (const want of ['] first', '] second', 'M  a.txt', '+two', '\n42\n', '\nt\n', '1 files → /tmp/r.zip']) if (!out.includes(want)) throw new Error(`missing ${JSON.stringify(want)} in ${out.slice(-700)}`);
   return out.split('\n').filter((l) => /^[0-9a-f]{7} /.test(l)).join(' | ');

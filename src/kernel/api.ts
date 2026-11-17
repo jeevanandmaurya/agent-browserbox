@@ -4,7 +4,6 @@ import type { ContextReport, Msg, Usage } from '@/agent/types';
 import type { Bus } from './bus';
 import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
-import type { PacksApi } from './packs';
 import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
 import type { KernelEvents, Notice } from './types';
@@ -29,7 +28,6 @@ export interface Kernel {
   readonly kcore: KCore;
   readonly agents: AgentsApi;
   readonly shells: ShellsApi;
-  readonly packs: PacksApi;
   readonly caps: PlatformCap[];
   rootKind: 'opfs' | 'memory';
   readonly bootStart: number;
@@ -161,7 +159,7 @@ export interface ShellHandle {
   run(line: string, io: ShellIo): Promise<number>;
   complete(line: string): Promise<{ start: number; options: string[] }>;
   /** Supplies interactive input when a command reads from the terminal. */
-  onReadLine(fn: (prompt: string) => Promise<string | null>): void;
+  onReadLine(fn: (prompt: string, secret: boolean) => Promise<string | null>): void;
   onClear(fn: () => void): void;
   close(): void;
 }

@@ -1,4 +1,4 @@
-import { AGENT_URL } from '@/config/origins';
+import { APP_MANIFESTS, type AppManifest } from './app-manifest';
 import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { h } from './dom';
@@ -37,36 +37,15 @@ export interface AppModule {
   mount(ctx: AppContext): void | (() => void) | Promise<void | (() => void)>;
 }
 
-export interface AppManifest {
-  id: string;
-  name: string;
-  icon: string;
-  /** Tile colour for the icon. */
-  color: string;
-  width: number;
-  height: number;
-  /** Only one window; launching again focuses it. */
-  singleton?: boolean;
-  /** Hidden from the launcher (opened by other apps). */
-  hidden?: boolean;
-  /** Code-split entry: the app's code is only fetched on first launch. */
-  load?: () => Promise<{ default: AppModule }>;
-  /** Opens in its own browser window at this URL instead of inside the desktop. */
-  external?: string;
-}
+export type { AppManifest } from './app-manifest';
 
-export const APPS: AppManifest[] = [
-  { id: 'agent', name: 'Agent', icon: '✦', color: '#7c5cff', width: 520, height: 760, external: AGENT_URL },
-  { id: 'terminal', name: 'Terminal', icon: '❯', color: '#1f2937', width: 760, height: 480, load: () => import('@/apps/terminal/index') },
-  { id: 'files', name: 'Files', icon: '🗂', color: '#2563eb', width: 780, height: 500, load: () => import('@/apps/files/index') },
-  { id: 'editor', name: 'Editor', icon: '✎', color: '#0d9488', width: 820, height: 560, load: () => import('@/apps/editor/index') },
-  { id: 'taskmgr', name: 'Task Manager', icon: '◔', color: '#dc2626', width: 760, height: 500, singleton: true, load: () => import('@/apps/taskmgr/index') },
-  { id: 'browser', name: 'Browser', icon: '◍', color: '#0284c7', width: 900, height: 600, load: () => import('@/apps/browser/index') },
-  { id: 'gpulab', name: 'GPU Lab', icon: '◈', color: '#c026d3', width: 860, height: 580, load: () => import('@/apps/gpulab/index') },
-  { id: 'sysinfo', name: 'System', icon: '⌬', color: '#475569', width: 760, height: 540, singleton: true, load: () => import('@/apps/sysinfo/index') },
-  { id: 'settings', name: 'Settings', icon: '⚙', color: '#64748b', width: 720, height: 560, singleton: true, load: () => import('@/apps/settings/index') },
-  { id: 'preview', name: 'Preview', icon: '▣', color: '#ea580c', width: 760, height: 540, hidden: true, load: () => import('@/apps/preview/index') },
-];
+const loaders = import.meta.glob<{ default: AppModule }>('/src/apps/*/index.ts');
+
+/** Every app, from its folder's manifest; `load` fetches its code on first launch. */
+export const APPS: Array<AppManifest & { load?: () => Promise<{ default: AppModule }> }> = APP_MANIFESTS.map((m) => ({
+  ...m,
+  load: m.external ? undefined : loaders[`/src/apps/${m.id}/index.ts`],
+}));
 
 /** Launches apps: creates the window and process, lazy-loads the code, wires cleanup. */
 export class AppHost {

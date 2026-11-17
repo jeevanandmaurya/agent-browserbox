@@ -3,11 +3,10 @@ import type { AgentHandle, AgentsApi, FsApi, Kernel, MountInfo, ProcsApi, Secret
 import { Bus } from '@/kernel/bus';
 import { detectCaps, type PlatformCap } from '@/kernel/caps';
 import { KCore } from '@/kernel/kcore';
-import type { PacksApi } from '@/kernel/packs';
 import { Permissions, type PermRequest, type Prompter } from '@/kernel/perms';
 import type { Proc, SpawnOptions } from '@/kernel/proc';
 import { Settings } from '@/kernel/settings';
-import type { KernelEvents, Notice } from '@/kernel/types';
+import type { KernelEvents, KernelLogLine, Notice } from '@/kernel/types';
 import { normalize } from '@/kernel/vfs/path';
 import type { Stat } from '@/kernel/vfs/types';
 import type { Ask, Hello, WireProc } from '@/kernel-worker/server';
@@ -49,6 +48,8 @@ export class RemoteKernel implements Kernel {
   readonly kcore = new KCore();
   readonly caps: PlatformCap[] = detectCaps();
   readonly ready: Promise<void>;
+  /** The kernel log as of connecting, kept current by `kmsg` events. */
+  readonly kernelLog: KernelLogLine[] = [];
 
   #peer: Promise<Peer>;
   #procs = new Map<number, Proc>();
@@ -56,7 +57,7 @@ export class RemoteKernel implements Kernel {
   #nextPid = 0;
   #mounts: MountInfo[] = [];
   #agents = new Map<string, AgentLocal>();
-  #shells = new Map<string, { reader?: (prompt: string) => Promise<string | null>; clear?: () => void }>();
+  #shells = new Map<string, { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void }>();
   #runs = new Map<number, ShellIo>();
   #nextRun = 1;
   #asking = new Map<number, AbortController>();
@@ -88,6 +89,8 @@ export class RemoteKernel implements Kernel {
     this.#nextPid = hello.pidBase + 1;
     this.#mounts = hello.mounts.map((m) => ({ point: m.point, fs: { label: m.label, readonly: m.readonly } }));
     this.bootMarks.push(...hello.bootMarks.map((m) => ({ name: `kernel:${m.name}`, at: m.at })));
+    // Lines that arrived as events before this reply are also in it.
+    this.kernelLog.splice(0, this.kernelLog.length, ...hello.log);
     this.settings.hydrate(hello.settings);
     for (const p of hello.procs) this.bus.emit('proc:spawn', this.#mirror(p));
     this.mark('kernel-connected');
@@ -119,7 +122,10 @@ export class RemoteKernel implements Kernel {
           this.#mounts = list.map((m) => ({ point: m.point, fs: { label: m.label, readonly: m.readonly } }));
           this.bus.emit(type, payload);
         });
-      } else this.bus.emit(type, payload);
+      } else {
+        if (type === 'kmsg' && !this.kernelLog.some((l) => l.t === (payload as KernelLogLine).t && l.msg === (payload as KernelLogLine).msg)) this.kernelLog.push(payload as KernelLogLine);
+        this.bus.emit(type, payload);
+      }
     });
     peer.on<number>('proc:kill', (pid) => this.#reap(pid, 'killed'));
     peer.on<{ sid: string; event: AgentEvent }>('agent', ({ sid, event }) => {
@@ -153,7 +159,8 @@ export class RemoteKernel implements Kernel {
         value = await asker(question, options);
       } else if (ask.kind === 'tty') {
         const reader = ask.shellId ? this.#shells.get(ask.shellId)?.reader : undefined;
-        value = reader ? await reader(String(ask.payload)) : null;
+        const { prompt, secret } = ask.payload as { prompt: string; secret?: boolean };
+        value = reader ? await reader(prompt, secret ?? false) : null;
       } else {
         const { method, args } = ask.payload as { method: string; args: unknown[] };
         if (method === 'clipboard.write') value = await navigator.clipboard.writeText(String(args[0]));
@@ -253,12 +260,6 @@ export class RemoteKernel implements Kernel {
     delete: (name) => this.call('secrets.delete', name),
   };
 
-  readonly packs: PacksApi = {
-    list: () => this.call('packs.list'),
-    install: (id) => this.call('packs.install', id),
-    remove: (id) => this.call('packs.remove', id),
-  };
-
   readonly agents: AgentsApi = {
     create: async (opts) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.create', opts)),
     attach: async (sid) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.attach', sid)),
@@ -308,7 +309,7 @@ export class RemoteKernel implements Kernel {
   readonly shells: ShellsApi = {
     open: async (opts) => {
       const info = await this.call<{ id: string; cwd: string; home: string }>('shell.open', opts);
-      const local: { reader?: (prompt: string) => Promise<string | null>; clear?: () => void } = {};
+      const local: { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void } = {};
       this.#shells.set(info.id, local);
       const handle: ShellHandle = {
         id: info.id,

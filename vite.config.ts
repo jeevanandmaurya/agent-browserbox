@@ -18,19 +18,50 @@ const kernelChain = () => ({
     const files = new Set([...bridge.matchAll(/(?:src|href)="\.\.\/(assets\/[\w.-]+\.js)"/g)].map((m) => m[1]!));
     for (const f of readdirSync(`${dir}/assets`)) if (/^main-[\w-]+\.js$/.test(f)) files.add(`assets/${f}`); // the kernel worker
     const links = [...files].map((f) => `    <link rel="modulepreload" href="${base}${f}" />`).join('\n');
-    // Which files make up each optional tool pack, with real sizes, so installs can show progress.
-    const packs: Record<string, Array<{ url: string; bytes: number }>> = { git: [], sqlite: [], zip: [] };
-    for (const f of readdirSync(`${dir}/assets`)) {
-      const pack = /^pack-(git|sqlite|zip)-/.exec(f)?.[1] ?? (/^sql-wasm.*\.wasm$/.test(f) ? 'sqlite' : null);
-      if (pack) packs[pack]!.push({ url: `assets/${f}`, bytes: statSync(`${dir}/assets/${f}`).size });
-    }
-    writeFileSync(`${dir}/kernel/packs.json`, JSON.stringify(packs));
+    writeFileSync(`${dir}/kernel/packages.json`, JSON.stringify(packageFiles(dir)));
     for (const page of ['agent/index.html', 'os/index.html']) {
       const path = `${dir}/${page}`;
       writeFileSync(path, readFileSync(path, 'utf8').replace('  </head>', `${links}\n  </head>`));
     }
   },
 });
+
+/**
+ * Which build files belong to each package, with their sizes, so installs can
+ * download exactly those and show real progress. A package's files are its
+ * chunk (pkg-<id>-*.js) plus everything it references that the kernel itself
+ * does not already load.
+ */
+function packageFiles(dir: string): Record<string, Array<{ url: string; bytes: number }>> {
+  const assets = readdirSync(`${dir}/assets`);
+  const text = new Map(assets.filter((f) => f.endsWith('.js')).map((f) => [f, readFileSync(`${dir}/assets/${f}`, 'utf8')]));
+  const refs = (file: string, all: boolean) => {
+    const src = text.get(file) ?? '';
+    if (!all) return [...src.matchAll(/(?:import|from)\s*["']\.\/([\w.-]+\.js)["']/g)].map((m) => m[1]!);
+    return assets.filter((f) => f !== file && src.includes(f));
+  };
+  const closure = (start: string[], all: boolean, stop = new Set<string>()) => {
+    const seen = new Set<string>();
+    const todo = [...start];
+    while (todo.length) {
+      const f = todo.pop()!;
+      if (seen.has(f) || stop.has(f)) continue;
+      seen.add(f);
+      todo.push(...refs(f, all));
+    }
+    return seen;
+  };
+  // What the kernel worker loads at startup (static imports only).
+  const core = closure(assets.filter((f) => /^main-[\w-]+\.js$/.test(f)), false);
+  const out: Record<string, Array<{ url: string; bytes: number }>> = {};
+  for (const f of assets) {
+    const id = /^pkg-([\w-]+?)-[\w-]{8}\.js$/.exec(f)?.[1];
+    if (!id) continue;
+    // Another package's chunk is that package's, not this one's.
+    out[id] = [...closure([f], true, core)].filter((x) => x === f || !x.startsWith('pkg-')).map((x) => ({ url: `assets/${x}`, bytes: statSync(`${dir}/assets/${x}`).size }));
+  }
+  return out;
+}
 
 export default defineConfig({
   plugins: [kernelChain()],
@@ -45,13 +76,12 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    // Name the chunks that belong to optional tool packs so the build can list them (see kernelChain).
+    // Each package (src/packages/<id>/index.ts) is loaded on demand; name its chunk after it.
     rollupOptions: {
       output: {
-        manualChunks(id: string) {
-          if (/node_modules\/(isomorphic-git|buffer|base64-js|ieee754|sha\.js|pako|crc-32|async-lock|clean-git-ref|diff3|ignore|pify|readable-stream|simple-get|minimisted|is-git-ref-name-valid|path-browserify)\//.test(id)) return 'pack-git';
-          if (/node_modules\/sql\.js\//.test(id)) return 'pack-sqlite';
-          if (/node_modules\/fflate\//.test(id)) return 'pack-zip';
+        chunkFileNames: (chunk: { facadeModuleId: string | null }) => {
+          const pkg = /\/src\/packages\/([\w-]+)\/index\.ts$/.exec(chunk.facadeModuleId ?? '')?.[1];
+          return pkg ? `assets/pkg-${pkg}-[hash].js` : 'assets/[name]-[hash].js';
         },
       },
     },

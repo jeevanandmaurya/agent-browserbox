@@ -2,6 +2,7 @@ import '../ui/base.css';
 import agentApp from '@/apps/agent/index';
 import { connectKernel } from '@/client/connect';
 import { RemoteKernel } from '@/client/remote-kernel';
+import { bootConsole } from '@/ui/boot';
 import { followTheme, mountStandalone } from '@/ui/standalone';
 
 /**
@@ -13,7 +14,10 @@ const os = new RemoteKernel(connectKernel());
 followTheme(os);
 os.mark('page');
 
-mountStandalone(os, agentApp, 'Agent', document.getElementById('app')!, { embedsApps: true }).then(
+const root = document.getElementById('app')!;
+bootConsole(os, root)
+  .then(() => mountStandalone(os, agentApp, 'Agent', root, { embedsApps: true }))
+  .then(
   () => os.mark('ready'),
   (err: Error) => {
     document.getElementById('app')!.textContent = `BrowserBox could not start: ${err.message}`;

@@ -6,7 +6,7 @@ import { environmentSection } from './environment';
 import { extensionSection } from './extensions';
 import { modelSection } from './model';
 import { sectionNav } from './nav';
-import { appearanceSection, toolsSection } from './general';
+import { appearanceSection } from './general';
 import { permissionsSection } from './permissions';
 import './style.css';
 
@@ -34,7 +34,6 @@ const app: AppModule = {
       { id: 'agents', label: 'Agents', build: () => extensionSection(ctx, 'agent', saved) },
       { id: 'commands', label: 'Commands', build: () => extensionSection(ctx, 'command', saved) },
       { id: 'environment', label: 'Environment', build: () => environmentSection(ctx, saved) },
-      { id: 'tools', label: 'Tools', build: () => toolsSection(ctx) },
       { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },
     ];
     // `only` embeds a single section with no nav (the agent window's first-run setup uses the Model section).

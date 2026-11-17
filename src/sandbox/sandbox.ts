@@ -2,9 +2,11 @@ import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { resolve } from '@/kernel/vfs/path';
 import { KERNEL_URL } from '@/config/origins';
+import { PACKAGE_CACHE, PYODIDE_URL, PYTHON_RUNTIME_FILES } from './python-runtime';
 import runtimeSrc from './runtime.js?raw';
 
-export const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/';
+export { PYODIDE_URL };
+
 
 export interface RunOptions {
   cwd?: string;
@@ -262,18 +264,15 @@ export async function runWasm(os: Kernel, wasm: Uint8Array, opts: RunOptions & {
 let python: Sandbox | null = null;
 let pythonBooted = false;
 
-/** Files that make up the Python runtime, relative to PYODIDE_URL. */
-export const PYTHON_RUNTIME_FILES = ['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json'];
-export const PACK_CACHE = 'bbx-packs';
 
 /**
- * Reads the Python runtime from Cache Storage, where installing the Python
- * pack puts it. A sandbox runs in an opaque origin whose HTTP cache does not
+ * Reads the Python runtime from Cache Storage, where installing the python
+ * package puts it. A sandbox runs in an opaque origin whose HTTP cache does not
  * persist, so without this the 10 MB runtime would be downloaded every session.
  */
 async function cachedPythonRuntime(): Promise<FileBlob[] | undefined> {
   try {
-    const cache = await caches.open(PACK_CACHE);
+    const cache = await caches.open(PACKAGE_CACHE);
     const files = await Promise.all(
       PYTHON_RUNTIME_FILES.map(async (name) => {
         const hit = await cache.match(PYODIDE_URL + name);

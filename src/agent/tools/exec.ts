@@ -1,12 +1,12 @@
-import { stripAnsi } from '@/shell/ansi';
+import { plainText } from '@/ui/ansi-view';
 import { gpuCompute } from '@/sandbox/gpu';
-import { runJs, runPython, runWasm, type RunResult } from '@/sandbox/sandbox';
+import { runJs, runWasm, type RunResult } from '@/sandbox/sandbox';
 import { clip, obj, tool, type ToolDef } from './types';
 
 /** Shell variables minus the shell's own bookkeeping. */
 export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
 
-function report(r: RunResult): string {
+export function report(r: RunResult): string {
   const parts: string[] = [];
   if (r.stdout) parts.push(r.stdout.trimEnd());
   if (r.stderr) parts.push(`[stderr]\n${r.stderr.trimEnd()}`);
@@ -22,7 +22,7 @@ export const execTools: ToolDef[] = [
   tool<{ command: string }>({
     name: 'shell',
     description:
-      'Run a command line in the BrowserBox shell (not bash, but POSIX-flavoured): pipes, redirects, &&, ||, ;, $VARS and globs work. Commands include ls, cat, grep, find, head, tail, wc, sort, uniq, mkdir, rm, cp, mv, tree, du, curl, js, python, wasm, gpu, ps, kill, open, sha256sum, gzip. Run `help` to list them all. Installed tool packs add more (git, sqlite3, zip/unzip — see `pkg list`). The working directory persists between calls (cd works). There is no npm, apt or native compiler.',
+      'Run a command line in the BrowserBox shell (not bash, but POSIX-flavoured): pipes, redirects, &&, ||, ;, $VARS and globs work. Commands include ls, cat, grep, find, head, tail, wc, sort, uniq, mkdir, rm, cp, mv, tree, du, curl, js, python, wasm, gpu, ps, kill, open, sha256sum, gzip. Run `help` to list them all. Installed packages add more commands (see `pkg list`). The working directory persists between calls (cd works). There is no npm, apt or native compiler.',
     input_schema: obj({ command: { type: 'string' } }, ['command']),
     cap: () => 'exec',
     describe: (i) => i.command,
@@ -33,7 +33,7 @@ export const execTools: ToolDef[] = [
         tc.progress(t);
       };
       const code = await tc.shell.run(i.command, { out: sink, err: sink, signal: tc.signal });
-      const text = clip(stripAnsi(out).trimEnd() || '(no output)');
+      const text = clip(plainText(out).trimEnd() || '(no output)');
       if (code !== 0) throw new Error(`${text}\n[exit code ${code}]`);
       return text;
     },
@@ -47,18 +47,6 @@ export const execTools: ToolDef[] = [
     describe: (i) => `${i.network ? '[network] ' : ''}${i.code}`,
     async run(i, tc) {
       return report(await runJs(tc.os, i.code, { cwd: tc.shell.cwd, env: userEnv(tc.shell.env), network: i.network, timeoutMs: Math.min(i.timeout_ms ?? 30000, 300000), signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress, ppid: tc.pid }));
-    },
-  }),
-  tool<{ code: string; packages?: string[] }>({
-    name: 'run_python',
-    description:
-      'Run Python 3 (CPython compiled to WebAssembly via Pyodide) in an isolated sandbox. Files in the working directory are visible to the script and files it writes are saved back. Imports of bundled scientific packages (numpy, pandas, matplotlib, scipy, sympy…) load automatically; list pure-Python PyPI packages in `packages`. The first run downloads the runtime and takes several seconds. The interpreter persists between calls. No sockets or subprocesses.',
-    input_schema: obj({ code: { type: 'string' }, packages: { type: 'array', items: { type: 'string' }, description: 'extra PyPI packages to install with micropip' } }, ['code']),
-    cap: () => 'exec',
-    describe: (i) => i.code,
-    async run(i, tc) {
-      await tc.os.packs.ensure('python', (loaded, bytes) => bytes && tc.progress(`downloading Python runtime: ${Math.round((loaded / bytes) * 100)}%\n`));
-      return report(await runPython(tc.os, i.code, { cwd: tc.shell.cwd, env: userEnv(tc.shell.env), packages: i.packages, signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress }));
     },
   }),
   tool<{ path: string; args?: string[]; stdin?: string }>({

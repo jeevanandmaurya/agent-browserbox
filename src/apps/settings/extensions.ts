@@ -8,20 +8,20 @@ const COPY: Record<ExtKind, { title: string; intro: string; noun: string; empty:
   skill: {
     title: 'Skills',
     noun: 'skill',
-    intro: 'Reusable instructions the agent loads when a task matches. Each skill is a folder with a SKILL.md file (name and description at the top, instructions below) plus any supporting files. The agent sees only the names and descriptions until it needs one.',
-    empty: 'No skills yet.',
+    intro: 'Folders in /home/agent/skills with a SKILL.md. The agent loads one with use_skill when a task matches.',
+    empty: 'No skills.',
   },
   agent: {
     title: 'Agents',
     noun: 'agent',
-    intro: 'Specialised sub-agents the main agent can delegate to. Each is a Markdown file with a description, an optional list of allowed tools, and the instructions it runs with. Sub-agents start with a fresh context, which keeps long investigations out of the main conversation.',
-    empty: 'No custom agents yet.',
+    intro: 'Markdown files in /home/agent/agents. Optional `tools:` limits what each may use.',
+    empty: 'No agents.',
   },
   command: {
     title: 'Commands',
     noun: 'command',
-    intro: 'Prompt templates you run by typing /name in the message box. $ARGUMENTS is replaced by whatever you type after the command. Built-in commands: /compact, /context, /clear, /skills, /agents, /connectors, /model.',
-    empty: 'No custom commands yet.',
+    intro: 'Markdown files in /home/agent/commands, run as /name. $ARGUMENTS is replaced by the text after it.',
+    empty: 'No commands.',
   },
 };
 

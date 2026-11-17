@@ -1,4 +1,4 @@
-import { APP_INFO as APPS } from '@/ui/app-list';
+import { APP_MANIFESTS as APPS } from '@/ui/app-manifest';
 import { fmtBytes } from '@/ui/dom';
 import { loadExtensions } from '../ext/library';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types';

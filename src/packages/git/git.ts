@@ -1,7 +1,10 @@
+import './buffer-global';
+import * as git from 'isomorphic-git';
+import http from 'isomorphic-git/http/web';
 import type { KernelCore } from '@/kernel/kernel';
 import { FsError } from '@/kernel/vfs/types';
-import { flags, type Command, type CommandContext } from '../shell';
-import { C } from '../ansi';
+import { flags, type Command, type CommandContext } from '@/shell/shell';
+import { C } from '@/shell/ansi';
 
 interface GitConfig {
   name: string;
@@ -70,9 +73,6 @@ export const gitCommand: Command = {
   async run(ctx: CommandContext) {
     const [sub, ...args] = ctx.args;
     const { os, out } = ctx;
-    // isomorphic-git expects Node's Buffer as a global.
-    (globalThis as { Buffer?: unknown }).Buffer ??= (await import('buffer')).Buffer;
-    const git = await import('isomorphic-git');
     const fs = gitFs(os);
     const cfg = { ...DEFAULT, ...os.settings.get<Partial<GitConfig>>(CONFIG_KEY, {}) };
     const root = async () => {
@@ -108,7 +108,6 @@ export const gitCommand: Command = {
         if (!url) throw new Error('usage: git clone <url> [dir]');
         if (!cfg.corsProxy) throw new Error('Git hosts block direct access from browsers, so cloning needs a relay you trust.\nSet one with: git config http.corsProxy https://your-proxy.example\n(everything you clone passes through it)');
         const dir = ctx.path(args[1] ?? url.replace(/\/+$/, '').split('/').pop()!.replace(/\.git$/, ''));
-        const http = (await import('isomorphic-git/http/web')).default;
         out(`Cloning into '${dir}'…\n`);
         await git.clone({ fs, http, dir, url, corsProxy: cfg.corsProxy, singleBranch: true, depth: 50, onMessage: (m) => out(C.dim + m + C.reset) });
         return void out('done.\n');
