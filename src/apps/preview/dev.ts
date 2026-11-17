@@ -3,6 +3,7 @@ import { isInside } from '@/kernel/vfs/path';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { icon, loader } from '@/ui/icons';
+import { fullscreenToggle } from './fullscreen';
 import { htmlFrame } from './views';
 
 const MAX_SHOWN = 300;
@@ -34,7 +35,9 @@ export function mountDev(ctx: AppContext, port: number): () => void {
   const consoleBtn = tb('Console', h('span', { class: 'pv-console-label' }, icon('terminal', 15), badge), () => setConsole(consolePane.hidden !== false), { 'aria-pressed': 'false' });
   const status = h('span', { class: 'pv-status', hidden: true }, loader(16, 'Building'));
   const addr = h('label', { class: 'pv-addr' }, h('span', { class: 'pv-host' }, `localhost:${port}`), address);
-  const toolbar = h('div', { class: 'toolbar pv-toolbar pv-dev-toolbar', role: 'toolbar', 'aria-label': 'Preview' }, tb('Reload', icon('refresh', 15), () => void load()), addr, status, consoleBtn);
+  const stage = h('div', { class: 'pv-stage' });
+  const fs = fullscreenToggle(stage);
+  const toolbar = h('div', { class: 'toolbar pv-toolbar pv-dev-toolbar', role: 'toolbar', 'aria-label': 'Preview' }, tb('Reload', icon('refresh', 15), () => void load()), addr, status, consoleBtn, fs.button);
 
   const list = h('div', { class: 'pv-log', role: 'log', 'aria-live': 'polite' });
   const consolePane = h(
@@ -43,7 +46,6 @@ export function mountDev(ctx: AppContext, port: number): () => void {
     h('div', { class: 'pv-console-head' }, h('strong', null, 'Console'), h('span', { class: 'muted pv-console-note' }, 'page, server, build and network'), tb('Clear', icon('close', 14), () => clearLog())),
     list,
   );
-  const stage = h('div', { class: 'pv-stage' });
   const body = h('div', { class: 'pv-body fill pv-dev' }, stage, consolePane);
   ctx.root.append(toolbar, body);
 
@@ -143,6 +145,7 @@ export function mountDev(ctx: AppContext, port: number): () => void {
   })();
 
   return () => {
+    fs.dispose();
     closed = true;
     gen++;
   };

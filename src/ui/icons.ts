@@ -24,6 +24,8 @@ const PATHS = {
   minus: 'M6 12h12',
   ghost: 'M6 20.5V11a6 6 0 0 1 12 0v9.5l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5zM10 10.5v1M14 10.5v1',
   square: 'M6 6h12v12H6z',
+  fullscreen: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5',
+  fullscreenExit: 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5',
   clip: 'M20 11l-8 8a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7-7',
   send: 'M12 19V5M6 11l6-6 6 6',
   stop: 'M7 7h10v10H7z',

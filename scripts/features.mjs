@@ -411,6 +411,30 @@ await check('agent: dev_server starts the app and preview_logs reads its console
   return started.split('\n')[0];
 });
 
+await check('preview: full screen and back, on desktop and phone', async () => {
+  await page.evaluate(() => bbx.openApp('preview', { html: '<h1 id="t">big</h1>' }));
+  const pane = page.locator('.wb-pane[data-app="preview"]:not([hidden])');
+  await pane.locator('iframe.pv-frame').waitFor();
+  const sizes = [];
+  for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 800 }, { width: 390, height: 800, noApi: true }]) {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    // iPhone Safari has no element full screen: the view is pinned over the window instead.
+    if (vp.noApi) await page.evaluate(() => Object.defineProperty(document, 'fullscreenEnabled', { configurable: true, get: () => false }));
+    await page.waitForTimeout(400);
+    await pane.locator('button[aria-label="Full screen"]').click();
+    await page.waitForTimeout(400);
+    const r = await pane.locator('.pv-fs').evaluate((el) => { const b = el.getBoundingClientRect(); return { w: Math.round(b.width), h: Math.round(b.height), api: document.fullscreenElement === el }; });
+    if (r.w < vp.width - 2 || r.h < vp.height - 2) throw new Error(`not full screen at ${vp.width}px: ${JSON.stringify(r)}`);
+    await page.locator('.pv-fs-exit').click();
+    await page.waitForTimeout(300);
+    if (await page.locator('.pv-fs').count()) throw new Error('did not leave full screen');
+    sizes.push(`${vp.width}px: ${r.w}×${r.h}${r.api ? ' (Fullscreen API)' : ' (pinned)'}`);
+  }
+  await page.evaluate(() => delete document.fullscreenEnabled);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  return sizes.join(', ');
+});
+
 if (errors.length) {
   failed++;
   console.log('page errors:\n  ' + errors.join('\n  '));

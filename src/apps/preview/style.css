@@ -48,3 +48,11 @@
 [data-app='preview'] .pv-log-row.error { background: color-mix(in srgb, #d9534f 12%, transparent); color: color-mix(in srgb, #ff8a80 70%, var(--text)); }
 [data-app='preview'] .pv-log-row.warn { background: color-mix(in srgb, #e0a800 10%, transparent); }
 [data-app='preview'] .pv-log-row.debug { color: var(--muted); }
+
+/* Full screen: the Fullscreen API where allowed, otherwise pinned over the window */
+[data-app='preview'] .pv-fs { position: relative; background: #fff; }
+.pv-pinned { position: fixed !important; inset: 0; z-index: 1000; width: 100vw; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); background: #fff; }
+.pv-fs-exit { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 2; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: rgb(20 20 20 / 0.72); color: #fff; font: 500 13px var(--font, system-ui); cursor: pointer; backdrop-filter: blur(8px); transition: opacity 0.3s; }
+.pv-fs-exit.dim { opacity: 0.25; }
+.pv-fs-exit:hover, .pv-fs-exit:focus-visible { opacity: 1; }
+@media (hover: none) { .pv-fs-exit.dim { opacity: 0.45; } }

@@ -6,6 +6,7 @@ import { errMessage, isTextLike, kindOf, looksBinary, mimeOf, type FileKind } fr
 import { buildSiteDoc, NAV_MESSAGE, resolveRef } from './inline';
 import { loader } from '@/ui/icons';
 import { mountDev } from './dev';
+import { fullscreenToggle } from './fullscreen';
 import { hexView, htmlFrame, ImageView, textView } from './views';
 import './style.css';
 
@@ -44,7 +45,8 @@ const app: AppModule = {
     );
     const editBtn = btn('Open in Editor', 'Edit', () => path && ctx.launch('editor', { path }), { hidden: true });
     const body = h('div', { class: 'pv-body fill' });
-    ctx.root.append(h('div', { class: 'toolbar pv-toolbar', role: 'toolbar', 'aria-label': 'Preview' }, backBtn, label, zoom, btn('Reload', '⟳', () => void render()), editBtn), body);
+    const full = fullscreenToggle(body);
+    ctx.root.append(h('div', { class: 'toolbar pv-toolbar', role: 'toolbar', 'aria-label': 'Preview' }, backBtn, label, zoom, btn('Reload', '⟳', () => void render()), editBtn, full.button), body);
 
     const blob = (bytes: Uint8Array, type: string) => {
       const u = URL.createObjectURL(new Blob([bytes as BlobPart], { type }));
@@ -179,6 +181,7 @@ const app: AppModule = {
 
     void render();
     return () => {
+      full.dispose();
       generation++;
       removeEventListener('message', onMessage);
       revokeAll();
