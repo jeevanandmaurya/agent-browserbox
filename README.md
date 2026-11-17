@@ -19,7 +19,7 @@ npm install
 npm run dev        # http://localhost:5173/agent/  (desktop: /os/)
 npm run build      # static site in dist/ — host it anywhere
 npm test           # unit tests (vitest)
-npm run smoke      # drives the built system end to end in headless Chromium
+npm run smoke      # drives the built system end to end in headless Chromium (two suites)
 ```
 
 ### Paths now, origins later
@@ -111,6 +111,21 @@ Pick one in **Settings → Model**:
 `system_info` · `notify` `clipboard_read` `clipboard_write` `speak` ·
 `ask_user` `todo_write` `spawn_agent` (plus Claude's `web_search` / `web_fetch`).
 
+## Agent features
+
+| Feature | Where | How it works |
+|---|---|---|
+| Context meter | Header ring; `/context` | Shows how full the model's context window is and what is using it (system prompt, tool definitions, messages, tool calls, tool results). The total is the model's own figure after each reply; the split is estimated. |
+| Compaction | `/compact`, or automatic at 85% | The model writes a summary that replaces the older messages for the model. The full history stays visible and saved. Toggle and local-model window size in Settings → Model. |
+| Skills | `/home/agent/skills/<name>/SKILL.md`; Settings → Skills | Instructions plus supporting files. The agent sees names and descriptions and loads a skill with `use_skill` when a task matches. |
+| Custom agents | `/home/agent/agents/<name>.md`; Settings → Agents | A role prompt and an optional `tools:` allow-list. The main agent delegates with `spawn_agent` and the sub-agent runs with a fresh context. |
+| Slash commands | Type `/`; `/home/agent/commands/<name>.md` | Built-ins act on the window; custom commands are prompt templates (`$ARGUMENTS`). |
+| Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Claude* has Anthropic's API connect to it (Claude models only). Local stdio servers cannot run in a browser. |
+| Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
+| Tool packs | Settings → Tools; `pkg list/install/remove` | Python, Git, SQLite, Zip. Installing downloads the files with a progress bar (sizes are measured, not estimated) and keeps them in Cache Storage for offline use. |
+
+Example skills, an `explorer` agent and an `/explain` command are created on first run; edit or delete them freely.
+
 ## Architecture
 
 ```
@@ -187,7 +202,7 @@ your browser supports.
 - Browsers enforce CORS: `http_fetch`/`curl` only reach servers that allow it,
   and most sites cannot be framed in the Browser app.
 - The shell is not bash; there is no npm, apt or native compiler. Tool packs
-  (`pkg list`) add git for local repositories, `sqlite3` and `zip`/`unzip`.
+  (`pkg list`) add Python, git for local repositories, `sqlite3` and `zip`/`unzip`.
   `git clone` needs a relay you configure (`git config http.corsProxy …`),
   because Git hosts block direct browser access; push is not implemented.
 - Python needs a one-time download of Pyodide from jsDelivr.

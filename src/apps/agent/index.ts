@@ -6,6 +6,8 @@ import type { AgentHandle } from '@/kernel/api';
 import type { TodoItem } from '@/agent/tools/types';
 import type { AppModule } from '@/ui/apps';
 import { createComposer } from './composer';
+import { contextMeter } from './context-meter';
+import type { SlashCommand } from './slash';
 import { SettingsModal } from './settings-modal';
 import { createShell } from './shell';
 import { createSidebar } from './sidebar';
@@ -13,6 +15,23 @@ import { renderTodos, Transcript } from './view';
 import { TOOLS, Workbench } from './workbench';
 
 const SETUP_KEY = 'setup.done';
+const LAST_KEY = 'bbx-agent-last-chat';
+
+/** The chat this window showed last (per browser, not synced: it is a navigation convenience). */
+function readLast(): string | null {
+  try {
+    return localStorage.getItem(LAST_KEY);
+  } catch {
+    return null;
+  }
+}
+function writeLast(sid: string): void {
+  try {
+    localStorage.setItem(LAST_KEY, sid);
+  } catch {
+    /* storage blocked */
+  }
+}
 
 const app: AppModule = {
   async mount(ctx) {
@@ -40,7 +59,18 @@ const app: AppModule = {
     };
     const settings = new SettingsModal(os, route);
     const workbench = new Workbench(os, { onChange: () => shell.syncWorkbench(), route });
-    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelSettings: () => settings.open('model') });
+    const commands: SlashCommand[] = [
+      { name: 'compact', description: 'Summarise the conversation to free up context', kind: 'built-in', run: () => void compactNow() },
+      { name: 'context', description: 'Show how full the context window is', kind: 'built-in', run: () => meter.open() },
+      { name: 'clear', description: 'Start a new chat', kind: 'built-in', run: () => void newSession() },
+      { name: 'skills', description: 'Manage skills', kind: 'built-in', run: () => settings.open('skills') },
+      { name: 'agents', description: 'Manage custom agents', kind: 'built-in', run: () => settings.open('agents') },
+      { name: 'connectors', description: 'Manage MCP connectors', kind: 'built-in', run: () => settings.open('connectors') },
+      { name: 'model', description: 'Model settings', kind: 'built-in', run: () => settings.open('model') },
+      { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
+    ];
+    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelSettings: () => settings.open('model'), commands });
+    const meter = contextMeter({ load: () => (agent ? agent.context() : Promise.resolve(null)), compact: () => void compactNow() });
     const sidebar = createSidebar(os, {
       newChat: () => void newSession(),
       openChat: (id) => void openSession(id),
@@ -50,6 +80,7 @@ const app: AppModule = {
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
     });
     const shell = createShell({ sidebar, workbench, composer, log, suggest: (p) => submit(p) });
+    shell.meterSlot.append(meter.el);
     root.append(shell.el);
     shell.setEmpty(true);
     // The kernel (or the agent's open_app / show_html tools) asked for an app.
@@ -70,6 +101,7 @@ const app: AppModule = {
 
     function adopt(handle: AgentHandle): void {
       agent = handle;
+      writeLast(handle.sid);
       handle.onAsk((question, options) => log.ask(question, options));
       handle.prompter = (req, signal) => log.approve(req, signal);
       handle.onEvent((e) => {
@@ -77,10 +109,17 @@ const app: AppModule = {
         if (e.type === 'todos') {
           todos = e.items;
           showTodos();
-        } else if (e.type === 'usage') showUsage(e.total.input + e.total.cacheRead, e.total.output);
+        } else if (e.type === 'usage') {
+          showUsage(e.total.input + e.total.cacheRead, e.total.output);
+          meter.refresh();
+        } else if (e.type === 'compact') {
+          log.addNote(`${e.auto ? 'The context was nearly full, so the conversation was summarised' : 'Conversation summarised'}: about ${e.before.toLocaleString()} → ${e.after.toLocaleString()} tokens. The full history stays visible here.`);
+          meter.refresh();
+        }
         else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => settings.open('model') } : undefined);
         else if (e.type === 'done') {
           setBusy(false);
+          meter.refresh();
           void sidebar.refresh(agent.sid);
           void agent.snapshot().then((s) => shell.setTitle(s.title));
           if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished');
@@ -99,6 +138,7 @@ const app: AppModule = {
       else log.clear();
       showUsage(snap.total.input + snap.total.cacheRead, snap.total.output);
       showTodos();
+      meter.refresh();
       setBusy(snap.busy);
       void sidebar.refresh(agent.sid);
     }
@@ -129,6 +169,17 @@ const app: AppModule = {
       }
     }
 
+    async function compactNow(): Promise<void> {
+      if (busy) return os.notify('Wait for the agent to finish first.');
+      setBusy(true);
+      try {
+        await agent.compact();
+      } catch (err) {
+        log.addNote(`Could not compact: ${(err as Error).message}`, 'error');
+        setBusy(false);
+      }
+    }
+
     function submit(text: string): boolean {
       text = text.trim();
       if (!text || busy) return false;
@@ -143,6 +194,14 @@ const app: AppModule = {
       return true;
     }
 
+    /** After setup, fetch the chosen tools now so they are ready to use (progress shows in the sidebar and Settings → Tools). */
+    async function downloadSelectedPacks(): Promise<void> {
+      const pending = (await os.packs.list()).filter((p) => p.selected && !p.cached && p.available);
+      if (!pending.length) return;
+      os.notify({ title: `Downloading ${pending.map((p) => p.name).join(', ')}`, body: 'Progress is shown in the sidebar and in Settings → Tools.' });
+      for (const p of pending) await os.packs.install(p.id).catch((err: Error) => os.notify({ title: `Could not download ${p.name}`, body: err.message, level: 'warn' }));
+    }
+
     /** Shows the first-run setup in place of the chat until it is finished or skipped. */
     const runSetup = async () => {
       // Only first-time visitors pay for the setup code.
@@ -151,6 +210,7 @@ const app: AppModule = {
         settings.close();
         shell.el.hidden = true;
         const setup = createSetup(os, () => {
+          void downloadSelectedPacks();
           shell.el.hidden = false;
           composer.focus();
           resolve();
@@ -167,9 +227,12 @@ const app: AppModule = {
     ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());
 
     if (!os.settings.get(SETUP_KEY, false)) await runSetup();
-    // Rejoin a session that is already running in the kernel, otherwise start one.
+    // Rejoin a session that is already running in the kernel; failing that, reopen the chat
+    // this window last showed (the kernel restarts when every window closes, e.g. on reload,
+    // and phones discard background tabs); failing that, start a new one.
     const [live] = await os.agents.live();
-    adopt(live ? await os.agents.attach(live.sid) : await os.agents.create());
+    const last = readLast();
+    adopt(live ? await os.agents.attach(live.sid) : last ? await os.agents.create({ resume: last }).catch(() => os.agents.create()) : await os.agents.create());
     await showState();
     composer.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);

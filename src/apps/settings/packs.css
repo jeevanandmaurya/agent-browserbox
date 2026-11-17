@@ -10,3 +10,10 @@
 .pk-size { color: var(--muted); font-size: 12px; font-weight: 400; }
 .pk-soon { padding: 1px 8px; border-radius: 99px; background: var(--panel-3); color: var(--muted); font-size: 11px; font-weight: 600; }
 .pk-desc { color: var(--muted); font-size: 12.5px; }
+
+/* Tool packs with live state (Settings → Tools) */
+.pm-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px; }
+.pm-row.soon { opacity: 0.6; }
+.pm-status { font-size: 12.5px; }
+.pm-bar { margin-top: 6px; height: 6px; }
+.pm-bar > div { transition: width 0.15s linear; }

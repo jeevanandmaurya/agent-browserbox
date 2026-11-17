@@ -1,6 +1,9 @@
 import type { AppModule } from '@/ui/apps';
 import { h } from '@/ui/dom';
+import { connectorsSection } from './connectors';
 import { dataSection } from './data';
+import { environmentSection } from './environment';
+import { extensionSection } from './extensions';
 import { modelSection } from './model';
 import { sectionNav } from './nav';
 import { appearanceSection, toolsSection } from './general';
@@ -26,7 +29,12 @@ const app: AppModule = {
       { id: 'model', label: 'Model', build: () => modelSection(ctx, saved) },
       { id: 'permissions', label: 'Permissions', build: () => permissionsSection(ctx, saved) },
       { id: 'appearance', label: 'Appearance', build: () => appearanceSection(ctx, saved) },
-      { id: 'tools', label: 'Tools', build: () => toolsSection(ctx, saved) },
+      { id: 'connectors', label: 'Connectors', build: () => connectorsSection(ctx, saved) },
+      { id: 'skills', label: 'Skills', build: () => extensionSection(ctx, 'skill', saved) },
+      { id: 'agents', label: 'Agents', build: () => extensionSection(ctx, 'agent', saved) },
+      { id: 'commands', label: 'Commands', build: () => extensionSection(ctx, 'command', saved) },
+      { id: 'environment', label: 'Environment', build: () => environmentSection(ctx, saved) },
+      { id: 'tools', label: 'Tools', build: () => toolsSection(ctx) },
       { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },
     ];
     // `only` embeds a single section with no nav (the agent window's first-run setup uses the Model section).

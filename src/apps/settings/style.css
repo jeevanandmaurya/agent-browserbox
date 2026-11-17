@@ -63,3 +63,22 @@
 @media (prefers-reduced-motion: reduce) { [data-app="settings"] .st-saved { transition: none; } }
 [data-app="settings"] .st-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 [data-app="settings"] .st-check input { margin: 0; accent-color: var(--text); }
+
+/* Extensions, connectors, environment */
+[data-app="settings"] .ex-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px; }
+[data-app="settings"] .ex-switch input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--text); }
+[data-app="settings"] .ex-text { flex: 1; min-width: 0; display: grid; gap: 3px; }
+[data-app="settings"] .ex-name { font-weight: 500; overflow-wrap: anywhere; }
+[data-app="settings"] .ex-desc, [data-app="settings"] .ex-meta { font-size: 12.5px; overflow-wrap: anywhere; }
+[data-app="settings"] .ex-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+[data-app="settings"] .cn-result { margin-top: 6px; font-size: 12.5px; }
+[data-app="settings"] .cn-tools { margin: 6px 0 0; padding-left: 18px; max-height: 180px; overflow: auto; }
+[data-app="settings"] .cn-tools code { font: 12px var(--mono); }
+[data-app="settings"] .env-rows { display: grid; gap: 6px; }
+[data-app="settings"] .env-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 6px; align-items: center; }
+@container (max-width: 560px) {
+  [data-app="settings"] .ex-row { flex-wrap: wrap; }
+  [data-app="settings"] .ex-actions { width: 100%; justify-content: flex-start; padding-left: 28px; }
+  [data-app="settings"] .env-row { grid-template-columns: 1fr auto; }
+  [data-app="settings"] .env-row input:nth-child(2) { grid-column: 1; }
+}

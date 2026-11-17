@@ -2,6 +2,7 @@ import type { Kernel } from '@/kernel/api';
 import { fmtBytes, h } from '@/ui/dom';
 import { icon } from './icons';
 import { modelPicker } from './model-picker';
+import { expandCommand, slashMenu, type SlashCommand } from './slash';
 
 export const UPLOAD_DIR = '/home/agent/uploads';
 
@@ -29,7 +30,7 @@ async function freePath(os: Kernel, name: string): Promise<string> {
  * The message box: auto-growing textarea, file attachments (copied into the
  * agent's uploads folder and referenced by path), model picker, send/stop.
  */
-export function createComposer(os: Kernel, opts: { onSubmit(text: string): boolean; onStop(): void; openModelSettings(): void }): Composer {
+export function createComposer(os: Kernel, opts: { onSubmit(text: string): boolean; onStop(): void; openModelSettings(): void; commands: SlashCommand[] }): Composer {
   const attached: Array<{ path: string; size: number }> = [];
   let busy = false;
 
@@ -41,6 +42,7 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   const sendBtn = h('button', { class: 'cp-send', type: 'submit', title: 'Send (Enter)', 'aria-label': 'Send message', disabled: true }, icon('send', 18));
   const stopBtn = h('button', { class: 'cp-send stop', type: 'button', title: 'Stop', 'aria-label': 'Stop the agent', hidden: true, onclick: () => opts.onStop() }, icon('stop', 16));
 
+  const slash = slashMenu(os, input, opts.commands);
   const el = h(
     'form',
     {
@@ -50,6 +52,7 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
         submit();
       },
     },
+    slash.el,
     chips,
     input,
     h('div', { class: 'cp-bar' }, attachBtn, picker.el, h('span', { class: 'spacer' }), sendBtn, stopBtn),
@@ -114,6 +117,18 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
     if (busy) return;
     let text = input.value.trim();
     if (!text && !attached.length) return;
+    const cmd = !attached.length ? slash.find(text) : null;
+    if (cmd?.command.run) {
+      cmd.command.run(cmd.args);
+      input.value = '';
+      grow();
+      return;
+    }
+    if (cmd?.command.template !== undefined) text = expandCommand(cmd.command.template, cmd.args);
+    else if (/^\/[\w-]+(\s|$)/.test(text)) {
+      os.notify({ title: `Unknown command ${text.split(/\s/)[0]}`, body: 'Type / to see the available commands.', level: 'warn' });
+      return;
+    }
     if (attached.length) text = `${text || 'Please look at the attached files.'}\n\nAttached files:\n${attached.map((a) => `- ${a.path}`).join('\n')}`;
     if (!opts.onSubmit(text)) return;
     input.value = '';
@@ -123,6 +138,7 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   }
 
   input.addEventListener('keydown', (e) => {
+    if (slash.key(e)) return e.preventDefault();
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       submit();

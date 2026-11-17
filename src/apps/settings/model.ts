@@ -263,6 +263,15 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
   instructions.addEventListener('input', debounce(saveInstr, 600));
   instructions.addEventListener('change', saveInstr);
 
+  const ctxWindow = h('input', { class: 'input st-num', type: 'number', min: 2048, max: 2000000, step: 1024, value: String(cfg.contextWindow) });
+  ctxWindow.addEventListener('change', () => {
+    const n = Math.round(Number(ctxWindow.value));
+    const v = Number.isFinite(n) && n >= 2048 ? Math.min(2_000_000, n) : DEFAULT_CONFIG.contextWindow;
+    ctxWindow.value = String(v);
+    if (v !== cfg.contextWindow) save({ contextWindow: v });
+  });
+  const autoCompact = h('input', { type: 'checkbox', checked: cfg.autoCompact, onchange: () => save({ autoCompact: autoCompact.checked }) });
+
   return h(
     'div',
     { class: 'st-section' },
@@ -272,5 +281,9 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     h('h3', null, 'Agent behaviour'),
     field('Max steps per message', maxSteps, 'Upper limit on model ↔ tool round trips before the agent stops and reports back.'),
     field('Extra instructions', instructions, 'Appended to the agent’s system prompt.'),
+    h('h3', null, 'Context'),
+    h('label', { class: 'st-check' }, autoCompact, 'Summarise the conversation automatically when the context window is 85% full'),
+    h('p', { class: 'muted st-note' }, 'The summary replaces the older messages for the model; the full history stays visible in the chat. You can also compact any time with /compact or the meter in the header.'),
+    field('Context window of the local model (tokens)', ctxWindow, 'Local servers do not report this. Use the context size you started the model with (for Ollama, num_ctx). Claude models are set automatically.'),
   );
 }

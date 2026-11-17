@@ -29,8 +29,6 @@ export interface PacksApi {
   remove(id: string): Promise<void>;
 }
 
-/** Must match the cache name in public/sw.js, which serves /assets/ from it. */
-const ASSET_CACHE = 'bbx-v2';
 interface FileRef {
   url: string;
   bytes: number;
@@ -58,7 +56,7 @@ export class PackManager implements PacksApi {
     this.#manifest ??= fetch(new URL('packs.json', KERNEL_URL))
       .then((r) => (r.ok ? r.json() : {}))
       .catch(() => ({}));
-    return this.#manifest.then((m) => (m[id] ?? []).map((f) => ({ url: new URL(`../${f.url}`, KERNEL_URL).href, bytes: f.bytes, cache: ASSET_CACHE })));
+    return this.#manifest.then((m) => (m[id] ?? []).map((f) => ({ url: new URL(`../${f.url}`, KERNEL_URL).href, bytes: f.bytes, cache: PACK_CACHE })));
   }
 
   async #state(id: string): Promise<PackState> {

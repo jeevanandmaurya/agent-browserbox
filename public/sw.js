@@ -2,6 +2,8 @@
 // Hashed build assets are immutable → cache-first. The HTML shell is
 // stale-while-revalidate so updates arrive on the next launch.
 const CACHE = 'bbx-v2';
+// Tool packs installed by the user (see src/kernel/packs.ts). Kept across app updates.
+const PACKS = 'bbx-packs';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html'])).then(() => self.skipWaiting()));
@@ -9,7 +11,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== PACKS).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
   );
 });
 
@@ -20,7 +22,7 @@ self.addEventListener('fetch', (e) => {
   const immutable = url.pathname.includes('/assets/');
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const hit = await cache.match(req);
+      const hit = (await cache.match(req)) ?? (await caches.open(PACKS).then((c) => c.match(req)));
       const refresh = fetch(req)
         .then((res) => {
           if (res.ok) cache.put(req, res.clone());

@@ -24,6 +24,8 @@ export interface Shell {
   el: HTMLElement;
   todoSlot: HTMLElement;
   usage: HTMLElement;
+  /** Holds the context meter. */
+  meterSlot: HTMLElement;
   /** Empty state (centered composer, suggestions) vs. conversation (docked composer). */
   setEmpty(empty: boolean): void;
   setTitle(title: string): void;
@@ -39,12 +41,13 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   const toggleBtn = h('button', { class: 'icon-btn bb-sb-toggle', type: 'button', title: 'Open sidebar', 'aria-label': 'Open sidebar', 'aria-expanded': 'false', onclick: () => openSidebar() }, icon('menu', 20));
   const title = h('h1', { class: 'bb-title' }, 'New chat');
   const usage = h('span', { class: 'bb-usage tech' });
+  const meterSlot = h('span', { class: 'bb-meter' });
   const headBtn = (label: string, ic: IconName, onclick: () => void, cls = '') => h('button', { class: `icon-btn ${cls}`, type: 'button', title: label, 'aria-label': label, onclick }, icon(ic, 18));
   const filesBtn = headBtn('Files', 'folder', () => workbench.open('files'), 'bb-files');
   const termBtn = headBtn('Terminal', 'terminal', () => workbench.open('terminal'), 'bb-term');
   const wbBtn = headBtn('Toggle workbench', 'panel', () => workbench.toggle(), 'bb-wb-toggle');
   wbBtn.setAttribute('aria-pressed', 'false');
-  const head = h('header', { class: 'bb-head' }, toggleBtn, title, h('span', { class: 'spacer' }), usage, filesBtn, termBtn, wbBtn);
+  const head = h('header', { class: 'bb-head' }, toggleBtn, title, h('span', { class: 'spacer' }), usage, meterSlot, filesBtn, termBtn, wbBtn);
 
   const chips = h(
     'div',
@@ -117,6 +120,7 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   }
 
   return {
+    meterSlot,
     el,
     todoSlot,
     usage,

@@ -97,12 +97,20 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
     render();
   }
 
+  // Tool downloads in progress, so a large first download is never invisible.
+  const downloads = new Map<string, { name: string; loaded: number; bytes: number }>();
   const updateKernel = () => {
     const procs = os.procs.list();
     const busy = procs.some((p) => p.kind === 'agent' && p.state === 'running');
-    kernelLabel.textContent = `Kernel · ${procs.length} processes`;
-    dot.classList.toggle('busy', busy);
+    const [d] = downloads.values();
+    kernelLabel.textContent = d ? `Downloading ${d.name}${d.bytes ? ` · ${Math.round((d.loaded / d.bytes) * 100)}%` : '…'}` : `Kernel · ${procs.length} processes`;
+    dot.classList.toggle('busy', busy || downloads.size > 0);
   };
+  os.bus.on('pack:change', (p) => {
+    if (p.downloading) downloads.set(p.id, { name: p.name, loaded: p.loaded, bytes: p.bytes });
+    else downloads.delete(p.id);
+    updateKernel();
+  });
   for (const ev of ['proc:spawn', 'proc:exit', 'proc:update'] as const) os.bus.on(ev, updateKernel);
   updateKernel();
   search.addEventListener('input', render);

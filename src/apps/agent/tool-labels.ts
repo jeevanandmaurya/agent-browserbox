@@ -26,9 +26,12 @@ const VERBS: Record<string, string> = {
   clipboard_write: 'Copied to the clipboard',
   notify: 'Sent a notification',
   speak: 'Spoke aloud',
+  use_skill: 'Used a skill',
 };
 
 export function friendlyTool(name: string, summary: string): string {
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (mcp) return `${mcp[1]}: ${mcp[2]!.replace(/_/g, ' ')}`;
   const verb = VERBS[name] ?? `Used ${name.replace(/_/g, ' ')}`;
   const file = /^[\w./~-]+\.\w{1,8}$/.test(summary) ? summary.split('/').pop() : '';
   return file ? `${verb.replace(/ a file$/, '')} ${file}` : verb;

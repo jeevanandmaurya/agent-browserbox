@@ -14,10 +14,10 @@ export interface ToolPack {
 }
 
 export const PACKS: readonly ToolPack[] = [
-  { id: 'python', name: 'Python', description: 'CPython compiled to WebAssembly, with the standard library. Lets the agent run Python scripts.', size: '~10 MB', available: true },
-  { id: 'git', name: 'Git', description: 'Local repositories: commit, branch, diff and log inside the virtual filesystem. Cloning needs a relay you configure.', size: '~2 MB', available: true },
-  { id: 'sqlite', name: 'SQLite', description: 'A real SQL database engine for files in the workspace.', size: '~1 MB', available: true },
-  { id: 'zip', name: 'Zip', description: 'Create and extract zip archives.', size: '<1 MB', available: true },
+  { id: 'python', name: 'Python', description: 'CPython compiled to WebAssembly, with the standard library. Lets the agent run Python scripts.', size: '~11 MB', available: true },
+  { id: 'git', name: 'Git', description: 'Local repositories: commit, branch, diff and log inside the virtual filesystem. Cloning needs a relay you configure.', size: '~210 KB', available: true },
+  { id: 'sqlite', name: 'SQLite', description: 'A real SQL database engine for files in the workspace.', size: '~730 KB', available: true },
+  { id: 'zip', name: 'Zip', description: 'Create and extract zip archives.', size: '~13 KB', available: true },
   { id: 'c', name: 'C compiler', description: 'Compile and run C programs to WebAssembly. A large download.', size: '~60 MB', available: false },
 ];
 

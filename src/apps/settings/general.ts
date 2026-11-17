@@ -4,6 +4,7 @@ import type { AppContext } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { heading, nextId } from './nav';
 import { radioGroup } from './permissions';
+import { packManager } from './packs';
 import './packs.css';
 
 type Theme = 'dark' | 'light' | 'system';
@@ -60,15 +61,15 @@ export function appearanceSection(ctx: AppContext, saved: () => void): HTMLEleme
   return h('div', { class: 'st-section' }, heading('Appearance'), theme.el);
 }
 
-export function toolsSection(ctx: AppContext, saved: () => void): HTMLElement {
+export function toolsSection(ctx: AppContext): HTMLElement {
   const { os } = ctx;
   return h(
     'div',
     { class: 'st-section' },
-    heading('Tools', 'Optional packs for the agent. Each downloads only when it is first used.'),
-    packList(os, saved),
+    heading('Tools', 'Optional runtimes for the agent and the shell (`pkg list` shows the same). Installing downloads the files now and keeps them on this device, so the tool works offline.'),
+    packManager(ctx),
     h('h3', null, 'First-run setup'),
-    h('p', { class: 'st-note muted' }, 'Walk through style, model, permissions and tools again. Nothing is reset.'),
+    h('p', { class: 'st-note muted' }, 'Walk through installed tools, model and permissions again. Nothing is reset.'),
     h(
       'div',
       { class: 'row' },
