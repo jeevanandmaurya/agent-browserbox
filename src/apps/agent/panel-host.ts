@@ -1,6 +1,7 @@
 import type { Kernel } from '@/kernel/api';
 import { APPS, type AppContext, type AppModule, type AppWindow } from '@/ui/apps';
 import { h } from '@/ui/dom';
+import { loader } from '@/ui/icons';
 
 export interface PanelApp {
   readonly id: string;
@@ -29,7 +30,7 @@ export function mountPanelApp(os: Kernel, id: string, pane: HTMLElement, args: R
   const closers: Array<() => void> = [];
   const unsubs: Array<() => void> = [];
   let hidden = false;
-  pane.replaceChildren(h('div', { class: 'app-loading' }, 'Loading…'));
+  pane.replaceChildren(h('div', { class: 'app-loading' }, loader(32)));
   pane.dataset.app = id;
 
   const proc = os.procs.spawn({ name: manifest?.name ?? id, kind: 'app', detail: `${id} (agent window)`, onKill: () => win.close() });

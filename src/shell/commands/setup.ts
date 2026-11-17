@@ -29,7 +29,7 @@ export const setupCommand: Command = {
         out(`${C.green}✓${C.reset} Claude Opus 5.5 · key stored encrypted\n`);
       } else {
         for (;;) {
-          const url = await ask(tty, `Local model server ${C.dim}(e.g. ${DEFAULT_CONFIG.openaiBaseUrl} · Enter to skip)${C.reset}: `);
+          const url = await ask(tty, `Local model server ${C.dim}(e.g. ${DEFAULT_CONFIG.localBaseUrl} · Enter to skip)${C.reset}: `);
           if (!url) {
             out(`${C.dim}no model yet: add one later in Settings → Model${C.reset}\n`);
             break;
@@ -42,7 +42,7 @@ export const setupCommand: Command = {
               models.forEach((m, i) => out(`  ${i + 1}  ${m}\n`));
               model = models[Number(await ask(tty, `model ${C.dim}[1]${C.reset}: `)) - 1] ?? models[0]!;
             }
-            saveConfig(os, { provider: 'openai', openaiBaseUrl: url, openaiModel: model });
+            saveConfig(os, { provider: 'local', localBaseUrl: url, localModel: model });
             out(`${C.green}✓${C.reset} ${model} on ${url}\n`);
             break;
           } catch (err) {

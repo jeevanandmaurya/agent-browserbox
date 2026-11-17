@@ -4,6 +4,7 @@ import { debounce, fmtBytes, h } from '@/ui/dom';
 import { renderMarkdown } from '../editor/markdown';
 import { errMessage, isTextLike, kindOf, looksBinary, mimeOf, type FileKind } from '../files/filetypes';
 import { buildSiteDoc, NAV_MESSAGE, resolveRef } from './inline';
+import { loader } from '@/ui/icons';
 import { hexView, htmlFrame, ImageView, textView } from './views';
 import './style.css';
 
@@ -144,7 +145,7 @@ const app: AppModule = {
         body.replaceChildren(html !== null ? (frame = htmlFrame(html, titleArg ?? 'HTML preview')) : empty('Nothing to preview. Open a file from Files.'));
         return;
       }
-      if (!body.firstChild) body.append(h('div', { class: 'empty' }, 'Loading…'));
+      if (!body.firstChild) body.append(h('div', { class: 'app-loading' }, loader(28)));
       let el: HTMLElement;
       try {
         el = await view(path, gen);

@@ -104,7 +104,8 @@ export async function mountStandalone(os: Kernel, app: AppModule, name: string, 
       return document.hidden;
     },
     setTitle(title) {
-      this.title = document.title = `${title} — BrowserBox`;
+      this.title = title;
+      document.title = title && title !== 'BrowserBox' ? `${title} — BrowserBox` : 'BrowserBox';
     },
     focus: () => focus(),
     close: () => close(),

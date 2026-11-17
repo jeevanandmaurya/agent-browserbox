@@ -205,7 +205,7 @@ await check('tool packs: pkg, git, sqlite3, zip', async () => {
 // ---- The agent, running in the kernel, driven from its own window -------------
 await check('agent: tool loop, approvals across windows, validation', async () => {
   const popupsBefore = popups;
-  await agent.evaluate(() => bbx.settings.set('agent.config', { provider: 'openai', openaiBaseUrl: 'http://localhost:11434/v1', openaiModel: 'mock' }));
+  await agent.evaluate(() => bbx.settings.set('agent.config', { provider: 'local', localBaseUrl: 'http://localhost:11434/v1', localModel: 'mock' }));
   await agent.bringToFront();
   await agent.locator('.ag-input').fill('make a report');
   await agent.locator('.ag-input').press('Enter');
@@ -288,7 +288,7 @@ await check('agent window: settings open inside the page on the Model section', 
   // The model name under the title leads to the same place.
   await agent.locator('.bb-sub').click();
   await agent.locator('.menu .pop-item', { hasText: 'Model settings' }).click();
-  await agent.waitForSelector('.sm-dialog .sn-tab[aria-selected="true"]:text("Model")', { timeout: 10000 });
+  await agent.locator('.sm-dialog .sn-tab[aria-selected="true"]', { hasText: 'Model' }).waitFor({ timeout: 10000 });
   await agent.keyboard.press('Escape');
   if (popups !== before) throw new Error('a new window opened');
   return 'modal, Model section, Esc closes';

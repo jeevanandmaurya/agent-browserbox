@@ -50,7 +50,7 @@ const app: AppModule = {
       if (!open(OS_URL, 'bbx-os')) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
     };
     const route = (id: string, args: Record<string, unknown> = {}) => {
-      if (id === 'settings') return settings.open(typeof args.section === 'string' ? args.section : 'model');
+      if (id === 'settings') return settings.open(typeof args.section === 'string' ? args.section : undefined);
       if (id === 'agent') return composer.focus();
       if (TOOLS.some((t) => t.id === id)) {
         workbench.open(id, args);
@@ -77,7 +77,7 @@ const app: AppModule = {
     const sidebar = createSidebar(os, {
       newChat: () => void newSession(),
       openChat: (id) => void openSession(id),
-      settings: () => settings.open('model'),
+      settings: () => settings.open(),
       processes: () => route('taskmgr'),
       openDesktop,
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
@@ -91,17 +91,18 @@ const app: AppModule = {
           { label: 'Files', icon: 'folder', onSelect: () => route('files') },
           { label: 'Terminal', icon: 'terminal', onSelect: () => route('terminal') },
           { label: 'Preview', icon: 'eye', onSelect: () => route('preview') },
+          { label: 'Browser', icon: 'globe', onSelect: () => route('browser') },
           { label: 'Processes', icon: 'activity', onSelect: () => route('taskmgr') },
           { separator: true },
           { label: 'Context', icon: 'info', hint: 'What fills the context window', onSelect: () => meter.open() },
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
           { separator: true },
-          { label: 'Settings', icon: 'gear', onSelect: () => settings.open('model') },
+          { label: 'Settings', icon: 'gear', onSelect: () => settings.open() },
           { label: 'Open desktop', icon: 'external', onSelect: openDesktop },
         ],
         'More',
       );
-    const shell = createShell({ sidebar, workbench, composer, log, actions: { more, model: openModel, name: () => os.settings.get<string>('user.name', '') } });
+    const shell = createShell({ sidebar, workbench, composer, log, actions: { more, model: openModel, name: () => os.settings.get<string>('user.name', ''), togglePrivate: () => void togglePrivate() } });
     const refreshModel = () => shell.setSubtitle(modelLabel(loadConfig(os)));
     shell.meterSlot.append(meter.el);
     refreshModel();
@@ -116,7 +117,6 @@ const app: AppModule = {
       busy = b;
       composer.setBusy(b);
       shell.setBusy(b);
-      win.setTitle(b ? 'BrowserBox — working…' : 'BrowserBox');
       // Keep the screen awake while the agent works.
       if (b) void navigator.wakeLock?.request('screen').then((w) => (wake = w), () => undefined);
       else void wake?.release().catch(() => undefined);
@@ -125,7 +125,8 @@ const app: AppModule = {
 
     function adopt(handle: AgentHandle): void {
       agent = handle;
-      writeLast(handle.sid);
+      // A private chat is never reopened after a reload.
+      void handle.snapshot().then((snap) => !snap.private && writeLast(handle.sid));
       handle.onAsk((question, options) => log.ask(question, options));
       handle.prompter = (req, signal) => log.approve(req, signal);
       handle.onEvent((e) => {
@@ -144,7 +145,10 @@ const app: AppModule = {
           setBusy(false);
           meter.refresh();
           void sidebar.refresh(agent.sid);
-          void agent.snapshot().then((s) => shell.setTitle(s.title));
+          void agent.snapshot().then((s) => {
+            shell.setTitle(s.title);
+            win.setTitle(s.title);
+          });
           if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished');
         }
       });
@@ -155,8 +159,10 @@ const app: AppModule = {
       const snap = await agent.snapshot();
       const has = snap.messages.length > 0;
       todos = snap.todos;
+      shell.setPrivate(snap.private);
       shell.setEmpty(!has);
       shell.setTitle(has ? snap.title : '');
+      win.setTitle(has ? snap.title : '');
       if (has) log.restore(snap.messages);
       else log.clear();
       showTodos();
@@ -173,6 +179,16 @@ const app: AppModule = {
       if (busy) return os.notify('Stop the running task first.');
       leave();
       adopt(await os.agents.create());
+      await showState();
+      composer.focus();
+    }
+
+    /** Switches the empty chat between saved and private (a private chat with messages ends instead). */
+    async function togglePrivate(): Promise<void> {
+      if (busy) return os.notify('Stop the running task first.');
+      const snap = await agent.snapshot();
+      leave();
+      adopt(await os.agents.create({ private: !snap.private }));
       await showState();
       composer.focus();
     }

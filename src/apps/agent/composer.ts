@@ -66,6 +66,8 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   const grow = () => {
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
+    // A scrollbar only once the text is taller than the box can grow.
+    input.style.overflowY = input.scrollHeight > 200 ? 'auto' : 'hidden';
     el.classList.toggle('multiline', input.scrollHeight > 44);
     sendBtn.disabled = busy || (!input.value.trim() && !attached.length);
   };

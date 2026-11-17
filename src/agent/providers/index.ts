@@ -9,6 +9,11 @@ export async function createProvider(os: Kernel, cfg: AgentConfig): Promise<Prov
     if (!key) throw new ProviderError('No Anthropic API key yet. Add one in Settings → Model, or switch to a local model there.');
     return (await import('./anthropic')).createAnthropicProvider(cfg, key, await os.mcp.relayed());
   }
-  if (cfg.provider === 'openai') return (await import('./openai')).createOpenAiProvider(cfg, await os.secrets.get(SECRET.openai));
+  if (cfg.provider === 'local') return (await import('./openai')).createOpenAiProvider(cfg, { kind: 'local', baseUrl: cfg.localBaseUrl, model: cfg.localModel }, await os.secrets.get(SECRET.local));
+  if (cfg.provider === 'openai') {
+    const key = await os.secrets.get(SECRET.openai);
+    if (!key) throw new ProviderError('No API key for the OpenAI-compatible API yet. Add one in Settings → Model.');
+    return (await import('./openai')).createOpenAiProvider(cfg, { kind: 'openai', baseUrl: cfg.openaiBaseUrl, model: cfg.openaiModel }, key);
+  }
   return (await import('./webllm')).createWebLlmProvider(os, cfg);
 }

@@ -27,13 +27,39 @@ body.wb-resizing iframe { pointer-events: none; }
 .wb-tool:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .wb-tool .ic { color: var(--accent); }
 
-/* Full-screen sheet on narrow screens */
+.wb-grab { display: none; }
+/* Desktop: minimised = only the tab bar, as a slim column; expanded = the whole area beside the sidebar. */
+.wb[data-size='min'] { width: 52px; }
+.wb[data-size='min'] .wb-panes, .wb[data-size='min'] .wb-launcher, .wb[data-size='min'] .wb-resize, .wb[data-size='min'] .wb-tab-label, .wb[data-size='min'] .wb-tab-close { display: none; }
+.wb[data-size='min'] .wb-head { flex-direction: column; height: auto; gap: 6px; padding: 8px 0; border: 0; }
+.wb[data-size='min'] .wb-tabs { flex-direction: column; align-items: center; }
+.wb[data-size='min'] .wb-actions { flex-direction: column; }
+.wb[data-size='min'] .wb-actions > :not(.wb-min-btn) { display: none; }
+.bb.wb-full .bb-main { display: none; }
+.wb[data-size='full'] { flex: 1; width: auto; }
+.wb[data-size='full'] .wb-resize { display: none; }
+
+/* Phones: a bottom sheet with a drag handle. */
 @media (max-width: 900px) {
-  .bb .wb { position: fixed; inset: 0; z-index: 30; width: auto; border-left: 0; animation: wb-up 0.18s ease-out; padding-bottom: env(safe-area-inset-bottom); }
-  .wb-resize { display: none; }
-  .wb-head { height: 50px; }
+  .bb .wb { --wb-h: 62dvh; position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 30; width: auto; height: var(--wb-h); border: 0; border-top: 1px solid var(--border); border-radius: 18px 18px 0 0; box-shadow: 0 -10px 40px rgb(0 0 0 / 0.35); animation: wb-up 0.2s ease-out; padding-bottom: env(safe-area-inset-bottom); transition: height 0.2s ease; }
+  .bb .wb.dragging { transition: none; }
+  .bb .wb[data-size='full'] { height: 100dvh; border-radius: 0; flex: none; }
+  .bb .wb[data-size='min'] { width: auto; height: calc(56px + env(safe-area-inset-bottom)); }
+  .bb .wb[data-size='min'] .wb-head { flex-direction: row; height: 44px; padding: 0 6px 0 8px; }
+  .bb .wb[data-size='min'] .wb-tabs { flex-direction: row; }
+  .bb .wb[data-size='min'] .wb-tab-label { display: inline; }
+  .bb .wb[data-size='min'] .wb-actions { flex-direction: row; }
+  .bb .wb[data-size='min'] .wb-actions > :not(.wb-max-btn) { display: inline-grid; }
+  .bb.wb-full .bb-main { display: flex; }
+  /* Leave room for a minimised sheet above the composer. */
+  .bb.wb-open.wb-min .bb-dock { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .wb-grab { display: grid; place-items: center; height: 16px; flex-shrink: 0; cursor: ns-resize; touch-action: none; }
+  .wb-grab i { width: 36px; height: 4px; border-radius: 2px; background: var(--panel-3); }
+  .wb-resize, .wb-max-btn { display: none; }
+  .wb-head { height: 44px; border-bottom: 0; }
 }
 @keyframes wb-up { from { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bb .wb { transition: none; } }
 
 /* Settings modal (appended to <body>, outside the shell) */
 .sm-overlay { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center; padding: 24px; background: rgb(0 0 0 / 0.5); animation: sm-fade 0.15s ease-out; }

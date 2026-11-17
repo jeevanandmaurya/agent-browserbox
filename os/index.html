@@ -4,20 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#0b0d12" />
+    <meta name="theme-color" content="#1a1a19" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: data:; font-src 'self' data:; connect-src *; frame-src 'self' blob: data: https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>BrowserBox Desktop</title>
     <link rel="manifest" href="../manifest.webmanifest" />
     <link rel="icon" href="../icon.svg" type="image/svg+xml" />
     <style>
-      html, body { height: 100%; margin: 0; background: #0b0d12; }
-      .boot { margin: 0; padding: 14px 16px; color: #8d8d93; font: 13px/1.55 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+      html, body { height: 100%; margin: 0; background: #1a1a19; }
+      .boot { height: 100%; display: grid; place-items: center; color: #4fb89c; }
+      .boot path { animation: f 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite both; transform-box: fill-box; transform-origin: center; }
+      .boot path:nth-child(2) { animation-delay: 0.14s; --o: 0.72; }
+      .boot path:nth-child(3) { animation-delay: 0.28s; --o: 0.45; }
+      @keyframes f { 0% { opacity: 0; transform: translateY(-3px) scale(0.92); } 30%, 70% { opacity: var(--o, 1); transform: none; } 100% { opacity: 0; transform: translateY(2px); } }
+      @media (prefers-reduced-motion: reduce) { .boot path { animation: none; opacity: var(--o, 1); } }
     </style>
   </head>
   <body>
     <!-- Painted before any script runs; replaced when the app mounts. -->
-    <div id="desk"><pre class="boot" role="status">BrowserBox
-starting kernel…</pre></div>
+    <div id="desk"><div class="boot" role="status" aria-label="Starting BrowserBox"><svg viewBox="0 0 32 32" width="40" height="40" aria-hidden="true"><path d="M16 3l12 6.5-12 6.5L4 9.5z" fill="currentColor" opacity="1"/><path d="M4 12.5l11 6v10.5L4 23z" fill="currentColor" opacity="0.72"/><path d="M28 12.5l-11 6v10.5L28 23z" fill="currentColor" opacity="0.45"/></svg></div></div>
     <!-- Starts the kernel while the page's own script is still downloading. See src/client/connect.ts. -->
     <iframe id="bbx-bridge" src="../kernel/bridge.html" title="BrowserBox kernel bridge" aria-hidden="true" hidden></iframe>
     <script type="module" src="/src/pages/os.ts"></script>

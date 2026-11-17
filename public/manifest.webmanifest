@@ -4,7 +4,7 @@
   "description": "A sandboxed operating system for AI agents that runs entirely in your browser.",
   "start_url": "./agent/",
   "display": "standalone",
-  "background_color": "#0b0d12",
-  "theme_color": "#0b0d12",
+  "background_color": "#131312",
+  "theme_color": "#1a1a19",
   "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }

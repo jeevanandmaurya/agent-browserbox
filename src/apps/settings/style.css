@@ -7,10 +7,27 @@
 [data-app="settings"] .sn-tab[aria-selected="true"] { background: var(--accent-soft); color: var(--text); font-weight: 500; }
 [data-app="settings"] .sn-panel { flex: 1; min-width: 0; overflow: auto; outline: none; }
 [data-app="settings"] .sn-main { max-width: 820px; padding: 16px 20px 24px; }
+[data-app="settings"] .sn-tab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+[data-app="settings"] .sn-tab .ic { display: none; }
+[data-app="settings"] .sn-back { display: none; }
 @container (max-width: 560px) {
+  /* Phones: the list of sections is a page of its own; a section opens full width with a back button. */
   [data-app="settings"] .sn-layout { flex-direction: column; }
-  [data-app="settings"] .sn-nav { flex-direction: row; width: auto; padding: 6px 8px; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-  [data-app="settings"] .sn-main { padding: 12px; }
+  [data-app="settings"] .sn-layout[data-view='list'] .sn-panel, [data-app="settings"] .sn-layout[data-view='section'] .sn-nav { display: none; }
+  [data-app="settings"] .sn-nav { width: auto; flex: 1; gap: 0; padding: 8px 12px; border: 0; background: none; overflow-y: auto; }
+  [data-app="settings"] .sn-tab { min-height: 54px; padding: 0 6px; border-radius: 0; border-bottom: 1px solid var(--border); color: var(--text); font-size: 16px; font-weight: 400 !important; background: none !important; }
+  [data-app="settings"] .sn-tab .ic { display: block; color: var(--muted); transform: rotate(-90deg); }
+  [data-app="settings"] .sn-back { display: inline-flex; align-items: center; gap: 6px; margin: 8px 8px 0; padding: 8px; border: 0; border-radius: 8px; background: none; color: var(--muted); font-size: 15px; cursor: pointer; }
+  [data-app="settings"] .sn-main { padding: 8px 18px 32px; }
+  [data-app="settings"] .st-section { gap: 20px; }
+  [data-app="settings"] .st-head h2 { font-size: 22px; font-weight: 600; }
+  [data-app="settings"] .st-choice { padding: 14px; gap: 12px; }
+  [data-app="settings"] .st-choice strong { font-size: 15px; }
+  [data-app="settings"] .st-choice .muted, [data-app="settings"] .st-note { font-size: 13px; line-height: 1.45; }
+  [data-app="settings"] .field { gap: 6px; }
+  [data-app="settings"] .field > label, [data-app="settings"] .field > span { font-size: 13px; }
+  [data-app="settings"] .st-panel { padding: 16px; gap: 16px; border-radius: 14px; }
+  [data-app="settings"] h3 { margin-top: 12px; font-size: 15px; }
 }
 [data-app="settings"] .sn-main { max-width: 680px; }
 

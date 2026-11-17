@@ -44,7 +44,8 @@ const app: AppModule = {
     }
     const nav = sectionNav(sections, 'Settings sections', ctx.proc.pid);
     ctx.root.append(nav.el, pill);
-    nav.show(typeof ctx.args.section === 'string' ? ctx.args.section : 'model');
+    // A deep link opens that section directly; otherwise phones start at the list.
+    nav.show(typeof ctx.args.section === 'string' ? ctx.args.section : 'model', typeof ctx.args.section === 'string');
     return () => clearTimeout(hideTimer);
   },
 };

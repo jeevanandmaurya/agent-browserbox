@@ -1,6 +1,6 @@
 import { h } from '@/ui/dom';
 import type { Composer } from './composer';
-import { icon, mark } from './icons';
+import { icon, loader, mark } from './icons';
 import type { Sidebar } from './sidebar';
 import type { Transcript } from './view';
 import type { Workbench } from './workbench';
@@ -19,6 +19,8 @@ export interface Shell {
   /** The model name under the title. */
   setSubtitle(text: string): void;
   setBusy(busy: boolean): void;
+  /** Marks the chat as private (not saved). */
+  setPrivate(on: boolean): void;
   closeDrawer(): void;
   /** Updates header buttons after the workbench changes. */
   syncWorkbench(): void;
@@ -31,6 +33,8 @@ export interface ShellActions {
   model(anchor: HTMLElement): void;
   /** Name for the greeting, if the user gave one. */
   name(): string;
+  /** The private-chat toggle (shown on an empty or private chat). */
+  togglePrivate(): void;
 }
 
 function greeting(name: string): string {
@@ -48,15 +52,17 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   const title = h('h1', { class: 'bb-title' });
   const subtitle = h('button', { class: 'bb-sub', type: 'button', 'aria-haspopup': 'menu', title: 'Change model', onclick: () => actions.model(subtitle) });
   const titleBox = h('div', { class: 'bb-titlebox' }, title, subtitle);
-  const spinner = h('span', { class: 'bb-spin', role: 'status', 'aria-label': 'Working', hidden: true });
+  const spinner = h('span', { class: 'bb-spin', hidden: true }, loader(20, 'Working'));
   const meterSlot = h('span', { class: 'bb-meter' });
   const wbBtn = h('button', { class: 'icon-btn bb-wb-toggle', type: 'button', title: 'Workbench', 'aria-label': 'Toggle workbench', 'aria-pressed': 'false', onclick: () => workbench.toggle() }, icon('panel', 20));
+  const privateBtn = h('button', { class: 'icon-btn bb-private', type: 'button', title: 'Private chat', 'aria-label': 'Private chat: not saved, gone when you leave', 'aria-pressed': 'false', onclick: () => actions.togglePrivate() }, icon('ghost', 22));
   const moreBtn = h('button', { class: 'icon-btn bb-more', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', onclick: () => actions.more(moreBtn) }, icon('more', 22));
-  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, meterSlot, wbBtn, moreBtn));
+  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, privateBtn, meterSlot, wbBtn, moreBtn));
 
   // An empty chat is just the mark and a greeting.
   const greet = h('h2', { class: 'bb-greet' });
-  const hero = h('section', { class: 'bb-hero', 'aria-label': 'New chat' }, mark(36), greet);
+  const privateNote = h('p', { class: 'bb-private-note', hidden: true }, 'Not saved, and gone when you leave this chat.');
+  const hero = h('section', { class: 'bb-hero', 'aria-label': 'New chat' }, mark(36), greet, privateNote);
   const scroller = h('div', { class: 'ag-scroll' }, h('div', { class: 'bb-col' }, hero, log.el));
   const todoSlot = h('div', { class: 'bb-todos' });
   const dock = h('div', { class: 'bb-dock' }, todoSlot, composer.el);
@@ -126,7 +132,7 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     setEmpty(empty) {
       el.classList.toggle('is-empty', empty);
       hero.hidden = !empty;
-      if (empty) greet.textContent = greeting(actions.name());
+      if (empty && !el.classList.contains('is-private')) greet.textContent = greeting(actions.name());
     },
     setTitle(text) {
       title.textContent = text;
@@ -137,6 +143,13 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     },
     setBusy(busy) {
       spinner.hidden = !busy;
+    },
+    setPrivate(on) {
+      el.classList.toggle('is-private', on);
+      privateBtn.setAttribute('aria-pressed', String(on));
+      privateNote.hidden = !on;
+      greet.textContent = on ? 'Private chat' : greeting(actions.name());
+      composer.input.placeholder = on ? 'Private message' : 'Message BrowserBox';
     },
     closeDrawer,
     syncWorkbench() {

@@ -1,6 +1,11 @@
 import type { Kernel } from '@/kernel/api';
 
-export type ProviderId = 'anthropic' | 'openai' | 'webllm';
+/**
+ * anthropic: Claude via Anthropic's API. local: a model server on your own
+ * machine or network (Ollama, LM Studio…). openai: a hosted API that speaks
+ * the OpenAI protocol (OpenAI, OpenRouter, Groq…). webllm: a model in this tab.
+ */
+export type ProviderId = 'anthropic' | 'local' | 'openai' | 'webllm';
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface AgentConfig {
@@ -8,7 +13,10 @@ export interface AgentConfig {
   /** Claude model id (Anthropic API). */
   anthropicModel: string;
   effort: Effort;
-  /** Base URL of an OpenAI-compatible server, e.g. a local Ollama. */
+  /** A model server on your machine or network. */
+  localBaseUrl: string;
+  localModel: string;
+  /** A hosted OpenAI-compatible API. */
   openaiBaseUrl: string;
   openaiModel: string;
   /** MLC model id for the in-browser WebGPU runtime. */
@@ -19,7 +27,7 @@ export interface AgentConfig {
   instructions: string;
   /** Let Claude use Anthropic's server-side web search and fetch tools. */
   webSearch: boolean;
-  /** Context window of the local/OpenAI-compatible model, in tokens (the server does not report it). */
+  /** Context window of a local or OpenAI-compatible model, in tokens (servers do not report it). */
   contextWindow: number;
   /** Summarise the conversation automatically when the context is nearly full. */
   autoCompact: boolean;
@@ -29,7 +37,9 @@ export const DEFAULT_CONFIG: AgentConfig = {
   provider: 'anthropic',
   anthropicModel: 'claude-opus-5-5',
   effort: 'medium',
-  openaiBaseUrl: 'http://localhost:11434/v1',
+  localBaseUrl: 'http://localhost:11434/v1',
+  localModel: '',
+  openaiBaseUrl: 'https://api.openai.com/v1',
   openaiModel: '',
   webllmModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
   maxSteps: 50,
@@ -46,12 +56,21 @@ export const ANTHROPIC_MODELS = [
   { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 — fastest' },
 ] as const;
 
-/** Local servers that speak the OpenAI chat-completions protocol. */
+/** Model servers you run yourself; they speak the OpenAI chat-completions protocol. */
 export const LOCAL_PRESETS = [
   { label: 'Ollama', baseUrl: 'http://localhost:11434/v1', hint: 'Start with OLLAMA_ORIGINS="*" ollama serve so the browser may connect.' },
   { label: 'LM Studio', baseUrl: 'http://localhost:1234/v1', hint: 'Enable CORS in the LM Studio server settings.' },
   { label: 'llama.cpp', baseUrl: 'http://localhost:8080/v1', hint: 'Run llama-server (CORS is enabled by default).' },
   { label: 'vLLM', baseUrl: 'http://localhost:8000/v1', hint: 'Pass --allowed-origins \'["*"]\' to the server.' },
+] as const;
+
+/** Hosted APIs that speak the OpenAI protocol. They need an API key and must allow browser (CORS) requests. */
+export const API_PRESETS = [
+  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', hint: 'Keys at platform.openai.com.' },
+  { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', hint: 'One key for many models; allows browser requests.' },
+  { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', hint: 'Fast open models.' },
+  { label: 'Together', baseUrl: 'https://api.together.xyz/v1', hint: 'Open models.' },
+  { label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', hint: 'Mistral models.' },
 ] as const;
 
 /** Models that run fully inside this tab on WebGPU (weights are cached after the first download). */
@@ -64,12 +83,26 @@ export const WEBLLM_MODELS = [
 ] as const;
 
 /** Names under which API keys are kept in the encrypted secret store (`os.secrets`). */
-export const SECRET = { anthropic: 'anthropic.apiKey', openai: 'openai.apiKey' } as const;
+export const SECRET = { anthropic: 'anthropic.apiKey', openai: 'openai.apiKey', local: 'local.apiKey' } as const;
 
 const KEY = 'agent.config';
 
+const isLocalUrl = (url: string) => {
+  try {
+    const h = new URL(url).hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || /^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(h) || h.endsWith('.local');
+  } catch {
+    return false;
+  }
+};
+
 export function loadConfig(os: Kernel): AgentConfig {
-  return { ...DEFAULT_CONFIG, ...os.settings.get<Partial<AgentConfig>>(KEY, {}) };
+  const stored = os.settings.get<Partial<AgentConfig>>(KEY, {});
+  // Older configs kept local servers under the "openai" provider; move them across.
+  if (stored.provider === 'openai' && stored.localBaseUrl === undefined && stored.openaiBaseUrl && isLocalUrl(stored.openaiBaseUrl)) {
+    return { ...DEFAULT_CONFIG, ...stored, provider: 'local', localBaseUrl: stored.openaiBaseUrl, localModel: stored.openaiModel ?? '', openaiBaseUrl: DEFAULT_CONFIG.openaiBaseUrl, openaiModel: '' };
+  }
+  return { ...DEFAULT_CONFIG, ...stored };
 }
 
 export function saveConfig(os: Kernel, patch: Partial<AgentConfig>): AgentConfig {
@@ -81,6 +114,7 @@ export function saveConfig(os: Kernel, patch: Partial<AgentConfig>): AgentConfig
 /** Human label for the active model, e.g. for window titles. */
 export function describeModel(cfg: AgentConfig): string {
   if (cfg.provider === 'anthropic') return cfg.anthropicModel;
+  if (cfg.provider === 'local') return `${cfg.localModel || 'no model'} @ ${cfg.localBaseUrl.replace(/^https?:\/\//, '')}`;
   if (cfg.provider === 'openai') return `${cfg.openaiModel || 'no model'} @ ${cfg.openaiBaseUrl.replace(/^https?:\/\//, '')}`;
   return `${cfg.webllmModel} (WebGPU)`;
 }

@@ -104,13 +104,13 @@ await check('first boot: setup in the console connects to a local model server',
   }
   await page.waitForSelector('.ag-input', { timeout: 120000 });
   const out = await page.evaluate(() => ({ cfg: bbx.settings.get('agent.config', {}), perms: bbx.perms.mode, installed: bbx.settings.get('pkg.installed', []) }));
-  if (out.cfg.openaiModel !== 'mock' || out.perms !== 'ask' || out.installed.join() !== 'git,sqlite,zip') throw new Error(JSON.stringify(out));
+  if (out.cfg.localModel !== 'mock' || out.perms !== 'ask' || out.installed.join() !== 'git,sqlite,zip') throw new Error(JSON.stringify(out));
   // The rest of this suite runs without prompts and with a small window so compaction triggers.
   await page.evaluate(() => {
     bbx.perms.mode = 'auto';
     bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), contextWindow: 8192 });
   });
-  return `model ${out.cfg.openaiModel} @ ${out.cfg.openaiBaseUrl}; installed ${out.installed.join(', ')}`;
+  return `model ${out.cfg.localModel} @ ${out.cfg.localBaseUrl}; installed ${out.installed.join(', ')}`;
 });
 
 await check('example skills, agents and commands are seeded', () =>
@@ -252,6 +252,68 @@ await check('compacted sessions reload with their full history', async () => {
     throw new Error(`expected ${visible}: ${JSON.stringify(info)}`);
   });
   return `${visible} user messages restored`;
+});
+
+await check('private chat: never saved, not listed, gone after leaving it', async () => {
+  const sessions = async () => page.evaluate(async () => (await bbx.fs.readdir('/home/agent/.sessions')).length);
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  const before = await sessions();
+  await page.locator('.bb-private').click();
+  await page.waitForSelector('.bb.is-private');
+  await send('a private thought', 'echo: a private thought');
+  const listed = await page.evaluate(async () => (await bbx.agents.live()).length);
+  if ((await sessions()) !== before) throw new Error('the private chat was written to disk');
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  await page.waitForFunction(() => !document.querySelector('.bb.is-private') && !document.querySelector('.ag-log')?.textContent.includes('a private thought'));
+  if ((await sessions()) !== before) throw new Error('saved on leaving');
+  return `not on disk; ${listed} live sessions listed while it ran, none of them private`;
+});
+
+await check('side panel: minimise, expand, and a draggable bottom sheet on phones', async () => {
+  await page.evaluate(() => bbx.openApp('files'));
+  await page.waitForSelector('.wb:not([hidden]) .wb-pane[data-app="files"]');
+  await page.locator('.wb-min-btn').click();
+  const min = await page.evaluate(() => ({ size: document.querySelector('.wb').dataset.size, w: document.querySelector('.wb').getBoundingClientRect().width, panes: getComputedStyle(document.querySelector('.wb-panes')).display }));
+  if (min.size !== 'min' || min.w > 60 || min.panes !== 'none') throw new Error(JSON.stringify(min));
+  await page.locator('.wb-min-btn').click();
+  await page.locator('.wb-max-btn').click();
+  const full = await page.evaluate(() => ({ main: getComputedStyle(document.querySelector('.bb-main')).display, w: document.querySelector('.wb').getBoundingClientRect().width }));
+  if (full.main !== 'none' || full.w < 900) throw new Error(JSON.stringify(full));
+  await page.locator('.wb-max-btn').click();
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.waitForTimeout(400); // the sheet slides in
+  const grab = await page.locator('.wb-grab').boundingBox();
+  const h0 = await page.evaluate(() => document.querySelector('.wb').getBoundingClientRect().height);
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + 208, { steps: 6 });
+  await page.mouse.up();
+  const h1 = await page.evaluate(() => document.querySelector('.wb').getBoundingClientRect().height);
+  if (!(h1 < h0 - 150)) throw new Error(`sheet ${h0} → ${h1}`);
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + 208);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + grab.width / 2, 790, { steps: 6 });
+  await page.mouse.up();
+  const size = await page.evaluate(() => document.querySelector('.wb').dataset.size);
+  if (size !== 'min') throw new Error(`dragging down did not minimise: ${size}`);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.locator('.wb-min-btn').click();
+  return `desktop strip ${Math.round(min.w)}px, full width ${Math.round(full.w)}px; phone sheet ${Math.round(h0)} → ${Math.round(h1)}px → minimised`;
+});
+
+await check('editor: Markdown preview replaces the code instead of stacking under it', async () => {
+  await page.evaluate(() => bbx.fs.writeFile('/home/agent/readme.md', '# Hello\n\nSome *text*.'));
+  await page.evaluate(() => bbx.openApp('editor', { path: '/home/agent/readme.md' }));
+  const pane = page.locator('.wb-pane[data-app="editor"]');
+  await pane.locator('[aria-label="Toggle Markdown preview"]').click();
+  await pane.locator('.md-preview h1').waitFor({ timeout: 5000 });
+  const on = await pane.evaluate((el) => ({ code: el.querySelector('.code')?.checkVisibility(), h1: el.querySelector('h1')?.textContent }));
+  if (on.code || on.h1 !== 'Hello') throw new Error(JSON.stringify(on));
+  await pane.locator('[aria-label="Toggle Markdown preview"]').click();
+  if (!(await pane.evaluate((el) => el.querySelector('.code')?.checkVisibility()))) throw new Error('the code did not come back');
+  return 'Preview ⇄ Edit swap';
 });
 
 if (errors.length) {

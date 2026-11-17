@@ -20,7 +20,8 @@ function choices(cfg: AgentConfig): Choice[] {
     return { group: 'Cloud', name: name!, hint, active: (c) => c.provider === 'anthropic' && c.anthropicModel === m.id, patch: { provider: 'anthropic', anthropicModel: m.id } };
   });
   if (!ANTHROPIC_MODELS.some((m) => m.id === cfg.anthropicModel)) list.push({ group: 'Cloud', name: cfg.anthropicModel, hint: 'custom model id', active: (c) => c.provider === 'anthropic', patch: { provider: 'anthropic' } });
-  if (cfg.openaiModel) list.push({ group: 'Local server', name: cfg.openaiModel, hint: cfg.openaiBaseUrl.replace(/^https?:\/\//, ''), active: (c) => c.provider === 'openai', patch: { provider: 'openai' } });
+  if (cfg.localModel) list.push({ group: 'Local server', name: cfg.localModel, hint: cfg.localBaseUrl.replace(/^https?:\/\//, ''), active: (c) => c.provider === 'local', patch: { provider: 'local' } });
+  if (cfg.openaiModel) list.push({ group: 'OpenAI-compatible API', name: cfg.openaiModel, hint: cfg.openaiBaseUrl.replace(/^https?:\/\//, ''), active: (c) => c.provider === 'openai', patch: { provider: 'openai' } });
   list.push({ group: 'In this browser', name: cfg.webllmModel.replace(/-q4f16_1-MLC$/, ''), hint: 'WebGPU, offline', active: (c) => c.provider === 'webllm', patch: { provider: 'webllm' } });
   return list;
 }
@@ -28,7 +29,8 @@ function choices(cfg: AgentConfig): Choice[] {
 /** Short label for the composer button. */
 export function modelLabel(cfg: AgentConfig): string {
   if (cfg.provider === 'anthropic') return ANTHROPIC_MODELS.find((m) => m.id === cfg.anthropicModel)?.label.split(' — ')[0] ?? cfg.anthropicModel;
-  if (cfg.provider === 'openai') return cfg.openaiModel || 'Local server';
+  if (cfg.provider === 'local') return cfg.localModel || 'Local server';
+  if (cfg.provider === 'openai') return cfg.openaiModel || 'OpenAI-compatible API';
   return cfg.webllmModel.replace(/-q4f16_1-MLC$/, '');
 }
 

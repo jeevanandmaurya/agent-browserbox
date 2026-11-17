@@ -230,10 +230,10 @@ export class KernelServer {
       },
 
       // Agents
-      'agent.create': async (opts?: { resume?: string; ppid?: number }) => adoptAgent(await os.agents.create(opts)),
+      'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean }) => adoptAgent(await os.agents.create(opts)),
       'agent.attach': async (sid: string) => adoptAgent(await os.agents.attach(sid)),
       'agent.live': () => os.agents.live(),
-      'agent.probeModels': (baseUrl: string) => os.agents.probeModels(baseUrl),
+      'agent.probeModels': (baseUrl: string, kind?: 'local' | 'openai') => os.agents.probeModels(baseUrl, kind),
       'agent.send': (sid: string, text: string) => agent(sid).send(text),
       'agent.stop': (sid: string) => agent(sid).stop(),
       'agent.snapshot': (sid: string) => agent(sid).snapshot(),

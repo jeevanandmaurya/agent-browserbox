@@ -93,8 +93,12 @@ says which package provides it.
 - **Conversation**: Markdown replies (rendered to DOM nodes, never
   `innerHTML`), collapsible thinking, tool calls as `tool argument` rows that
   expand to input and output, inline permission and question cards.
-- **Workbench**: a side panel (a full-screen sheet on phones) hosting the
-  regular apps — Preview, Files, Editor, Terminal, Processes and others.
+- **Private chat**: the ghost button on a new chat. Nothing is written to
+  disk, it is not listed, and it ends when you leave it.
+- **Workbench**: a side panel hosting the regular apps — Preview, Files,
+  Editor, Terminal, Processes, Browser and others. Minimise it to a strip or
+  expand it to the full width; on phones it is a bottom sheet you drag to any
+  height (drag it down to minimise, up to fill the screen).
 - **Settings**: a modal with Model, Permissions, Appearance, Connectors,
   Skills, Agents, Commands, Environment and Data.
 
@@ -121,9 +125,13 @@ Pick one in **Settings → Model**:
 - **Claude** (Anthropic API, called directly from the tab with the official SDK).
   Default `claude-opus-5-5`; adaptive thinking, streaming, prompt caching,
   refusal fallbacks and optional server-side web search are enabled.
-- **A local or OpenAI-compatible server** — Ollama, LM Studio, llama.cpp, vLLM.
-  The tab talks straight to `http://localhost:…`. The server must allow the
-  page's origin, e.g. `OLLAMA_ORIGINS="*" ollama serve`.
+- **Local server** — Ollama, LM Studio, llama.cpp, vLLM on your machine or
+  network. The tab talks straight to `http://localhost:…`; an API key is
+  optional. The server must allow the page's origin, e.g.
+  `OLLAMA_ORIGINS="*" ollama serve`.
+- **OpenAI-compatible API** — hosted services such as OpenAI, OpenRouter,
+  Groq, Together or Mistral, with your API key. Kept separate from the local
+  server, so switching between them keeps both settings.
 - **In this browser** — a model running on WebGPU via WebLLM in a worker.
   Nothing leaves the device. Small models get a reduced tool set.
 

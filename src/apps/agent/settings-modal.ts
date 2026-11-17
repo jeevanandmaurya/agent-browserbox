@@ -23,7 +23,8 @@ export class SettingsModal {
     return this.#overlay !== null;
   }
 
-  open(section: SettingsSection | string = 'model'): void {
+  /** No section: the list of sections on phones, Model on wide screens. */
+  open(section?: SettingsSection | string): void {
     if (!this.#overlay) this.#returnFocus = document.activeElement as HTMLElement | null;
     this.#teardown(false);
     const pane = h('div', { class: 'sm-body' });
@@ -41,7 +42,7 @@ export class SettingsModal {
     });
     document.body.append(overlay);
     this.#overlay = overlay;
-    const app: PanelApp = mountPanelApp(this.os, 'settings', pane, { section }, {
+    const app: PanelApp = mountPanelApp(this.os, 'settings', pane, section ? { section } : {}, {
       launch: (id, args) => {
         this.close();
         this.route(id, args);

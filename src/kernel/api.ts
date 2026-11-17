@@ -91,6 +91,7 @@ export interface SecretsApi {
 
 export interface AgentSnapshot {
   sid: string;
+  private: boolean;
   pid: number;
   busy: boolean;
   title: string;
@@ -133,12 +134,12 @@ export interface AgentHandle {
 
 export interface AgentsApi {
   /** `resume` loads a saved session file by id. */
-  create(opts?: { resume?: string; ppid?: number }): Promise<AgentHandle>;
+  create(opts?: { resume?: string; ppid?: number; private?: boolean }): Promise<AgentHandle>;
   attach(sid: string): Promise<AgentHandle>;
   /** Sessions currently alive in the kernel, most recent first. */
   live(): Promise<AgentInfo[]>;
   /** Lists models on an OpenAI-compatible server, using the stored API key if any. */
-  probeModels(baseUrl: string): Promise<string[]>;
+  probeModels(baseUrl: string, kind?: 'local' | 'openai'): Promise<string[]>;
   /** Connects to a configured MCP server and lists its tools. */
   probeMcp(name: string): Promise<Array<{ name: string; description: string }>>;
 }

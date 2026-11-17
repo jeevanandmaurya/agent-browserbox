@@ -88,7 +88,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .g-ne, .g-nw, .g-se, .g-sw { width: 12px; height: 12px; }
 .g-ne { top: -1px; right: -1px; cursor: nesw-resize; } .g-nw { top: -1px; left: -1px; cursor: nwse-resize; }
 .g-se { bottom: -1px; right: -1px; cursor: nwse-resize; } .g-sw { bottom: -1px; left: -1px; cursor: nesw-resize; }
-.app-loading, .app-error { padding: 24px; color: var(--muted); }
+.app-error { padding: 24px; color: var(--muted); }
 .app-error pre { white-space: pre-wrap; color: var(--err); font: 12px var(--mono); }
 
 /* Taskbar */
@@ -235,3 +235,19 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 @keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } }
 @keyframes sheet-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .menu, .menu-scrim { animation: none; } }
+
+/* Loader: the mark assembling itself (src/ui/icons.ts → loader). Also inlined in the pages' HTML for first paint. */
+.bb-loader { display: inline-grid; place-items: center; color: var(--accent); }
+.bb-loader path { animation: bb-face 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite both; transform-box: fill-box; transform-origin: center; }
+.bb-loader path:nth-child(2) { animation-delay: 0.14s; }
+.bb-loader path:nth-child(3) { animation-delay: 0.28s; }
+@keyframes bb-face {
+  0% { opacity: 0; transform: translateY(-3px) scale(0.92); }
+  30%, 70% { opacity: var(--o, 1); transform: none; }
+  100% { opacity: 0; transform: translateY(2px); }
+}
+.bb-loader path:nth-child(2) { --o: 0.72; }
+.bb-loader path:nth-child(3) { --o: 0.45; }
+@media (prefers-reduced-motion: reduce) { .bb-loader path { animation: bb-pulse 2s ease-in-out infinite; } }
+@keyframes bb-pulse { 50% { opacity: 0.35; } }
+.app-loading { display: grid; place-items: center; height: 100%; min-height: 120px; }

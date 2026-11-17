@@ -55,14 +55,22 @@ async function* sse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
  * LM Studio, llama.cpp, vLLM, or a hosted endpoint. This is how BrowserBox
  * connects to a local LLM — the request goes straight from the tab to the server.
  */
-export function createOpenAiProvider(cfg: AgentConfig, apiKey: string | null): Provider {
-  const base = cfg.openaiBaseUrl.replace(/\/+$/, '');
+/** Where to send requests: a local model server or a hosted OpenAI-compatible API. */
+export interface ServerTarget {
+  kind: 'local' | 'openai';
+  baseUrl: string;
+  model: string;
+}
+
+export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, apiKey: string | null): Provider {
+  const base = target.baseUrl.replace(/\/+$/, '');
+  const where = target.kind === 'local' ? 'the local server' : 'the API';
   return {
-    id: 'openai',
+    id: target.kind,
     contextBudget: Math.floor(cfg.contextWindow * 0.75),
     contextWindow: cfg.contextWindow,
     async turn(req: TurnRequest): Promise<TurnResult> {
-      if (!cfg.openaiModel) throw new ProviderError('No model selected for the local server. Pick one in Settings → Model.');
+      if (!target.model) throw new ProviderError(`No model selected for ${where}. Pick one in Settings → Model.`);
       let res: Response;
       try {
         res = await fetch(`${base}/chat/completions`, {
@@ -70,7 +78,7 @@ export function createOpenAiProvider(cfg: AgentConfig, apiKey: string | null): P
           signal: req.signal,
           headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
           body: JSON.stringify({
-            model: cfg.openaiModel,
+            model: target.model,
             stream: true,
             messages: toWire(req.system, req.messages),
             ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) } : {}),
@@ -78,7 +86,7 @@ export function createOpenAiProvider(cfg: AgentConfig, apiKey: string | null): P
         });
       } catch (err) {
         if (req.signal.aborted) throw err;
-        throw new ProviderError(`Could not reach ${base}. Is the server running, and does it allow this page's origin (CORS)? For Ollama: OLLAMA_ORIGINS="*" ollama serve`, true);
+        throw new ProviderError(`Could not reach ${base}. ${target.kind === 'local' ? 'Is the server running, and does it allow this page\'s origin (CORS)? For Ollama: OLLAMA_ORIGINS="*" ollama serve' : 'Check the URL, your connection, and that this API allows browser (CORS) requests.'}`, true);
       }
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');
@@ -88,7 +96,7 @@ export function createOpenAiProvider(cfg: AgentConfig, apiKey: string | null): P
       let text = '';
       let thinking = '';
       let finish = '';
-      let model = cfg.openaiModel;
+      let model = target.model;
       const usage = { input: 0, output: 0, cacheRead: 0 };
       const calls: Array<{ id: string; name: string; args: string }> = [];
       for await (const data of sse(res.body)) {

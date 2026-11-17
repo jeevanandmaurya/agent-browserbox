@@ -2,6 +2,7 @@ import { APP_MANIFESTS, type AppManifest } from './app-manifest';
 import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { h } from './dom';
+import { loader } from './icons';
 import type { WindowManager } from './wm';
 
 /** The part of a window an app may rely on. A desktop window and a standalone page both provide it. */
@@ -73,7 +74,7 @@ export class AppHost {
     }
 
     const win = this.wm.open({ title: app.name, icon: app.icon, width: app.width, height: app.height });
-    win.body.append(h('div', { class: 'app-loading' }, 'Loading…'));
+    win.body.append(h('div', { class: 'app-loading' }, loader(32, `Loading ${app.name}`)));
     const proc = this.os.procs.spawn({ name: app.name, kind: 'app', detail: app.id, onKill: () => win.close() });
     this.os.procs.update(proc.pid, { state: 'idle' });
     const unsubs: Array<() => void> = [];

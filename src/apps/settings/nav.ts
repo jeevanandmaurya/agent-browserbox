@@ -1,4 +1,5 @@
 import { h } from '@/ui/dom';
+import { icon } from '@/ui/icons';
 
 export interface Section {
   id: string;
@@ -7,17 +8,19 @@ export interface Section {
 }
 
 /**
- * Left-hand section nav that becomes a horizontal tab strip in narrow windows
- * (see the container query in style.css). Sections are built on first visit.
+ * Section nav. Wide: a list on the left and the section beside it. Narrow
+ * (phones): the list fills the screen, a section opens as its own page with a
+ * back button. Sections are built on first visit.
  */
 export function sectionNav(sections: Section[], label: string, uid: number) {
   const built = new Map<string, HTMLElement>();
   const main = h('div', { class: 'sn-main' });
   const buttons = sections.map((s) =>
-    h('button', { class: 'sn-tab', type: 'button', role: 'tab', id: `sn-${uid}-${s.id}`, 'aria-controls': `sn-${uid}-panel`, onclick: () => show(s.id) }, s.label),
+    h('button', { class: 'sn-tab', type: 'button', role: 'tab', id: `sn-${uid}-${s.id}`, 'aria-controls': `sn-${uid}-panel`, onclick: () => show(s.id, true) }, h('span', null, s.label), icon('chevron', 16)),
   );
   const nav = h('nav', { class: 'sn-nav', role: 'tablist', 'aria-label': label, 'aria-orientation': 'vertical' }, buttons);
-  const panel = h('div', { class: 'sn-panel', role: 'tabpanel', id: `sn-${uid}-panel`, tabindex: -1 }, main);
+  const back = h('button', { class: 'sn-back', type: 'button', onclick: () => (layout.dataset.view = 'list') }, icon('arrowLeft', 18), h('span', null, 'Settings'));
+  const panel = h('div', { class: 'sn-panel', role: 'tabpanel', id: `sn-${uid}-panel`, tabindex: -1 }, back, main);
   let current = '';
 
   nav.addEventListener('keydown', (e) => {
@@ -30,8 +33,9 @@ export function sectionNav(sections: Section[], label: string, uid: number) {
     buttons[sections.indexOf(next)]!.focus();
   });
 
-  function show(id: string): void {
+  function show(id: string, open = false): void {
     const s = sections.find((x) => x.id === id) ?? sections[0]!;
+    if (open) layout.dataset.view = 'section';
     if (s.id === current) return;
     current = s.id;
     buttons.forEach((b, i) => {
@@ -52,8 +56,9 @@ export function sectionNav(sections: Section[], label: string, uid: number) {
     panel.scrollTop = 0;
   }
 
+  const layout = h('div', { class: 'sn-layout', dataset: { view: 'list' } }, nav, panel);
   return {
-    el: h('div', { class: 'sn-layout' }, nav, panel),
+    el: layout,
     show,
     /** Drops cached sections so they rebuild from fresh state on next visit. */
     invalidate(): void {

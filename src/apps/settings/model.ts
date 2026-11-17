@@ -1,11 +1,11 @@
 import {
   ANTHROPIC_MODELS,
   DEFAULT_CONFIG,
+  API_PRESETS,
   LOCAL_PRESETS,
   SECRET,
   WEBLLM_MODELS,
   loadConfig,
-  probeOpenAi,
   saveConfig,
   type AgentConfig,
   type Effort,
@@ -26,9 +26,10 @@ const EFFORTS: Array<{ id: Effort; label: string }> = [
 ];
 
 const PROVIDERS: Array<{ id: ProviderId; title: string; text: string }> = [
-  { id: 'anthropic', title: 'Claude (Anthropic API)', text: 'The most capable option. Needs an Anthropic API key; requests go straight from this browser to Anthropic.' },
-  { id: 'openai', title: 'Local or OpenAI-compatible server', text: 'Ollama, LM Studio, llama.cpp, vLLM or any server that speaks the OpenAI chat API. Stays on your machine when the server is local.' },
-  { id: 'webllm', title: 'In this browser (WebGPU)', text: 'Runs a small open model inside this tab. Fully offline after the first download, but much less capable.' },
+  { id: 'anthropic', title: 'Claude', text: 'Anthropic API key. Web search included.' },
+  { id: 'local', title: 'Local server', text: 'Ollama, LM Studio, llama.cpp or vLLM on your machine or network.' },
+  { id: 'openai', title: 'OpenAI-compatible API', text: 'OpenAI, OpenRouter, Groq and similar, with an API key.' },
+  { id: 'webllm', title: 'In this browser', text: 'A small model on WebGPU. Offline after the first download.' },
 ];
 
 /** A labelled control. */
@@ -114,119 +115,120 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     ),
   );
 
-  // ---- OpenAI-compatible
-  const baseUrl = h('input', { class: 'input mono', type: 'url', value: cfg.openaiBaseUrl, placeholder: DEFAULT_CONFIG.openaiBaseUrl, autocomplete: 'off' });
-  const hint = h('p', { class: 'muted st-note' });
-  const mixed = h('p', { class: 'st-warn st-note', hidden: true }, 'This page is served over https, so the browser will block plain http:// servers other than localhost.');
-  const presetBtns = LOCAL_PRESETS.map((p) =>
-    h(
-      'button',
-      {
-        class: 'btn small',
-        type: 'button',
-        onclick: () => {
-          baseUrl.value = p.baseUrl;
-          saveBase();
+  // ---- Local server and hosted API: same protocol, different expectations
+  panels.set('local', serverPanel('local'));
+  panels.set('openai', serverPanel('openai'));
+
+  function serverPanel(kind: 'local' | 'openai'): HTMLElement {
+    const local = kind === 'local';
+    const presets = local ? LOCAL_PRESETS : API_PRESETS;
+    const get = () => (local ? { url: cfg.localBaseUrl, model: cfg.localModel } : { url: cfg.openaiBaseUrl, model: cfg.openaiModel });
+    const put = (p: { url?: string; model?: string }) =>
+      save(local ? { ...(p.url !== undefined && { localBaseUrl: p.url }), ...(p.model !== undefined && { localModel: p.model }) } : { ...(p.url !== undefined && { openaiBaseUrl: p.url }), ...(p.model !== undefined && { openaiModel: p.model }) });
+
+    const baseUrl = h('input', { class: 'input mono', type: 'url', value: get().url, placeholder: presets[0].baseUrl, autocomplete: 'off' });
+    const hint = h('p', { class: 'muted st-note' });
+    const mixed = h('p', { class: 'st-warn st-note', hidden: true }, 'This page is served over https, so the browser blocks plain http:// addresses other than localhost.');
+    const presetBtns = presets.map((p) =>
+      h(
+        'button',
+        {
+          class: 'btn small',
+          type: 'button',
+          onclick: () => {
+            baseUrl.value = p.baseUrl;
+            saveBase();
+          },
         },
-      },
-      p.label,
-    ),
-  );
-  const syncHint = () => {
-    const url = baseUrl.value.trim().replace(/\/+$/, '');
-    const preset = LOCAL_PRESETS.find((p) => p.baseUrl === url);
-    hint.textContent = preset ? `${preset.label}: ${preset.hint}` : 'Any server exposing /v1/models and /v1/chat/completions.';
-    presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(LOCAL_PRESETS[i] === preset)));
-    let host = '';
-    try {
-      host = new URL(url).hostname;
-    } catch {
-      /* incomplete URL while typing */
-    }
-    mixed.hidden = !(location.protocol === 'https:' && url.startsWith('http://') && !['localhost', '127.0.0.1', '[::1]'].includes(host));
-  };
-  const saveBase = () => {
-    const v = baseUrl.value.trim();
-    syncHint();
-    if (v && v !== cfg.openaiBaseUrl) save({ openaiBaseUrl: v });
-  };
-  baseUrl.addEventListener('input', debounce(saveBase, 500));
-  baseUrl.addEventListener('input', syncHint);
-  baseUrl.addEventListener('change', saveBase);
-  syncHint();
-
-  const listId = nextId('models');
-  const datalist = h('datalist', { id: listId });
-  const openaiModel = h('input', { class: 'input mono', value: cfg.openaiModel, placeholder: 'e.g. qwen2.5-coder:7b', autocomplete: 'off' });
-  openaiModel.setAttribute('list', listId); // `list` is a read-only property, so h() cannot set it
-  const saveModel = () => {
-    const v = openaiModel.value.trim();
-    if (v !== cfg.openaiModel) save({ openaiModel: v });
-  };
-  openaiModel.addEventListener('input', debounce(saveModel, 500));
-  openaiModel.addEventListener('change', saveModel);
-
-  const found = h('select', { class: 'select', hidden: true, 'aria-label': 'Models on the server' });
-  found.addEventListener('change', () => {
-    if (!found.value) return;
-    openaiModel.value = found.value;
-    saveModel();
-  });
-  const probeStatus = h('p', { class: 'st-note', 'aria-live': 'polite' });
-  const testBtn = h('button', { class: 'btn', type: 'button', onclick: () => void test() }, 'Test connection');
-
-  async function test(): Promise<void> {
-    saveBase();
-    testBtn.disabled = true;
-    probeStatus.className = 'st-note muted';
-    probeStatus.textContent = 'Connecting…';
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 10_000);
-    const stop = () => ctl.abort();
-    ctx.proc.signal.addEventListener('abort', stop);
-    try {
-      // The kernel probes with the stored key; windows can never read secrets back.
-      const ids = await os.agents.probeModels(cfg.openaiBaseUrl);
-      ctl.signal.throwIfAborted();
-      datalist.replaceChildren(...ids.map((id) => h('option', { value: id })));
-      found.replaceChildren(h('option', { value: '' }, `Choose from ${ids.length} model${ids.length === 1 ? '' : 's'}…`), ...ids.map((id) => h('option', { value: id }, id)));
-      found.hidden = ids.length === 0;
-      probeStatus.className = 'st-note st-ok';
-      probeStatus.textContent = ids.length ? `Connected — ${ids.length} model${ids.length === 1 ? '' : 's'} available.` : 'Connected, but the server lists no models. Pull or load one first.';
-      if (ids[0] && !cfg.openaiModel) {
-        openaiModel.value = ids[0];
-        saveModel();
+        p.label,
+      ),
+    );
+    const syncHint = () => {
+      const url = baseUrl.value.trim().replace(/\/+$/, '');
+      const preset = presets.find((p) => p.baseUrl === url);
+      hint.textContent = preset ? `${preset.label}: ${preset.hint}` : local ? 'Any server with /v1/models and /v1/chat/completions.' : 'Any hosted API with /v1/models and /v1/chat/completions that allows browser requests.';
+      presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(presets[i] === preset)));
+      let host = '';
+      try {
+        host = new URL(url).hostname;
+      } catch {
+        /* incomplete URL while typing */
       }
-    } catch (err) {
-      probeStatus.className = 'st-note st-error';
-      probeStatus.textContent = ctl.signal.aborted && !ctx.proc.signal.aborted ? `No answer from ${cfg.openaiBaseUrl} within 10 seconds.` : errText(err);
-    } finally {
-      clearTimeout(timer);
-      ctx.proc.signal.removeEventListener('abort', stop);
-      testBtn.disabled = false;
-    }
-  }
+      mixed.hidden = !(location.protocol === 'https:' && url.startsWith('http://') && !['localhost', '127.0.0.1', '[::1]'].includes(host));
+    };
+    const saveBase = () => {
+      const v = baseUrl.value.trim();
+      syncHint();
+      if (v && v !== get().url) put({ url: v });
+    };
+    baseUrl.addEventListener('input', debounce(saveBase, 500));
+    baseUrl.addEventListener('input', syncHint);
+    baseUrl.addEventListener('change', saveBase);
+    syncHint();
 
-  panels.set(
-    'openai',
-    h(
+    const listId = nextId('models');
+    const datalist = h('datalist', { id: listId });
+    const model = h('input', { class: 'input mono', value: get().model, placeholder: local ? 'e.g. qwen2.5-coder:7b' : 'e.g. gpt-5.1-mini', autocomplete: 'off' });
+    model.setAttribute('list', listId); // `list` is a read-only property, so h() cannot set it
+    const saveModel = () => {
+      const v = model.value.trim();
+      if (v !== get().model) put({ model: v });
+    };
+    model.addEventListener('input', debounce(saveModel, 500));
+    model.addEventListener('change', saveModel);
+
+    const found = h('select', { class: 'select', hidden: true, 'aria-label': 'Available models' });
+    found.addEventListener('change', () => {
+      if (!found.value) return;
+      model.value = found.value;
+      saveModel();
+    });
+    const probeStatus = h('p', { class: 'st-note', 'aria-live': 'polite' });
+    const testBtn = h('button', { class: 'btn', type: 'button', onclick: () => void test() }, 'Test connection');
+
+    async function test(): Promise<void> {
+      saveBase();
+      testBtn.disabled = true;
+      probeStatus.className = 'st-note muted';
+      probeStatus.textContent = 'Connecting…';
+      try {
+        // The kernel probes with the stored key; windows can never read secrets back.
+        const ids = await Promise.race([os.agents.probeModels(get().url, kind), new Promise<never>((_, no) => setTimeout(() => no(new Error(`No answer from ${get().url} within 10 seconds.`)), 10_000))]);
+        datalist.replaceChildren(...ids.map((id) => h('option', { value: id })));
+        found.replaceChildren(h('option', { value: '' }, `Choose from ${ids.length} model${ids.length === 1 ? '' : 's'}…`), ...ids.map((id) => h('option', { value: id }, id)));
+        found.hidden = ids.length === 0;
+        probeStatus.className = 'st-note st-ok';
+        probeStatus.textContent = ids.length ? `Connected · ${ids.length} model${ids.length === 1 ? '' : 's'}` : local ? 'Connected, but no models are loaded. Pull or load one first.' : 'Connected, but no models are listed.';
+        if (ids[0] && !get().model) {
+          model.value = ids[0];
+          saveModel();
+        }
+      } catch (err) {
+        probeStatus.className = 'st-note st-error';
+        probeStatus.textContent = errText(err);
+      } finally {
+        testBtn.disabled = false;
+      }
+    }
+
+    return h(
       'div',
       { class: 'st-panel' },
-      h('div', { class: 'field' }, h('span', null, 'Presets'), h('div', { class: 'row st-wrap', role: 'group', 'aria-label': 'Server presets' }, presetBtns)),
+      h('div', { class: 'field' }, h('span', null, local ? 'Server' : 'Service'), h('div', { class: 'row st-wrap', role: 'group', 'aria-label': 'Presets' }, presetBtns)),
       field('Base URL', baseUrl, h('div', null, hint, mixed)),
       keyField(ctx, {
-        secret: SECRET.openai,
-        label: 'API key (optional)',
-        placeholder: 'Only if your server requires one',
-        note: 'Encrypted at rest in this browser and sent only to the base URL above. Local servers usually need no key.',
+        secret: local ? SECRET.local : SECRET.openai,
+        label: local ? 'API key (optional)' : 'API key',
+        placeholder: local ? 'Only if your server requires one' : 'sk-…',
+        note: 'Stored encrypted; sent only to the URL above.',
         onSaved: saved,
       }),
       h('div', { class: 'row st-wrap' }, testBtn, found),
       probeStatus,
-      field('Model', openaiModel, 'The model id as the server names it. Test the connection to pick from a list.'),
+      field('Model', model),
       datalist,
-    ),
-  );
+    );
+  }
 
   // ---- WebLLM
   const gpuOk = os.hasCap('webgpu');
@@ -275,7 +277,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
   return h(
     'div',
     { class: 'st-section' },
-    heading('Model', 'Choose the language model that powers the agent. Changes apply to the next message.'),
+    heading('Model'),
     chooser,
     ...panels.values(),
     h('h3', null, 'Agent behaviour'),
@@ -284,6 +286,6 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     h('h3', null, 'Context'),
     h('label', { class: 'st-check' }, autoCompact, 'Summarise the conversation automatically when the context window is 85% full'),
     h('p', { class: 'muted st-note' }, 'The summary replaces the older messages for the model; the full history stays visible in the chat. You can also compact any time with /compact or the meter in the header.'),
-    field('Context window of the local model (tokens)', ctxWindow, 'Local servers do not report this. Use the context size you started the model with (for Ollama, num_ctx). Claude models are set automatically.'),
+    field('Context window for local and OpenAI-compatible models (tokens)', ctxWindow, 'Local servers do not report this. Use the context size you started the model with (for Ollama, num_ctx). Claude models are set automatically.'),
   );
 }

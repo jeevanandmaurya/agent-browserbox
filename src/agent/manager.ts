@@ -13,6 +13,8 @@ interface Session {
   waiting: Array<{ q: string; options?: string[]; resolve: (a: string) => void }>;
   prompter?: Prompter;
   created: number;
+  /** Never written to disk; discarded when its window leaves it. */
+  private: boolean;
 }
 
 /**
@@ -29,12 +31,12 @@ export class AgentManager implements AgentsApi {
     });
   }
 
-  async create(opts: { resume?: string; ppid?: number } = {}): Promise<AgentHandle> {
+  async create(opts: { resume?: string; ppid?: number; private?: boolean } = {}): Promise<AgentHandle> {
     const saved = opts.resume ? await loadSession(this.os, opts.resume) : null;
     const live = saved && this.#sessions.get(saved.id);
     if (live) return this.#handle(saved.id, live);
 
-    const session: Session = { listeners: new Set(), asker: null, waiting: [], created: Date.now() } as unknown as Session;
+    const session: Session = { listeners: new Set(), asker: null, waiting: [], created: Date.now(), private: !opts.resume && !!opts.private } as unknown as Session;
     const agent = new Agent(
       this.os,
       {
@@ -67,6 +69,7 @@ export class AgentManager implements AgentsApi {
 
   async live(): Promise<AgentInfo[]> {
     return [...this.#sessions.entries()]
+      .filter(([, s]) => !s.private)
       .sort((a, b) => b[1].created - a[1].created)
       .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript) }));
   }
@@ -75,12 +78,12 @@ export class AgentManager implements AgentsApi {
     return this.os.mcp.probe(name);
   }
 
-  async probeModels(baseUrl: string): Promise<string[]> {
-    return probeOpenAi(baseUrl, await this.os.secrets.get(SECRET.openai));
+  async probeModels(baseUrl: string, kind: 'local' | 'openai' = 'local'): Promise<string[]> {
+    return probeOpenAi(baseUrl, await this.os.secrets.get(kind === 'local' ? SECRET.local : SECRET.openai));
   }
 
   async #save(s: Session): Promise<void> {
-    if (!s.agent.transcript.length) return;
+    if (s.private || !s.agent.transcript.length) return;
     await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
@@ -90,6 +93,11 @@ export class AgentManager implements AgentsApi {
     const mine = new Set<(e: AgentEvent) => void>();
     let myAsker: Session['asker'] = null;
     const sessions = this.#sessions;
+    const release = () => {
+      for (const fn of mine) s.listeners.delete(fn);
+      mine.clear();
+      if (s.asker === myAsker) s.asker = null;
+    };
     return {
       sid,
       pid: s.agent.proc.pid,
@@ -98,7 +106,7 @@ export class AgentManager implements AgentsApi {
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context() };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context() };
       },
       onEvent(fn) {
         mine.add(fn);
@@ -119,12 +127,12 @@ export class AgentManager implements AgentsApi {
         s.prompter = p;
       },
       detach() {
-        for (const fn of mine) s.listeners.delete(fn);
-        mine.clear();
-        if (s.asker === myAsker) s.asker = null;
+        // A private chat has nowhere to go back to: leaving it ends it.
+        if (s.private) return this.dispose();
+        release();
       },
       dispose() {
-        this.detach();
+        release();
         sessions.delete(sid);
         s.agent.dispose();
       },

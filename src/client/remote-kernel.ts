@@ -264,7 +264,7 @@ export class RemoteKernel implements Kernel {
     create: async (opts) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.create', opts)),
     attach: async (sid) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.attach', sid)),
     live: () => this.call('agent.live'),
-    probeModels: (baseUrl) => this.call('agent.probeModels', baseUrl),
+    probeModels: (baseUrl, kind) => this.call('agent.probeModels', baseUrl, kind),
     probeMcp: (name) => this.call('agent.probeMcp', name),
   };
 

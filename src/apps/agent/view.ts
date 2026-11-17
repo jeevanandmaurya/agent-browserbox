@@ -2,6 +2,7 @@ import type { AgentEvent } from '@/agent/agent';
 import type { Msg } from '@/agent/types';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import { fmtDuration, h } from '@/ui/dom';
+import { loader } from '@/ui/icons';
 import { renderMarkdown } from '@/ui/markdown';
 import { approvalCard, askCard } from './cards';
 import { icon } from './icons';
@@ -93,7 +94,7 @@ export class Transcript {
 
   #setStatus(text: string): void {
     this.#statusEl?.remove();
-    this.#statusEl = text ? h('div', { class: 'ag-status' }, h('span', { class: 'ag-spinner' }), h('span', null, text)) : null;
+    this.#statusEl = text ? h('div', { class: 'ag-status' }, loader(16, text), h('span', null, text)) : null;
     if (this.#statusEl) this.el.append(this.#statusEl);
   }
 
@@ -128,7 +129,7 @@ export class Transcript {
   }
 
   #toolCard(id: string, name: string, summary: string, input: unknown): ToolCard {
-    const status = h('span', { class: 'ag-tool-status' }, h('span', { class: 'ag-spinner' }));
+    const status = h('span', { class: 'ag-tool-status' }, loader(14, 'Running'));
     const output = h('pre', { class: 'ag-tool-out' });
     const line = summary.split('\n')[0]!.slice(0, 200);
     const el = h(

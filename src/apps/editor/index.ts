@@ -70,7 +70,8 @@ const app: AppModule = {
       runBtn,
     );
 
-    const main = h('div', { class: 'editor-main fill' }, h('div', { class: 'code' }, gutter.el, ta), mdPane);
+    const codePane = h('div', { class: 'code' }, gutter.el, ta);
+    const main = h('div', { class: 'editor-main fill' }, codePane, mdPane);
     ctx.root.append(toolbar, find.el, banner, main, run.el, h('div', { class: 'statusbar' }, sb.msg, sb.ro, sb.pos, sb.len, sb.lang, h('span', { class: 'sb-enc' }, 'UTF-8')));
 
     // ── State & chrome ─────────────────────────────────────────────────────
@@ -167,10 +168,16 @@ const app: AppModule = {
         }),
       );
     }, 150);
+    /** Swaps between the text and its rendered Markdown, in the same space. */
     function toggleMd(on = mdPane.hidden): void {
       mdPane.hidden = !on;
+      codePane.hidden = on;
       mdBtn.setAttribute('aria-pressed', String(on));
-      if (on) renderMd();
+      mdBtn.textContent = on ? 'Edit' : 'Preview';
+      if (on) {
+        renderMd();
+        mdPane.focus({ preventScroll: true });
+      } else ta.focus({ preventScroll: true });
     }
 
     // ── File operations ────────────────────────────────────────────────────

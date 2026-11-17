@@ -81,8 +81,13 @@ export class Workbench {
     this.#menu = h('div', { class: 'popover wb-menu', role: 'menu', hidden: true }, toolButtons('pop-item', () => (this.#menu.hidden = true)));
     const addBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Open a tool', 'aria-label': 'Open a tool', 'aria-haspopup': 'menu', onclick: (e: Event) => this.#toggleMenu(e) }, icon('plus', 16));
     const closeBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Close panel', 'aria-label': 'Close panel', onclick: () => this.hide() }, icon('close', 16));
+    const minBtn = h('button', { class: 'icon-btn wb-min-btn', type: 'button', title: 'Minimise', 'aria-label': 'Minimise panel', onclick: () => this.setSize(this.#size === 'min' ? 'normal' : 'min') }, icon('minus', 16));
+    const maxBtn = h('button', { class: 'icon-btn wb-max-btn', type: 'button', title: 'Expand', 'aria-label': 'Expand panel', onclick: () => this.setSize(this.#size === 'full' ? 'normal' : 'full') }, icon('square', 14));
+    // On phones the panel is a bottom sheet: drag this to set its height.
+    const grab = h('div', { class: 'wb-grab', role: 'separator', 'aria-orientation': 'horizontal', 'aria-label': 'Drag to resize the panel', tabindex: 0 }, h('i'));
     const handle = h('div', { class: 'wb-resize', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize panel', tabindex: 0 });
-    this.el = h('aside', { class: 'wb', 'aria-label': 'Workbench', hidden: true }, handle, h('div', { class: 'wb-head' }, this.#strip, h('div', { class: 'wb-actions' }, addBtn, closeBtn), this.#menu), this.#panes, this.#launcher);
+    this.el = h('aside', { class: 'wb', 'aria-label': 'Workbench', hidden: true, dataset: { size: 'normal' } }, handle, grab, h('div', { class: 'wb-head', ondblclick: (e: Event) => !(e.target as HTMLElement).closest('button') && this.setSize(this.#size === 'full' ? 'normal' : 'full') }, this.#strip, h('div', { class: 'wb-actions' }, addBtn, minBtn, maxBtn, closeBtn), this.#menu), this.#panes, this.#launcher);
+    this.#sheetDrag(grab);
     this.#resizable(handle);
     this.el.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -96,6 +101,18 @@ export class Workbench {
     });
     const w = store.get();
     if (w) this.el.style.setProperty('--wb-w', `${w}px`);
+  }
+
+  #size: 'min' | 'normal' | 'full' = 'normal';
+
+  /** Minimised (only the tab bar), normal, or expanded (full width on desktop, full height on phones). */
+  setSize(size: 'min' | 'normal' | 'full'): void {
+    this.#size = size;
+    this.el.dataset.size = size;
+    this.el.parentElement?.classList.toggle('wb-full', size === 'full');
+    this.el.parentElement?.classList.toggle('wb-min', size === 'min');
+    if (size !== 'normal') this.el.style.removeProperty('--wb-h');
+    this.#active?.app?.setHidden(size === 'min');
   }
 
   get isOpen(): boolean {
@@ -113,6 +130,7 @@ export class Workbench {
     this.#open = true;
     this.el.hidden = false;
     this.el.parentElement?.classList.add('wb-open');
+    if (this.#size === 'min') this.setSize('normal');
     this.#active?.app?.setHidden(false);
     this.#refresh();
   }
@@ -222,6 +240,46 @@ export class Workbench {
     this.#menu.hidden = !this.#menu.hidden;
     if (!this.#menu.hidden) (this.#menu.querySelector('button') as HTMLElement | null)?.focus();
     e.stopPropagation();
+  }
+
+  /** Phones: drag the sheet's handle to any height; near the bottom it minimises, near the top it fills the screen. */
+  #sheetDrag(grab: HTMLElement): void {
+    grab.addEventListener('pointerdown', (e) => {
+      if (!this.isSheet) return;
+      e.preventDefault();
+      grab.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      const startH = this.el.getBoundingClientRect().height;
+      this.el.classList.add('dragging');
+      let h = startH;
+      const move = (ev: PointerEvent) => {
+        h = Math.max(56, Math.min(innerHeight, startH + (startY - ev.clientY)));
+        this.el.style.setProperty('--wb-h', `${h}px`);
+        if (this.#size !== 'normal') {
+          this.#size = 'normal';
+          this.el.dataset.size = 'normal';
+          this.el.parentElement?.classList.remove('wb-full', 'wb-min');
+        }
+      };
+      const up = () => {
+        grab.removeEventListener('pointermove', move);
+        grab.removeEventListener('pointerup', up);
+        grab.removeEventListener('pointercancel', up);
+        this.el.classList.remove('dragging');
+        if (Math.abs(h - startH) < 6) return this.setSize(this.#size === 'min' ? 'normal' : 'min'); // a tap toggles
+        if (h < 140) this.setSize('min');
+        else if (h > innerHeight * 0.88) this.setSize('full');
+      };
+      grab.addEventListener('pointermove', move);
+      grab.addEventListener('pointerup', up);
+      grab.addEventListener('pointercancel', up);
+    });
+    grab.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowUp') this.setSize(this.#size === 'min' ? 'normal' : 'full');
+      else if (e.key === 'ArrowDown') this.setSize(this.#size === 'full' ? 'normal' : 'min');
+      else return;
+      e.preventDefault();
+    });
   }
 
   #resizable(handle: HTMLElement): void {
