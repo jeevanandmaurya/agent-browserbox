@@ -1,3 +1,4 @@
+import type { IconName } from '@/ui/icons';
 /** File classification shared by the Files, Editor and Preview apps. */
 import { basename, extname } from '@/kernel/vfs/path';
 
@@ -38,12 +39,12 @@ export function kindOf(name: string, isDir = false): FileKind {
   return 'binary';
 }
 
-const ICONS: Record<FileKind, string> = {
-  dir: '📁', text: '📄', code: '📜', markdown: '📝', html: '🌐', image: '🖼️', svg: '🖼️',
-  audio: '🎵', video: '🎬', pdf: '📕', archive: '📦', binary: '⚙️',
+const ICONS: Record<FileKind, IconName> = {
+  dir: 'folder', text: 'fileText', code: 'code', markdown: 'fileText', html: 'globe', image: 'image', svg: 'image',
+  audio: 'music', video: 'film', pdf: 'fileText', archive: 'box', binary: 'file',
 };
 
-export function iconFor(name: string, isDir = false): string {
+export function iconFor(name: string, isDir = false): IconName {
   return ICONS[kindOf(name, isDir)];
 }
 

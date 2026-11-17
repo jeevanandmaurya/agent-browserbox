@@ -51,8 +51,8 @@ const app: AppModule = {
     const saveBtn = tb('Save (Ctrl+S)', 'Save', () => void save());
     const wrapBtn = tb('Word wrap (Alt+Z)', 'Wrap', () => setWrap(ta.wrap === 'off'), { 'aria-pressed': 'false' });
     const mdBtn = tb('Toggle Markdown preview', 'Preview', () => toggleMd(), { 'aria-pressed': 'false', hidden: true });
-    const runBtn = tb('Run (Ctrl+Enter)', '▶ Run', () => runBuffer(), { hidden: true, class: 'btn small primary' });
-    const htmlBtn = tb('Save and open in Preview', '▣ Preview', () => void previewHtml(), { hidden: true });
+    const runBtn = tb('Run (Ctrl+Enter)', 'Run', () => runBuffer(), { hidden: true, class: 'btn small primary' });
+    const htmlBtn = tb('Save and open in Preview', 'Preview', () => void previewHtml(), { hidden: true });
     const toolbar = h(
       'div',
       { class: 'toolbar editor-toolbar', role: 'toolbar', 'aria-label': 'Editor' },

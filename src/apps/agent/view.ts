@@ -22,8 +22,6 @@ interface ToolCard {
  */
 export class Transcript {
   readonly el = h('div', { class: 'ag-log', role: 'log', 'aria-live': 'polite' });
-  /** Tool rows start expanded (the "dev" profile). */
-  expandTools = false;
   #turn: HTMLElement | null = null;
   #turnText: string[] = [];
   #textEl: HTMLElement | null = null;
@@ -136,7 +134,7 @@ export class Transcript {
     const line = summary.split('\n')[0]!.slice(0, 200);
     const el = h(
       'details',
-      { class: 'ag-tool', open: this.expandTools },
+      { class: 'ag-tool' },
       h(
         'summary',
         null,

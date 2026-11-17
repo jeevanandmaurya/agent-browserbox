@@ -7,23 +7,16 @@ import { radioGroup } from './permissions';
 import './packs.css';
 
 type Theme = 'dark' | 'light' | 'system';
-type Profile = 'dev' | 'casual';
 
 export const THEMES: Array<{ id: Theme; title: string }> = [
   { id: 'system', title: 'Match system' },
   { id: 'dark', title: 'Dark' },
   { id: 'light', title: 'Light' },
 ];
-export const PROFILES: Array<{ id: Profile; title: string; text: string }> = [
-  { id: 'casual', title: 'Casual', text: 'Roomy and calm. Tool calls appear as short plain-language summaries; the workbench opens only when there is something to show.' },
-  { id: 'dev', title: 'Developer', text: 'Denser. Terminal and Files open beside the chat, tool calls show their input and output, and kernel status is visible.' },
-];
-
 export const readTheme = (os: Kernel): Theme => {
   const v = os.settings.get<string>('ui.theme', 'dark');
   return v === 'light' || v === 'system' ? v : 'dark';
 };
-export const readProfile = (os: Kernel): Profile => (os.settings.get<string>('ui.profile', 'casual') === 'dev' ? 'dev' : 'casual');
 
 /** Checklist of tool packs; unavailable ones are shown as "coming soon" and cannot be picked. */
 export function packList(os: Kernel, onChange?: () => void): HTMLElement {
@@ -61,15 +54,10 @@ export function appearanceSection(ctx: AppContext, saved: () => void): HTMLEleme
     os.settings.set('ui.theme', v);
     saved();
   });
-  const profile = radioGroup('Agent window style', PROFILES, readProfile(os), (v) => {
-    os.settings.set('ui.profile', v);
-    saved();
-  });
   ctx.on('settings:change', ({ key }) => {
     if (key === 'ui.theme') theme.set(readTheme(os));
-    if (key === 'ui.profile') profile.set(readProfile(os));
   });
-  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el, profile.el);
+  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el);
 }
 
 export function toolsSection(ctx: AppContext, saved: () => void): HTMLElement {

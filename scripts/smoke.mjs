@@ -63,19 +63,19 @@ await check('first run: setup shows; completing it lands in the chat', async () 
   await agent.waitForSelector('.su', { timeout: 20000 });
   if (await agent.locator('.composer').isVisible()) throw new Error('the chat is visible behind the setup');
   const next = () => agent.locator('.su-nav .btn.primary').click();
-  await agent.locator('.su-choice', { hasText: 'Casual' }).click();
+  await agent.locator('.su-custom summary').click();
+  if (!(await agent.locator('.pk-item', { hasText: 'Python' }).locator('input').isChecked())) throw new Error('developer setup does not preselect the tools');
+  if (!(await agent.locator('.pk-item', { hasText: 'C compiler' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
+  await agent.locator('.su-big .su-choice', { hasText: 'Light' }).click(); // nothing preinstalled; tools are added later with `pkg install`
+  if (await agent.locator('.pk-item', { hasText: 'Git' }).locator('input').isChecked()) throw new Error('light setup still selects tools');
   await next();
   await agent.waitForSelector('.su-model[data-app="settings"] .st-section', { timeout: 10000 }); // the Settings app's Model section, embedded
   await next();
   await agent.locator('.su-choice', { hasText: 'Ask me first' }).click();
-  await next();
-  if (!(await agent.locator('.pk-item', { hasText: 'Python' }).locator('input').isChecked())) throw new Error('python not preselected');
-  if (!(await agent.locator('.pk-item', { hasText: 'C compiler' }).locator('input').isDisabled())) throw new Error('an unavailable pack is selectable');
-  for (const name of ['Git', 'SQLite', 'Zip']) await agent.locator('.pk-item', { hasText: name }).locator('input').uncheck(); // installed later with `pkg install`
   await agent.locator('.su-nav .btn.primary', { hasText: 'Finish' }).click();
   await ready(agent);
   await agent.waitForSelector('.composer', { state: 'visible' });
-  return agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), profile: bbx.settings.get('ui.profile', ''), packs: bbx.settings.get('setup.packs', []), perms: bbx.perms.mode }));
+  return agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), packs: bbx.settings.get('setup.packs', []), perms: bbx.perms.mode }));
 });
 await check('setup does not reappear on reload; "Use defaults" also lands in the chat', async () => {
   await agent.reload();
@@ -94,6 +94,9 @@ await check('root redirects to the agent window; kernel boots headless', async (
   await ready(agent);
   if (!agent.url().endsWith('/agent/')) throw new Error(agent.url());
   if (await agent.locator('.desk-area, .win').count()) throw new Error('a desktop was rendered in the agent window');
+  if (await agent.locator('.boot').count()) throw new Error('the boot placeholder was left on the page');
+  const top = await agent.locator('.bb').evaluate((el) => el.getBoundingClientRect().top);
+  if (top !== 0) throw new Error(`the app is not at the top of the window (top=${top})`);
   return agent.evaluate(() => `${bbx.bootMarks.map((m) => `${m.name}@${m.at}`).join(' ')} shared=${bbx.shared} root=${bbx.rootKind}`);
 });
 await check('kernel processes exist without any GUI', () =>

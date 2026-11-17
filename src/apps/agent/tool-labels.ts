@@ -1,4 +1,4 @@
-/** Plain-language one-liners for tool calls (shown in the "casual" profile instead of raw names and inputs). */
+/** Plain-language one-liners for tool calls; the raw command or path is shown beside them. */
 const VERBS: Record<string, string> = {
   read_file: 'Read a file',
   write_file: 'Wrote a file',

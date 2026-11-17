@@ -7,15 +7,16 @@ import { errMessage, isTextLike } from './filetypes';
 import { closeMenu, openMenu, type MenuItem } from './menu';
 import { checkName, download, droppedUploads, uniquePath, writeUploads, type Upload } from './ops';
 import { FileTable } from './table';
+import { icon, type IconName } from '@/ui/icons';
 import './style.css';
 
 const HOME = '/home/user';
-const PLACES: Array<[string, string, string]> = [
-  ['🏠', 'Home', HOME],
-  ['✦', 'Agent', '/home/agent'],
-  ['💽', 'Root', '/'],
-  ['🗑', 'Temp', '/tmp'],
-  ['⚙️', 'Proc', '/proc'],
+const PLACES: Array<[IconName, string, string]> = [
+  ['home', 'Home', HOME],
+  ['spark', 'Agent', '/home/agent'],
+  ['drive', 'Root', '/'],
+  ['clock', 'Temp', '/tmp'],
+  ['chip', 'Proc', '/proc'],
 ];
 
 /** Shared by every Files window so you can copy in one and paste in another. */
@@ -35,28 +36,28 @@ const app: AppModule = {
     const fail = (title: string, err: unknown) => ctx.os.notify({ title, body: errMessage(err), level: 'error' });
 
     // ── Chrome ─────────────────────────────────────────────────────────────
-    const btn = (label: string, icon: string, fn: () => void, text?: string) =>
-      h('button', { class: 'btn small', title: label, 'aria-label': label, onclick: fn }, h('span', { 'aria-hidden': 'true' }, icon), text && h('span', { class: 'lbl' }, text));
-    const backBtn = btn('Back (Alt+←)', '←', () => void history(-1));
-    const fwdBtn = btn('Forward (Alt+→)', '→', () => void history(1));
-    const upBtn = btn('Up one folder (Backspace)', '↑', () => void go(dirname(cwd)));
+    const btn = (label: string, name: IconName, fn: () => void, text?: string) =>
+      h('button', { class: 'btn small', title: label, 'aria-label': label, onclick: fn }, icon(name, 16), text && h('span', { class: 'lbl' }, text));
+    const backBtn = btn('Back (Alt+←)', 'arrowLeft', () => void history(-1));
+    const fwdBtn = btn('Forward (Alt+→)', 'arrowRight', () => void history(1));
+    const upBtn = btn('Up one folder (Backspace)', 'arrowUp', () => void go(dirname(cwd)));
     const pathInput = h('input', { class: 'input mono path-input', 'aria-label': 'Folder path', spellcheck: false, autocapitalize: 'off' });
     const pathForm = h('form', { class: 'path-form', onsubmit: (e: Event) => (e.preventDefault(), void go(resolve(cwd, pathInput.value.trim() || cwd))) }, pathInput);
     pathInput.addEventListener('keydown', (e) => e.key === 'Escape' && ((pathInput.value = cwd), table.el.focus()));
 
     const fileInput = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => void uploadPicked() });
     const act = {
-      newFile: btn('New file', '＋', () => void newItem('file'), 'File'),
-      newDir: btn('New folder', '📁', () => void newItem('dir'), 'Folder'),
-      upload: btn('Upload files', '⇪', () => fileInput.click(), 'Upload'),
-      mount: btn('Mount a folder from this device', '🔌', () => void mountFolder(), 'Mount'),
-      open: btn('Open (Enter)', '↗', () => openSelected(), 'Open'),
-      copy: btn('Copy (Ctrl+C)', '⧉', () => toClipboard(false)),
-      cut: btn('Cut (Ctrl+X)', '✂', () => toClipboard(true)),
-      paste: btn('Paste (Ctrl+V)', '📋', () => void paste()),
-      rename: btn('Rename (F2)', '✎', () => void rename()),
-      download: btn('Download', '⤓', () => void downloadSelected()),
-      del: btn('Delete (Del)', '🗑', () => void remove()),
+      newFile: btn('New file', 'filePlus', () => void newItem('file'), 'File'),
+      newDir: btn('New folder', 'folderPlus', () => void newItem('dir'), 'Folder'),
+      upload: btn('Upload files', 'upload', () => fileInput.click(), 'Upload'),
+      mount: btn('Mount a folder from this device', 'plug', () => void mountFolder(), 'Mount'),
+      open: btn('Open (Enter)', 'external', () => openSelected(), 'Open'),
+      copy: btn('Copy (Ctrl+C)', 'copy', () => toClipboard(false)),
+      cut: btn('Cut (Ctrl+X)', 'scissors', () => toClipboard(true)),
+      paste: btn('Paste (Ctrl+V)', 'clipboard', () => void paste()),
+      rename: btn('Rename (F2)', 'edit', () => void rename()),
+      download: btn('Download', 'download', () => void downloadSelected()),
+      del: btn('Delete (Del)', 'trash', () => void remove()),
     };
     act.mount.hidden = !ctx.os.hasCap('fsaccess');
 
@@ -70,7 +71,7 @@ const app: AppModule = {
     const drop = h('div', { class: 'files-drop', 'aria-hidden': 'true' }, 'Drop to upload here');
 
     ctx.root.append(
-      h('div', { class: 'toolbar files-nav' }, backBtn, fwdBtn, upBtn, pathForm, btn('Refresh', '⟳', () => void refresh())),
+      h('div', { class: 'toolbar files-nav' }, backBtn, fwdBtn, upBtn, pathForm, btn('Refresh', 'refresh', () => void refresh())),
       h('div', { class: 'toolbar files-actions', role: 'toolbar', 'aria-label': 'File actions' }, act.newFile, act.newDir, act.upload, act.mount, h('span', { class: 'sep' }), act.open, act.copy, act.cut, act.paste, act.rename, act.download, act.del),
       h('div', { class: 'files-body fill' }, places, h('div', { class: 'files-main' }, table.el, drop)),
       h('div', { class: 'statusbar' }, status.count, status.sel, status.msg, h('span', { class: 'spacer fill' }), status.store),
@@ -78,10 +79,10 @@ const app: AppModule = {
     );
 
     function renderPlaces(): void {
-      const mounts = fs.mounts().filter((m) => dirname(m.point) === '/mnt').map((m): [string, string, string] => ['🔌', basename(m.point), m.point]);
+      const mounts = fs.mounts().filter((m) => dirname(m.point) === '/mnt').map((m): [IconName, string, string] => ['plug', basename(m.point), m.point]);
       places.replaceChildren(
-        ...[...PLACES, ...mounts].map(([icon, label, p]) =>
-          h('button', { class: 'place', title: p, 'aria-current': p === cwd ? 'page' : null, onclick: () => void go(p) }, h('span', { 'aria-hidden': 'true' }, icon), h('span', null, label)),
+        ...[...PLACES, ...mounts].map(([name, label, p]) =>
+          h('button', { class: 'place', title: p, 'aria-current': p === cwd ? 'page' : null, onclick: () => void go(p) }, icon(name, 16), h('span', null, label)),
         ),
       );
     }

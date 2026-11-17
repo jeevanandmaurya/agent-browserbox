@@ -6,7 +6,6 @@ import type { AgentHandle } from '@/kernel/api';
 import type { TodoItem } from '@/agent/tools/types';
 import type { AppModule } from '@/ui/apps';
 import { createComposer } from './composer';
-import { applyProfile, getProfile } from './profile';
 import { SettingsModal } from './settings-modal';
 import { createShell } from './shell';
 import { createSidebar } from './sidebar';
@@ -153,7 +152,6 @@ const app: AppModule = {
         shell.el.hidden = true;
         const setup = createSetup(os, () => {
           shell.el.hidden = false;
-          applyProfile(os, root, log, getProfile(os) === 'dev' ? workbench : null);
           composer.focus();
           resolve();
         });
@@ -163,14 +161,12 @@ const app: AppModule = {
 
     ctx.on('settings:change', ({ key, value }) => {
       if (key === 'agent.config') composer.refreshModel();
-      if (key === 'ui.profile') applyProfile(os, root, log, null);
       if (key === 'setup.done' && value === false && !root.querySelector('.su')) void runSetup();
     });
     // Sessions are saved by the kernel; refresh the list when one changes on disk.
     ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());
 
     if (!os.settings.get(SETUP_KEY, false)) await runSetup();
-    else applyProfile(os, root, log, getProfile(os) === 'dev' ? workbench : null);
     // Rejoin a session that is already running in the kernel, otherwise start one.
     const [live] = await os.agents.live();
     adopt(live ? await os.agents.attach(live.sid) : await os.agents.create());

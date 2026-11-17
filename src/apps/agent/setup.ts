@@ -1,13 +1,20 @@
 import './setup.css';
-import { DEFAULT_PACKS, PACKS_KEY } from '@/agent/packs';
+import { DEFAULT_PACKS, PACKS, PACKS_KEY } from '@/agent/packs';
 import type { Kernel } from '@/kernel/api';
 import type { PermMode } from '@/kernel/perms';
 import { h } from '@/ui/dom';
-import { packList, PROFILES, readProfile, readTheme, THEMES } from '../settings/general';
+import { packList, readTheme, THEMES } from '../settings/general';
 import { icon } from './icons';
 import { mountPanelApp, type PanelApp } from './panel-host';
 
 export const SETUP_KEY = 'setup.done';
+
+type Kind = 'dev' | 'light';
+const ALL_PACKS = PACKS.filter((p) => p.available).map((p) => p.id);
+const KINDS: Array<{ id: Kind; title: string; text: string }> = [
+  { id: 'dev', title: 'Developer', text: `The full toolset, ready to use: ${PACKS.filter((p) => p.available).map((p) => p.name).join(', ')}. Each tool downloads the first time it is used.` },
+  { id: 'light', title: 'Light', text: 'Just the agent, files and the built-in shell. Nothing extra to download; add tools any time in Settings → Tools.' },
+];
 
 const MODES: Array<{ id: PermMode; title: string; text: string }> = [
   { id: 'ask', title: 'Ask me first', text: 'The agent asks before it changes files, runs code, uses the network or controls the system.' },
@@ -29,8 +36,8 @@ function choices<T extends string>(legend: string, opts: Array<{ id: T; title: s
 }
 
 /**
- * First-run setup: a short, skippable full-page flow (style, model,
- * permissions, tools). Every choice is saved as it is made; finishing or
+ * First-run setup: a short, skippable full-page flow (what to install,
+ * model, permissions). Every choice is saved as it is made; finishing or
  * "Use defaults" marks setup done and hands over to the chat.
  */
 export function createSetup(os: Kernel, done: () => void): { el: HTMLElement; remove(): void } {
@@ -41,15 +48,20 @@ export function createSetup(os: Kernel, done: () => void): { el: HTMLElement; re
 
   const steps: Array<{ title: string; sub: string; build(): HTMLElement }> = [
     {
-      title: 'How do you like to work?',
-      sub: 'Pick a style for the agent window. You can change it any time in Settings → Appearance.',
-      build: () =>
-        h(
-          'div',
-          { class: 'su-stack' },
-          choices('Style', PROFILES, readProfile(os), (v) => set('ui.profile', v), 'su-big'),
-          choices('Theme', THEMES, readTheme(os), (v) => set('ui.theme', v), 'su-row'),
-        ),
+      title: 'What should be installed?',
+      sub: 'Choose a starting point. You can add or remove tools later.',
+      build: () => {
+        const custom = h('details', { class: 'su-custom' }, h('summary', null, 'Choose tools individually'));
+        const fill = () => custom.replaceChildren(custom.firstElementChild!, packList(os));
+        const current: Kind = has(PACKS_KEY) && !os.settings.get<string[]>(PACKS_KEY, []).length ? 'light' : 'dev';
+        if (!has(PACKS_KEY)) set(PACKS_KEY, DEFAULT_PACKS);
+        fill();
+        const pick = (kind: Kind) => {
+          set(PACKS_KEY, kind === 'dev' ? ALL_PACKS : []);
+          fill();
+        };
+        return h('div', { class: 'su-stack' }, choices('Setup', KINDS, current, pick, 'su-big'), custom, choices('Theme', THEMES, readTheme(os), (v) => set('ui.theme', v), 'su-row'));
+      },
     },
     {
       title: 'Choose a model',
@@ -64,11 +76,6 @@ export function createSetup(os: Kernel, done: () => void): { el: HTMLElement; re
       title: 'Permissions',
       sub: 'Everything runs in a sandbox inside this tab. Decide how much the agent may do without asking.',
       build: () => choices('When the agent wants to act', MODES, os.perms.mode, (m) => (os.perms.mode = m), 'su-big'),
-    },
-    {
-      title: 'Tools',
-      sub: 'Optional packs for the agent. Each downloads only when it is first used, and you can change them later in Settings → Tools.',
-      build: () => packList(os),
     },
   ];
 
@@ -127,7 +134,6 @@ export function createSetup(os: Kernel, done: () => void): { el: HTMLElement; re
 
   function finish(): void {
     if (!has(PACKS_KEY)) set(PACKS_KEY, DEFAULT_PACKS);
-    if (!has('ui.profile')) set('ui.profile', 'casual');
     set(SETUP_KEY, true);
     remove();
     done();

@@ -118,6 +118,7 @@ export async function mountStandalone(os: Kernel, app: AppModule, name: string, 
     });
   const ctx: AppContext = { os, win, root, args: Object.fromEntries(new URLSearchParams(location.search)), proc, launch: (id, args) => openInDesktop(os, id, args), on: (type, fn) => os.bus.on(type, fn) };
   root.dataset.app = name.toLowerCase();
+  root.replaceChildren(); // drop the boot placeholder painted by the HTML
   const cleanup = await app.mount(ctx);
   if (typeof cleanup === 'function') closers.push(cleanup);
   addEventListener('pagehide', () => closers.splice(0).forEach((fn) => fn()));

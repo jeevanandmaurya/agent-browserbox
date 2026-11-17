@@ -1,6 +1,7 @@
 /** The sortable, multi-select file list. Owns rendering, selection and arrow-key navigation. */
 import type { Stat } from '@/kernel/vfs/vfs';
 import { fmtBytes, fmtTime, h } from '@/ui/dom';
+import { icon } from '@/ui/icons';
 import { iconFor } from './filetypes';
 
 export type SortKey = 'name' | 'size' | 'mtime';
@@ -26,7 +27,7 @@ export class FileTable {
   #tbody = h('tbody');
   #thead = h('thead');
   #table = h('table', { class: 'table files-table', role: 'grid', 'aria-multiselectable': 'true', 'aria-label': 'Files' }, this.#thead, this.#tbody);
-  #empty = h('div', { class: 'empty files-empty' }, h('div', null, h('div', { class: 'files-empty-icon' }, '📂'), h('p', null, 'This folder is empty.'), h('p', { class: 'muted' }, 'Drop files here, or use New file / Upload.')));
+  #empty = h('div', { class: 'empty files-empty' }, h('div', null, h('div', { class: 'files-empty-icon' }, icon('folder', 32)), h('p', null, 'This folder is empty.'), h('p', { class: 'muted' }, 'Drop files here, or use New file / Upload.')));
   #rows: HTMLTableRowElement[] = [];
   #anchor = -1;
   #cursor = -1;
@@ -126,7 +127,7 @@ export class FileTable {
       h(
         'tr',
         { id: `${this.#id}-${i}`, role: 'row' },
-        h('td', { class: 'col-name', role: 'gridcell' }, h('span', { class: 'ficon', 'aria-hidden': 'true' }, iconFor(e.name, e.kind === 'dir')), h('span', { class: 'fname', title: e.name }, e.name)),
+        h('td', { class: 'col-name', role: 'gridcell' }, h('span', { class: `ficon ${e.kind}`, 'aria-hidden': 'true' }, icon(iconFor(e.name, e.kind === 'dir'), 16)), h('span', { class: 'fname', title: e.name }, e.name)),
         h('td', { class: 'col-size', role: 'gridcell' }, e.kind === 'dir' ? '—' : fmtBytes(e.size)),
         h('td', { class: 'col-mtime', role: 'gridcell' }, fmtTime(e.mtime)),
       ),

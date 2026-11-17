@@ -8,7 +8,7 @@ body.wb-resizing iframe { pointer-events: none; }
 .wb-tabs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .wb-tab { display: flex; align-items: center; flex-shrink: 0; max-width: 200px; height: 34px; border-radius: 9px; color: var(--muted); }
 .wb-tab:hover { background: var(--hover); color: var(--text); }
-.wb-tab.active { background: var(--accent-soft); color: var(--text); }
+.wb-tab.active { background: var(--accent-soft); color: var(--text); font-weight: 500; }
 .wb-tab-main { display: flex; align-items: center; gap: 7px; min-width: 0; height: 100%; padding: 0 4px 0 10px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 13px; }
 .wb-tab.active .wb-tab-main { font-weight: 600; }
 .wb-tab-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
