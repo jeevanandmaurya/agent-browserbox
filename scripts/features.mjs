@@ -487,15 +487,20 @@ await check('desktop: right-click menu, new folder on the desktop, wallpaper, sn
   await desk.mouse.up();
   const r = await desk.locator('.win').first().evaluate((el) => ({ left: el.offsetLeft, width: el.offsetWidth, area: el.parentElement.offsetWidth }));
   if (Math.abs(r.width - r.area / 2) > 2 || Math.abs(r.left - r.area / 2) > 2) throw new Error(`not snapped right: ${JSON.stringify(r)}`);
-  // The agent opens in a tab of its own, not a pop-up window.
+  // The agent opens as a window on the desktop; "Open in new tab" gives it a browser tab.
   await desk.evaluate(() => document.querySelector('.taskbar .show-desk').click());
-  const [tab] = await Promise.all([context.waitForEvent('page'), desk.locator('.desk-icon', { hasText: 'Agent' }).dblclick({ timeout: 10000 }).catch(async (err) => {
-    throw new Error(`${err.message.split('\n').slice(-4).join(' ')}`);
-  })]);
-  const popup = await tab.evaluate(() => !!window.opener && (window.outerWidth < screen.availWidth - 50 || window.menubar?.visible === false));
+  await desk.locator('.desk-icon', { hasText: 'Agent' }).dblclick();
+  const frame = await (await desk.waitForSelector('.win iframe.win-page', { timeout: 10000 })).contentFrame();
+  await frame.waitForSelector('.ag-input', { timeout: 60000 });
+  const inFrame = await frame.evaluate(() => [...document.querySelectorAll('.sb-desktop')].map((b) => b.textContent).join());
+  if (!inFrame.includes('Open in new tab')) throw new Error(`embedded agent offers: ${inFrame}`);
+  await desk.locator('.desk-icon', { hasText: 'Agent' }).click({ button: 'right' });
+  const [tab] = await Promise.all([context.waitForEvent('page'), desk.locator('.menu .pop-item', { hasText: 'Open in new tab' }).click()]);
+  await tab.waitForLoadState();
+  if (!tab.url().includes('/agent/')) throw new Error(`new tab: ${tab.url()}`);
   await tab.close();
-  if (popup) throw new Error('the agent opened as a pop-up window');
-  return 'folder created, wallpaper switched, window snapped right, agent opened in a tab';
+  await desk.locator('.win:has(iframe.win-page) .win-ctl .close').click();
+  return 'folder created, wallpaper switched, window snapped right, agent opened as a window and in a new tab';
 });
 
 await check('phone: home screen, apps fill the screen, the home bar goes home and shows recents', async () => {

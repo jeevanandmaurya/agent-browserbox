@@ -9,6 +9,8 @@ export interface SidebarActions {
   settings(): void;
   processes(): void;
   openDesktop(): void;
+  /** Inside the desktop: the button offers a tab of its own instead. */
+  embedded?: boolean;
   collapse(): void;
 }
 
@@ -56,7 +58,7 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
       { class: 'sb-foot' },
       row('Settings', 'gear', act.settings),
       h('button', { class: 'sb-row sb-kernel', type: 'button', title: 'Show processes', onclick: act.processes }, icon('chip', 18), kernelLabel, dot),
-      h('button', { class: 'sb-desktop', type: 'button', title: 'Open the optional desktop in a new window', onclick: act.openDesktop }, 'Open desktop', icon('external', 13)),
+      h('button', { class: 'sb-desktop', type: 'button', title: act.embedded ? 'Open the agent in a browser tab of its own' : 'Open the optional desktop in a new window', onclick: act.openDesktop }, act.embedded ? 'Open in new tab' : 'Open desktop', icon('external', 13)),
     ),
   );
 

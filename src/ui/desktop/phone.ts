@@ -72,7 +72,7 @@ export function mountPhone(c: ShellContext): () => void {
   const homeMenu = (x: number, y: number, target: HTMLElement) => {
     const appBtn = target.closest<HTMLElement>('.home-app');
     const a = appBtn && visible.find((v) => v.id === appBtn.dataset.id);
-    if (a) return openMenuAt(x, y, [{ label: `Open ${a.name}`, icon: a.icon, hint: a.external ? 'Opens in its own tab' : undefined, onSelect: () => launch(a.id) }, { label: 'Task Manager', icon: 'activity', onSelect: () => launch('taskmgr') }], a.name);
+    if (a) return openMenuAt(x, y, [{ label: `Open ${a.name}`, icon: a.icon, onSelect: () => launch(a.id) }, ...(a.external ? [{ label: 'Open in new tab', icon: 'external' as const, onSelect: () => launch(a.id, { newTab: true }) }] : []), { label: 'Task Manager', icon: 'activity', onSelect: () => launch('taskmgr') }], a.name);
     openMenuAt(x, y, [
       { label: 'Change wallpaper', icon: 'image', onSelect: () => launch('settings', { section: 'appearance' }) },
       { label: 'Settings', icon: 'gear', onSelect: () => launch('settings') },

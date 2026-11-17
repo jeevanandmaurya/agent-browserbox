@@ -74,7 +74,7 @@ open apps:
   browser's back button goes home instead of leaving.
 - **Wallpapers**: presets or your own picture, in Settings → Appearance.
 
-The agent and other external apps open in their own browser tab.
+The agent opens as a window on the desktop (full screen on phones); right-click it (long press on phones) and choose "Open in new tab" for a browser tab of its own.
 
 ## Building web apps: the dev server
 

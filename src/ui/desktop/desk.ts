@@ -71,7 +71,7 @@ export function mountDesk(c: ShellContext): () => void {
 
   // ---- right-click menus ----------------------------------------------------------
   const iconMenu = (it: Item): MenuEntry[] => {
-    if (it.kind === 'app') return [{ label: 'Open', icon: it.app.icon, onSelect: () => open(it) }, ...(it.app.external ? [{ label: 'Opens in its own tab', hint: it.app.external, icon: 'external' as const, onSelect: () => open(it) }] : [])];
+    if (it.kind === 'app') return [{ label: 'Open', icon: it.app.icon, onSelect: () => open(it) }, ...(it.app.external ? [{ label: 'Open in new tab', icon: 'external' as const, onSelect: () => void apps.launch(it.app.id, { newTab: true }) }] : [])];
     const p = it.stat.path;
     const dir = it.stat.kind === 'dir';
     return [

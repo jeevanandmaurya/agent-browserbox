@@ -47,6 +47,9 @@ const app: AppModule = {
     let callCount = 0;
 
     // --- routing: everything opens inside this window ------------------------
+    // Shown inside the desktop (a window there), rather than in a tab of its own.
+    const embedded = window.top !== window;
+    const openTab = () => void window.open(location.href, 'bbx-agent');
     const openDesktop = () => {
       if (!open(OS_URL, 'bbx-os')) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
     };
@@ -80,7 +83,8 @@ const app: AppModule = {
       openChat: (id) => void openSession(id),
       settings: () => settings.open(),
       processes: () => route('taskmgr'),
-      openDesktop,
+      openDesktop: embedded ? openTab : openDesktop,
+      embedded,
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
     });
     const more = (anchor: HTMLElement) =>
@@ -99,7 +103,7 @@ const app: AppModule = {
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
           { separator: true },
           { label: 'Settings', icon: 'gear', onSelect: () => settings.open() },
-          { label: 'Open desktop', icon: 'external', onSelect: openDesktop },
+          embedded ? { label: 'Open in new tab', icon: 'external', onSelect: openTab } : { label: 'Open desktop', icon: 'external', onSelect: openDesktop },
         ],
         'More',
       );
