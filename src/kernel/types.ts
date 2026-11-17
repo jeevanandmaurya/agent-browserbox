@@ -1,3 +1,4 @@
+import type { DevInfo, DevLog } from './dev/types';
 import type { Proc } from './proc';
 
 export interface FsChange {
@@ -31,4 +32,8 @@ export interface KernelEvents extends Record<string, unknown> {
   /** Ask the shell UI to launch an app. */
   /** `fromWindow`: raised by a GUI window (e.g. the desktop), not by the kernel, the shell or the agent. */
   'app:open': { id: string; args?: Record<string, unknown>; fromWindow?: boolean };
+  /** Dev servers started or stopped. */
+  'dev:update': DevInfo[];
+  /** A dev server recorded output (page console, backend, build, network). */
+  'dev:log': { port: number; entry: DevLog };
 }

@@ -6,7 +6,7 @@ import { defaultPackages, installPackages } from './pkg';
 export const SETUP_DONE = 'setup.done';
 
 /**
- * First-boot setup: at most two questions, both skippable. Everything else
+ * First-boot setup: a name, then a model (at most two more questions); all skippable. Everything else
  * gets a default that can be changed later in Settings.
  */
 export const setupCommand: Command = {
@@ -22,6 +22,13 @@ export const setupCommand: Command = {
     };
 
     if (tty && !ctx.args.includes('--defaults')) {
+      // There is no account, so this is the only place BrowserBox learns what to call you.
+      const current = os.settings.get<string>('user.name', '');
+      const name = (await ask(tty, `Your name ${C.dim}(${current ? `${current} · ` : ''}for greetings · Enter to skip)${C.reset}: `)).slice(0, 40);
+      if (name) {
+        os.settings.set('user.name', name);
+        out(`${C.green}✓${C.reset} Hi, ${name}\n`);
+      }
       const key = await ask(tty, `Anthropic API key ${C.dim}(hidden · Enter to skip)${C.reset}: `, true);
       if (key) {
         await os.secrets.set(SECRET.anthropic, key);

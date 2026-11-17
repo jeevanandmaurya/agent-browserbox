@@ -2,6 +2,9 @@ import { McpHub } from '@/agent/ext/mcp';
 import { Bus } from './bus';
 import { detectCaps, type PlatformCap } from './caps';
 import { KCore } from './kcore';
+import { setEsbuildLoader } from './dev/bundle';
+import { loadEsbuild } from './dev/esbuild-loader';
+import { DevServers } from './dev/server';
 import { PackageManager } from './packages';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
@@ -65,6 +68,11 @@ export class KernelCore implements Kernel {
   /** Connections to remote MCP servers (connectors). */
   readonly mcp = new McpHub(this);
   readonly packages = new PackageManager(this);
+  readonly dev = new DevServers(this);
+
+  constructor() {
+    setEsbuildLoader(() => loadEsbuild(this.packages, (msg) => this.log('dev', msg)));
+  }
   /** The kernel log (`dmesg`): what the kernel did, with times since it started. */
   readonly kernelLog: KernelLogLine[] = [];
   /** 'opfs' when the root is persistent, 'memory' when it is not. */

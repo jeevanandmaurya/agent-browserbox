@@ -4,6 +4,7 @@ import { resolve } from '@/kernel/vfs/path';
 import { KERNEL_URL } from '@/config/origins';
 import { PACKAGE_CACHE, PYODIDE_URL, PYTHON_RUNTIME_FILES } from './python-runtime';
 import runtimeSrc from './runtime.js?raw';
+import type { WireRequest, WireResponse } from '@/kernel/dev/types';
 
 export { PYODIDE_URL };
 
@@ -30,6 +31,8 @@ export interface RunResult {
   exitCode?: number;
   timedOut?: boolean;
   ms: number;
+  /** A dev-server backend's answer (null when it did not handle the request). */
+  response?: WireResponse | null;
 }
 
 interface FileBlob {
@@ -40,13 +43,15 @@ interface FileBlob {
 type Job =
   | { op: 'js'; code: string; args?: string[]; env?: Record<string, string> }
   | { op: 'python'; code: string; packages?: string[]; files?: FileBlob[]; pyodideUrl: string; env?: Record<string, string>; runtime?: FileBlob[] }
-  | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string };
+  | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string }
+  | { op: 'server-load'; code: string; env?: Record<string, string> }
+  | { op: 'server-request'; req: WireRequest; origin: string };
 
 type Reply =
   | { id: number; type: 'stdout' | 'stderr'; data: string }
   | { id: number; type: 'progress'; label: string; loaded: number; total: number }
   | { id: number; type: 'rpc'; rid: number; method: string; params: unknown[] }
-  | { id: number; type: 'done'; result?: { value?: string; exitCode?: number; files?: FileBlob[] }; error?: string };
+  | { id: number; type: 'done'; result?: { value?: string; exitCode?: number; files?: FileBlob[]; response?: WireResponse | null }; error?: string };
 
 const MAX_CAPTURE = 256 * 1024;
 
@@ -188,7 +193,7 @@ export class Sandbox {
               return finish({ error: `could not write files back: ${(err as Error).message}` });
             }
             const exitCode = m.result?.exitCode;
-            finish({ ok: exitCode === undefined || exitCode === 0, value: m.result?.value, exitCode });
+            finish({ ok: exitCode === undefined || exitCode === 0, value: m.result?.value, exitCode, response: m.result?.response });
           })();
         }
       });
@@ -234,6 +239,17 @@ export class Sandbox {
  */
 export interface SandboxHost {
   run(kind: 'js' | 'python' | 'wasm', payload: Record<string, unknown>, opts: RunOptions): Promise<RunResult>;
+  backend(op: BackendOp, id: string, payload: BackendPayload, opts: RunOptions): Promise<RunResult>;
+}
+
+export type BackendOp = 'load' | 'request' | 'stop';
+export interface BackendPayload {
+  code?: string;
+  env?: Record<string, string>;
+  network?: boolean;
+  ppid?: number;
+  req?: WireRequest;
+  origin?: string;
 }
 let host: SandboxHost | null = null;
 export function setSandboxHost(h: SandboxHost): void {
@@ -317,4 +333,33 @@ export async function runPython(os: Kernel, code: string, opts: RunOptions & { p
   const result = await python.run({ op: 'python', code, packages: opts.packages, files, pyodideUrl: PYODIDE_URL, env: opts.env, runtime }, { timeoutMs: 180000, ...opts, cwd });
   pythonBooted = python.alive && !result.timedOut;
   return result;
+}
+
+// ---- Dev-server backends -------------------------------------------------------
+// A project's server.ts stays loaded in its own sandbox between requests, so it
+// can keep state in memory like a real server process.
+const backends = new Map<string, Sandbox>();
+
+export async function devBackend(os: Kernel, op: BackendOp, id: string, p: BackendPayload, opts: RunOptions = {}): Promise<RunResult> {
+  if (host) return host.backend(op, id, p, opts);
+  const none = (error?: string): RunResult => ({ ok: !error, stdout: '', stderr: '', ms: 0, error });
+  if (op === 'stop') {
+    backends.get(id)?.dispose();
+    backends.delete(id);
+    return none();
+  }
+  if (op === 'load') {
+    backends.get(id)?.dispose();
+    const sb = new Sandbox(os, { name: `backend :${id}`, network: p.network, ppid: p.ppid });
+    backends.set(id, sb);
+    const r = await sb.run({ op: 'server-load', code: p.code ?? '', env: p.env }, { ...opts, timeoutMs: 15000 });
+    if (!r.ok) {
+      sb.dispose();
+      backends.delete(id);
+    }
+    return r;
+  }
+  const sb = backends.get(id);
+  if (!sb?.alive || !p.req) return none('backend not loaded');
+  return sb.run({ op: 'server-request', req: p.req, origin: p.origin ?? 'http://localhost' }, { ...opts, timeoutMs: opts.timeoutMs ?? 30000 });
 }

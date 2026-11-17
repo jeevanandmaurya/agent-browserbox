@@ -5,6 +5,7 @@ import { renderMarkdown } from '../editor/markdown';
 import { errMessage, isTextLike, kindOf, looksBinary, mimeOf, type FileKind } from '../files/filetypes';
 import { buildSiteDoc, NAV_MESSAGE, resolveRef } from './inline';
 import { loader } from '@/ui/icons';
+import { mountDev } from './dev';
 import { hexView, htmlFrame, ImageView, textView } from './views';
 import './style.css';
 
@@ -13,6 +14,8 @@ const EDITABLE: FileKind[] = ['text', 'code', 'markdown', 'html', 'svg'];
 
 const app: AppModule = {
   mount(ctx) {
+    // A dev server's app: a different view with an address bar and a console.
+    if (ctx.args.dev !== undefined) return mountDev(ctx, Number(ctx.args.dev));
     const fs = ctx.os.fs;
     const html = typeof ctx.args.html === 'string' ? ctx.args.html : null;
     let path = typeof ctx.args.path === 'string' && ctx.args.path ? resolve(HOME, ctx.args.path) : null;

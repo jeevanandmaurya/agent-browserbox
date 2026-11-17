@@ -4,7 +4,8 @@ import type { PermDecision, PermRequest } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
 import type { KernelEvents, KernelLogLine } from '@/kernel/types';
 import { Peer } from '@/rpc/peer';
-import { setSandboxHost, type RunOptions, type RunResult } from '@/sandbox/sandbox';
+import type { DevStartOptions, WireRequest } from '@/kernel/dev/types';
+import { setSandboxHost, type BackendOp, type BackendPayload, type RunOptions, type RunResult } from '@/sandbox/sandbox';
 
 /** What a window receives when it connects. */
 export interface Hello {
@@ -44,7 +45,7 @@ interface Client {
 }
 
 const wire = (p: Proc): WireProc => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, started: p.started, state: p.state, detail: p.detail, cpuMs: p.cpuMs, memBytes: p.memBytes });
-const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'kmsg'];
+const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'kmsg', 'dev:update', 'dev:log'];
 
 /**
  * Exposes the kernel to windows over message ports. Each connection is a
@@ -73,7 +74,7 @@ export class KernelServer {
     os.perms.setPrompter((req, signal) => this.#ask<PermDecision>({ kind: 'perm', payload: req }, signal).catch(() => 'deny'));
     // Clipboard and speech happen in exactly one window.
     os.ui = { call: (method, ...args) => this.#ask({ kind: 'ui', payload: { method, args } }, undefined, [...this.#clients.values()].find((c) => c.role === 'ui')) as Promise<never> };
-    setSandboxHost({ run: (kind, payload, opts) => this.#hostRun(kind, payload, opts) });
+    setSandboxHost({ run: (kind, payload, opts) => this.#hostRun(kind, payload, opts), backend: (op, id, payload, opts) => this.#hostBackend(op, id, payload, opts) });
   }
 
   #broadcast(name: string, payload: unknown, except: number | null = null): void {
@@ -116,6 +117,20 @@ export class KernelServer {
       return { ok: false, stdout: '', stderr: '', ms: 0, error: `sandbox host failed: ${(err as Error).message}` };
     } finally {
       opts.signal?.removeEventListener('abort', abort);
+      this.#runs.delete(runId);
+    }
+  }
+
+  async #hostBackend(op: BackendOp, id: string, payload: BackendPayload, opts: RunOptions): Promise<RunResult> {
+    const host = [...this.#clients.values()].find((c) => c.role === 'host');
+    if (!host) return { ok: false, stdout: '', stderr: '', ms: 0, error: op === 'request' ? 'backend not loaded' : 'No window is open to host the backend. Open the agent window or the desktop.' };
+    const runId = this.#nextRun++;
+    this.#runs.set(runId, opts);
+    try {
+      return await host.peer.call<RunResult>('host.backend', runId, op, id, payload, { cwd: opts.cwd, timeoutMs: opts.timeoutMs });
+    } catch (err) {
+      return { ok: false, stdout: '', stderr: '', ms: 0, error: `sandbox host failed: ${(err as Error).message}` };
+    } finally {
       this.#runs.delete(runId);
     }
   }
@@ -206,6 +221,15 @@ export class KernelServer {
       'fs.unmount': (point: string) => fs.unmount(point),
       'fs.mounts': () => fs.mounts().map((m) => ({ point: m.point, label: m.fs.label, readonly: m.fs.readonly ?? false })),
       'fs.mountHandle': (handle: FileSystemDirectoryHandle) => os.mountHandle(handle),
+
+      // Dev servers
+      'dev.start': (o: DevStartOptions) => os.dev.start(o),
+      'dev.stop': (port: number) => os.dev.stop(port),
+      'dev.list': () => os.dev.list(),
+      'dev.page': (port: number, path?: string) => os.dev.page(port, path),
+      'dev.request': (port: number, req: WireRequest) => os.dev.request(port, req),
+      'dev.log': (port: number, entries: Parameters<KernelCore['dev']['log']>[1]) => os.dev.log(port, entries),
+      'dev.logs': (port: number, o?: { after?: number; limit?: number }) => os.dev.logs(port, o),
 
       // Settings & secrets (write-only from windows)
       'settings.set': (key: string, value: unknown) => as(() => os.settings.set(key, value)),

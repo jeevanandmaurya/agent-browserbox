@@ -6,7 +6,7 @@ const CACHE = 'bbx-v2';
 const PACKS = 'bbx-packs';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html', './preview/frame.html'])).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

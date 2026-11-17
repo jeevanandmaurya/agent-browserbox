@@ -1,3 +1,4 @@
+import type { DevApi } from '@/kernel/dev/types';
 import type { AgentEvent } from '@/agent/agent';
 import type { AgentHandle, AgentsApi, FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
 import { Bus } from '@/kernel/bus';
@@ -258,6 +259,16 @@ export class RemoteKernel implements Kernel {
     has: (name) => this.call('secrets.has', name),
     set: (name, value) => this.call('secrets.set', name, value),
     delete: (name) => this.call('secrets.delete', name),
+  };
+
+  readonly dev: DevApi = {
+    start: (o) => this.call('dev.start', o),
+    stop: (port) => this.call('dev.stop', port),
+    list: () => this.call('dev.list'),
+    page: (port, path) => this.call('dev.page', port, path),
+    request: (port, req) => this.call('dev.request', port, req),
+    log: (port, entries) => void this.call('dev.log', port, entries).catch(() => undefined),
+    logs: (port, o) => this.call('dev.logs', port, o),
   };
 
   readonly agents: AgentsApi = {

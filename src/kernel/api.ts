@@ -2,6 +2,7 @@ import type { AgentEvent } from '@/agent/agent';
 import type { TodoItem } from '@/agent/tools/types';
 import type { ContextReport, Msg, Usage } from '@/agent/types';
 import type { Bus } from './bus';
+import type { DevApi } from './dev/types';
 import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
 import type { Permissions, Prompter } from './perms';
@@ -28,6 +29,8 @@ export interface Kernel {
   readonly kcore: KCore;
   readonly agents: AgentsApi;
   readonly shells: ShellsApi;
+  /** Virtual dev servers for project folders (`serve`). */
+  readonly dev: DevApi;
   readonly caps: PlatformCap[];
   rootKind: 'opfs' | 'memory';
   readonly bootStart: number;

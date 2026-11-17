@@ -44,7 +44,9 @@ function respond(r) {
   const system = msgs[0].content;
   if (lastUser.includes('Your context window is nearly full')) return text('SUMMARY: the user asked about skills and weather; all done.');
   if (last.role === 'tool' && last.content.includes('installed python') && r.tools.some((t) => t.function.name === 'run_python')) return call('run_python', { code: 'print(6 * 7)' });
+  if (last.role === 'tool' && last.content.startsWith('Serving ')) return call('preview_logs', { wait_ms: 1500, all: true });
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
+  if (lastUser.includes('serve the todo app')) return call('dev_server', { action: 'start', path: 'todo' });
   if (lastUser.includes('use the web-page skill')) return call('use_skill', { name: 'web-page' });
   if (lastUser.includes('compute with python')) return call('shell', { command: 'pkg install python' });
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
@@ -95,8 +97,8 @@ const term = async (cmd, waitFor, timeout = 60000) => {
 
 await page.goto(base + 'agent/');
 await check('first boot: setup in the console connects to a local model server', async () => {
-  // skip the API key · local server URL (it has one model, picked automatically)
-  const answers = ['', 'http://localhost:11436/v1'];
+  // skip the name and the API key · local server URL (it has one model, picked automatically)
+  const answers = ['', '', 'http://localhost:11436/v1'];
   for (const a of answers) {
     await page.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 30000 });
     await page.locator('.boot-console .term-input').fill(a);
@@ -136,7 +138,7 @@ await check('pkg: remove, install with a progress bar, list and info', async () 
 await check('the agent installs a missing package and uses its tool in the same task', async () => {
   const reqs = await send('compute with python', 'Tool said: 42');
   if (reqs[0].tools.some((t) => t.function.name === 'run_python')) throw new Error('python was already installed');
-  if (!reqs[0].messages[0].content.includes('Not installed: python')) throw new Error('the prompt does not offer python');
+  if (!/Not installed:[^\n]*\bpython \(/.test(reqs[0].messages[0].content)) throw new Error('the prompt does not offer python');
   if (!reqs[1].tools.some((t) => t.function.name === 'run_python')) throw new Error('run_python was not offered after installing');
   return `${reqs.length} model calls: pkg install python → run_python → answer`;
 });
@@ -314,6 +316,99 @@ await check('editor: Markdown preview replaces the code instead of stacking unde
   await pane.locator('[aria-label="Toggle Markdown preview"]').click();
   if (!(await pane.evaluate((el) => el.querySelector('.code')?.checkVisibility()))) throw new Error('the code did not come back');
   return 'Preview ⇄ Edit swap';
+});
+
+await check('preview runs a page’s scripts (sandboxed, own origin)', async () => {
+  await page.evaluate(() => bbx.openApp('preview', { html: '<p id="x">waiting</p><script>let s; try { localStorage.length; s = "storage-open"; } catch { s = "storage-blocked"; } document.getElementById("x").textContent = "js-ran:" + s</script>' }));
+  const frame = await (await page.waitForSelector('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame')).contentFrame();
+  await frame.waitForFunction(() => document.getElementById('x')?.textContent.startsWith('js-ran'), null, { timeout: 10000 });
+  const t = await frame.locator('#x').textContent();
+  if (!t.includes('storage-blocked')) throw new Error(`the page reached storage: ${t}`);
+  return t;
+});
+
+const TODO = {
+  'package.json': JSON.stringify({ dependencies: { react: '^18.3.1', 'react-dom': '^18.3.1' } }),
+  'index.html': '<!doctype html><html><head><title>Todo</title><link rel="stylesheet" href="/src/app.css"></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>',
+  'src/app.css': 'h1 { color: rgb(0, 128, 128) }',
+  'src/main.tsx': `import { createRoot } from 'react-dom/client';
+import { useEffect, useState } from 'react';
+import { title } from '@/title';
+type Todo = { id: number; text: string };
+function App() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  useEffect(() => { fetch('/api/todos').then((r) => r.json()).then(setTodos); }, []);
+  const add = async () => setTodos(await (await fetch('/api/todos', { method: 'POST', body: JSON.stringify({ text: 'item ' + todos.length }) })).json());
+  return <main><h1>{title}</h1><ul>{todos.map((t) => <li key={t.id}>{t.text}</li>)}</ul><button id="add" onClick={add}>Add</button><img id="logo" src="/logo.svg" /></main>;
+}
+console.log('todo app booted');
+fetch('/missing.json');
+createRoot(document.getElementById('root')!).render(<App />);`,
+  'src/title.ts': 'export const title: string = "Todos";',
+  'logo.svg': '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+  'server.ts': `const todos = [{ id: 1, text: 'from the backend' }];
+export default {
+  async fetch(req: Request, env: { fs: { writeFile(p: string, d: string): Promise<void> } }) {
+    const url = new URL(req.url);
+    if (url.pathname !== '/api/todos') return null;
+    if (req.method === 'POST') { todos.push({ id: todos.length + 1, ...(await req.json()) }); console.log('saved', todos.length); await env.fs.writeFile('todos.json', JSON.stringify(todos)); }
+    return Response.json(todos);
+  },
+};`,
+};
+
+await check('dev server: React + TypeScript + backend, reloading on save', async () => {
+  await page.evaluate(async (files) => { for (const [k, v] of Object.entries(files)) await bbx.fs.writeFile(`/home/agent/todo/${k}`, v); }, TODO);
+  await page.evaluate(() => bbx.openApp('terminal'));
+  await page.waitForSelector('.term-input');
+  const out = await term('cd /home/agent/todo && npm run dev', 'localhost:3000', 120000);
+  const frame = await (await page.waitForSelector('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame', { timeout: 60000 })).contentFrame();
+  await frame.waitForSelector('li', { timeout: 120000 });
+  await frame.locator('#add').click();
+  await frame.waitForFunction(() => document.querySelectorAll('li').length === 2, null, { timeout: 15000 });
+  await frame.waitForFunction(() => document.getElementById('logo')?.src.startsWith('blob:'), null, { timeout: 10000 });
+  const saved = await page.evaluate(() => bbx.fs.readText('/home/agent/todo/todos.json'));
+  if (!saved.includes('item 1')) throw new Error(`backend did not write: ${saved}`);
+  // Saving a file reloads the page; the backend keeps its in-memory state.
+  await page.evaluate(() => bbx.fs.writeFile('/home/agent/todo/src/app.css', 'h1 { color: rgb(200, 0, 0) }'));
+  await page.waitForFunction(async () => {
+    const f = document.querySelector('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame');
+    return !!f;
+  });
+  let color = '';
+  for (let i = 0; i < 40 && color !== 'rgb(200, 0, 0)'; i++) {
+    await page.waitForTimeout(250);
+    const f = await (await page.$('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame'))?.contentFrame();
+    color = (await f?.evaluate(() => document.querySelector('h1') && getComputedStyle(document.querySelector('h1')).color).catch(() => '')) ?? '';
+  }
+  if (color !== 'rgb(200, 0, 0)') throw new Error(`no reload after saving: ${color}`);
+  const f2 = await (await page.$('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame')).contentFrame();
+  await f2.waitForFunction(() => document.querySelectorAll('li').length === 2, null, { timeout: 15000 });
+  const logs = await page.evaluate(() => bbx.dev.logs(3000).then((l) => l.map((x) => `${x.source}/${x.level}: ${x.text}`)));
+  for (const want of ['page/log: todo app booted', 'server/log: saved 2', 'network/warn: GET /missing.json → 404']) if (!logs.some((l) => l.startsWith(want))) throw new Error(`${want} missing from ${JSON.stringify(logs)}`);
+  await page.locator('.wb-pane[data-app="preview"]:not([hidden]) button[aria-label="Console"]').click();
+  const shown = await page.locator('.wb-pane[data-app="preview"]:not([hidden]) .pv-log-row').count();
+  if (!shown) throw new Error('the console panel is empty');
+  return `${out.includes('esbuild') ? 'installed esbuild; ' : ''}rendered, backend state kept across a reload, ${logs.length} log entries, ${shown} in the console`;
+});
+
+await check('agent: dev_server starts the app and preview_logs reads its console', async () => {
+  await page.evaluate(() => bbx.dev.stop(3000));
+  // Earlier checks shrank the context window to force compaction; give this one room.
+  await page.evaluate(() => bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), contextWindow: 128000 }));
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  const before = requests.length;
+  const reqs = await send('serve the todo app', 'Tool said').catch((err) => {
+    throw new Error(`${err.message.split('\n')[0]} · model saw: ${JSON.stringify(requests.slice(before).map((r) => r.messages.at(-1)?.content?.slice?.(0, 300)))}`);
+  });
+  const results = reqs.flatMap((r) => r.messages.filter((m) => m.role === 'tool').map((m) => m.content));
+  const started = results.find((c) => c.startsWith('Serving'));
+  const logs = results.find((c) => /entr(y|ies)/.test(c));
+  if (!started || !started.includes('Backend: server.ts')) throw new Error(`dev_server: ${started}`);
+  if (!logs || !logs.includes('todo app booted')) throw new Error(`preview_logs: ${logs}`);
+  await page.evaluate(() => bbx.dev.stop(3000));
+  return started.split('\n')[0];
 });
 
 if (errors.length) {

@@ -47,11 +47,49 @@ window and kernel share an origin.
 
 Every window starts with a boot console: the kernel log (`dmesg`) as the
 kernel mounts storage, loads its WebAssembly core and checks the platform.
-First boot then runs `setup`, which asks at most two things, both skippable
-with Enter: an Anthropic API key (read without echo, stored encrypted), or
-failing that the URL of a local model server. Everything else gets a default
+First boot then runs `setup`, which asks a few things, all skippable with
+Enter: your name (there is no account, so this is what greetings use), an
+Anthropic API key (read without echo, stored encrypted), or failing that the
+URL of a local model server. Everything else gets a default
 (ask before acting, system theme, the small packages git, sqlite and zip).
 Change any of it in Settings, or run `setup` again.
+
+## Building web apps: the dev server
+
+Nothing in a browser can listen on a port, so BrowserBox has a virtual dev
+server instead. `serve [folder]` (or `npm run dev`, `npx vite`, or the agent's
+`dev_server` tool) serves a project at `http://localhost:3000/` and opens it
+in Preview:
+
+- **Pages**: `index.html`, or a generated page when the project only has
+  `src/main.tsx` (`.ts`, `.jsx`, `.js`). Client-side routes get `index.html`.
+- **Bundling**: esbuild (WebAssembly, the `esbuild` package, installed on
+  first use) compiles TypeScript, JSX, CSS, CSS modules, JSON and assets.
+  `import.meta.env` holds `VITE_`/`PUBLIC_` variables from `.env` files;
+  `@/…` and tsconfig `paths` aliases work.
+- **npm packages**: `npm install react` records the version in package.json;
+  bare imports load from esm.sh at that version, one copy per package, and
+  are cached for offline builds. There is no `node_modules`.
+- **Backend**: a `server.ts` (or `server.js`, `api/index.ts`) that exports
+  `default { fetch(request, env) }` answers the page's requests that are not
+  project files. It stays loaded in a sandbox between requests, so in-memory
+  state works; `env.fs` reads and writes project files; `.env` values are in
+  `env`. It has no network unless started with `serve --net`.
+- **Reload and console**: saving a file reloads Preview. Its console shows
+  the page's output, uncaught errors, failed requests, build errors and the
+  backend's output; the agent reads the same with `preview_logs`, so it can
+  check that what it built actually works.
+
+How it stays safe: the app runs in a sandboxed frame with an opaque origin,
+so it cannot reach BrowserBox's storage, files or keys. Its `fetch()` and
+`XMLHttpRequest` calls to its own address are forwarded to the dev server.
+On GitHub Pages everything shares one origin and this frame is the
+boundary; with your own domain, set `VITE_PREVIEW_URL` to give previews a
+separate origin (`preview.example.com`).
+
+Not supported: Node.js APIs in the backend (it runs on web APIs: `Request`,
+`Response`, `fetch`, `crypto`), native modules, and tools that need Node
+(the real Vite, Next.js, webpack).
 
 ## Packages
 
@@ -141,7 +179,7 @@ Pick one in **Settings → Model**:
 `move_path` · `shell` `run_js` `run_python` `run_wasm` `gpu_compute` ·
 `http_fetch` `open_app` `show_html` · `list_processes` `kill_process`
 `system_info` · `notify` `clipboard_read` `clipboard_write` `speak` ·
-`ask_user` `todo_write` `spawn_agent` (plus Claude's `web_search` / `web_fetch`).
+`ask_user` `todo_write` `spawn_agent` · `dev_server` `preview_logs` (plus Claude's `web_search` / `web_fetch`).
 
 ## Agent features
 

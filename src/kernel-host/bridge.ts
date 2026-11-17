@@ -1,6 +1,6 @@
 import { RemoteKernel } from '@/client/remote-kernel';
 import { ALLOWED_ORIGINS } from '@/config/origins';
-import { runJs, runPython, runWasm, type RunResult } from '@/sandbox/sandbox';
+import { devBackend, runJs, runPython, runWasm, type BackendOp, type BackendPayload, type RunResult } from '@/sandbox/sandbox';
 
 /**
  * The kernel bridge: a hidden page on the kernel's origin, embedded by every
@@ -52,6 +52,10 @@ void os.handle({
     } finally {
       aborts.delete(runId);
     }
+  },
+  'host.backend': async (runId: number, op: BackendOp, id: string, p: BackendPayload, o: { cwd?: string; timeoutMs?: number }): Promise<RunResult> => {
+    const peer = await os.handle({});
+    return devBackend(os, op, id, p, { ...o, onStdout: (t: string) => peer.emit('host:out', { runId, s: 'o', t }), onStderr: (t: string) => peer.emit('host:out', { runId, s: 'e', t }) });
   },
 }).then((peer) => peer.on<number>('host:abort', (runId) => aborts.get(runId)?.abort()));
 

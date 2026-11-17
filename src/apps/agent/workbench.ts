@@ -153,7 +153,7 @@ export class Workbench {
   open(id: string, args: Record<string, unknown> = {}): void {
     const tool = TOOLS.find((t) => t.id === id);
     if (!tool) return;
-    const key = id === 'editor' && typeof args.path === 'string' ? `editor:${args.path}` : id;
+    const key = id === 'editor' && typeof args.path === 'string' ? `editor:${args.path}` : id === 'preview' && args.dev ? `preview:${String(args.dev)}` : id;
     let tab = this.#tabs.find((t) => t.key === key);
     const fresh = !tab;
     if (!tab) tab = this.#addTab(key, tool);
@@ -247,7 +247,11 @@ export class Workbench {
     grab.addEventListener('pointerdown', (e) => {
       if (!this.isSheet) return;
       e.preventDefault();
-      grab.setPointerCapture(e.pointerId);
+      try {
+        grab.setPointerCapture(e.pointerId);
+      } catch {
+        /* a synthetic or already-released pointer */
+      }
       const startY = e.clientY;
       const startH = this.el.getBoundingClientRect().height;
       this.el.classList.add('dragging');

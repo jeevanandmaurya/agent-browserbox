@@ -73,13 +73,15 @@ async function firstBoot(page, answers) {
 await check('first boot: kernel log, then setup in the console, then the agent window', async () => {
   await agent.waitForSelector('.boot-console', { timeout: 20000 });
   await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-console .term-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-console .term-out').textContent), null, { timeout: 20000 });
-  // skip the API key, skip the local server
-  const prompts = await firstBoot(agent, ['', '']);
+  // a name, then skip the API key and the local server
+  const prompts = await firstBoot(agent, ['Ada', '', '']);
+  if (!/name/i.test(prompts[0] ?? '')) throw new Error(`first prompt: ${prompts[0]}`);
   await ready(agent);
   await agent.waitForSelector('.composer', { state: 'visible' });
   const log = await agent.evaluate(() => bbx.kernelLog.map((l) => `${l.src}: ${l.msg}`).join(' | '));
   if (!/kernel: ready/.test(log)) throw new Error(log);
-  return `${prompts.length} prompts answered; ${agent.evaluate ? (await agent.evaluate(() => JSON.stringify({ done: bbx.settings.get('setup.done', false), installed: bbx.settings.get('pkg.installed', []), perms: bbx.perms.mode }))) : ''}`;
+  if ((await agent.evaluate(() => bbx.settings.get('user.name', ''))) !== 'Ada') throw new Error('the name was not saved');
+  return `${prompts.length} prompts answered; ${agent.evaluate ? (await agent.evaluate(() => JSON.stringify({ name: bbx.settings.get('user.name', ''), done: bbx.settings.get('setup.done', false), installed: bbx.settings.get('pkg.installed', []), perms: bbx.perms.mode }))) : ''}`;
 });
 await check('later boots show the log but do not ask again', async () => {
   await agent.reload();

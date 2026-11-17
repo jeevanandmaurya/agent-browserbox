@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  BrowserBox preview frame. Embedded with sandbox="allow-scripts …" and no
+  allow-same-origin, so whatever runs here has an opaque origin: it cannot
+  reach BrowserBox's storage, files or keys. Pages arrive by postMessage from
+  the parent and are written into this document, so they get this policy
+  (scripts allowed) instead of the agent window's stricter one.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; form-action 'none'">
+<title>Preview</title>
+<script>
+  addEventListener('message', function boot(e) {
+    if (e.source !== parent || !e.data || e.data.type !== 'bbx-preview:doc') return;
+    removeEventListener('message', boot);
+    document.open();
+    document.write(e.data.html);
+    document.close();
+  });
+  parent.postMessage({ type: 'bbx-preview:ready' }, '*');
+</script>
+</head>
+<body></body>
+</html>

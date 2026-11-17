@@ -1,16 +1,33 @@
 /** Per-type preview renderers. Each returns the element to show. */
+import { PREVIEW_FRAME_URL } from '@/config/origins';
 import { h } from '@/ui/dom';
 
 const MAX_TEXT = 2 * 1024 * 1024;
 const HEX_BYTES = 64 * 1024;
 
-const SANDBOX = 'allow-scripts allow-forms allow-modals';
+const SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
 
-/** Untrusted HTML runs in an opaque origin: never add allow-same-origin here. */
-export function htmlFrame(srcdoc: string, title: string): HTMLIFrameElement {
+/**
+ * Untrusted HTML runs in an opaque origin: never add allow-same-origin here.
+ * The frame loads a small page with its own (permissive) policy and receives
+ * the document by message, so the page's scripts run without inheriting the
+ * BrowserBox window's script restrictions. `onMessage` gets the page's other messages.
+ */
+export function htmlFrame(html: string, title: string, onMessage?: (data: { type?: string } & Record<string, unknown>, reply: (msg: unknown, transfer?: Transferable[]) => void) => void): HTMLIFrameElement {
   const frame = h('iframe', { class: 'pv-frame', title, referrerPolicy: 'no-referrer' });
   frame.setAttribute('sandbox', SANDBOX);
-  frame.srcdoc = srcdoc;
+  frame.setAttribute('allow', 'fullscreen; clipboard-write; autoplay');
+  const reply = (msg: unknown, transfer: Transferable[] = []) => frame.contentWindow?.postMessage(msg, '*', transfer);
+  const listener = (e: MessageEvent) => {
+    if (!frame.isConnected) return removeEventListener('message', listener);
+    if (e.source !== frame.contentWindow || !e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'bbx-preview:ready') {
+      frame.dataset.loaded = '1';
+      reply({ type: 'bbx-preview:doc', html });
+    } else onMessage?.(e.data, reply);
+  };
+  addEventListener('message', listener);
+  frame.src = PREVIEW_FRAME_URL;
   return frame;
 }
 

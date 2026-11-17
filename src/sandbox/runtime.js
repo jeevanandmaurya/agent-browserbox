@@ -45,6 +45,8 @@ async function handle(m) {
     if (m.op === 'js') result = await runJs(m, out, err);
     else if (m.op === 'python') result = await runPython(m, out, err);
     else if (m.op === 'wasm') result = await runWasi(m, out, err);
+    else if (m.op === 'server-load') result = await serverLoad(m);
+    else if (m.op === 'server-request') result = await serverRequest(m);
     else throw new Error('unknown op ' + m.op);
     port.postMessage({ id: m.id, type: 'done', result });
   } catch (e) {
@@ -72,6 +74,46 @@ async function runJs(m, out, err) {
   const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', m.code);
   const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }));
   return { value: value === undefined ? undefined : show(value) };
+}
+
+// ---- Dev-server backend -----------------------------------------------------
+// The project's server.ts, bundled as a script that sets __bbxServer. It stays
+// loaded; each request is a job. Its console and fs go to whichever request is
+// running (the kernel sends one at a time).
+let backend = null;
+let currentJob = 0;
+
+async function serverLoad(m) {
+  currentJob = m.id;
+  const line = (type) => (...a) => port.postMessage({ id: currentJob, type, data: a.map(show).join(' ') + '\n' });
+  const console = { log: line('stdout'), info: line('stdout'), debug: line('stdout'), warn: line('stderr'), error: line('stderr'), table: line('stdout') };
+  const call = (method) => (...params) => rpc(currentJob, method, params);
+  const fs = {
+    readText: call('fs.readText'), readFile: call('fs.readFile'), writeFile: call('fs.writeFile'), appendFile: call('fs.appendFile'),
+    readdir: call('fs.readdir'), exists: call('fs.exists'), mkdir: call('fs.mkdir'), rm: call('fs.rm'), glob: call('fs.glob'),
+  };
+  const env = Object.freeze({ ...(m.env ?? {}), fs });
+  const mod = new Function('console', 'fs', 'env', m.code + '\n;return typeof __bbxServer === "undefined" ? undefined : __bbxServer;')(console, fs, env);
+  const h = mod && (mod.default ?? mod);
+  const handler = typeof h === 'function' ? h : h && typeof h.fetch === 'function' ? (req, e) => h.fetch(req, e) : null;
+  if (!handler) throw new Error('the backend must export default a function (request) => Response, or an object with fetch(request)');
+  backend = { handler, env };
+  return { value: 'loaded' };
+}
+
+async function serverRequest(m) {
+  if (!backend) throw new Error('backend not loaded');
+  currentJob = m.id;
+  const r = m.req;
+  const init = { method: r.method, headers: r.headers };
+  if (r.body && !/^(GET|HEAD)$/i.test(r.method)) init.body = r.body;
+  const res = await backend.handler(new Request(m.origin + r.url, init), backend.env);
+  if (res == null) return { response: null };
+  if (!(res instanceof Response)) throw new Error('the backend returned ' + show(res) + ' instead of a Response');
+  const headers = [];
+  res.headers.forEach((v, k) => headers.push([k, v]));
+  const buf = await res.arrayBuffer();
+  return { response: { status: res.status, statusText: res.statusText, headers, body: new Uint8Array(buf) } };
 }
 
 // ---- Python (Pyodide, CPython compiled to WebAssembly) ---------------------

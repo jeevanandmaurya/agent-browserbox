@@ -26,8 +26,9 @@ export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { li
 
 # Environment
 - A virtual filesystem. The root is ${os.rootKind === 'opfs' ? "persistent (the browser's Origin Private File System)" : 'in memory only and is lost on reload — tell the user if that matters'}. Your working directory is ${AGENT_HOME}; the user's files are under ${HOME}; /tmp is in-memory scratch; /proc holds live system state; real folders the user chose to share appear under /mnt.
-- A shell with common Unix-style commands (run \`help\`). It is not bash: there is no npm, apt or native compiler. Packages add more: ${packageLine(os)}
+- A shell with common Unix-style commands (run \`help\`). It is not bash: there is no node, apt or native compiler; \`npm install <pkg>\` only records the dependency in package.json (packages load from esm.sh when bundled). Packages add more: ${packageLine(os)}
 - Code execution in isolated sandboxes: JavaScript (run_js), Python via WebAssembly (run_python), WASI programs (run_wasm), and GPU compute shaders (gpu_compute; WebGPU is ${gpu}).
+- Web apps: build them as a project folder (index.html or src/main.tsx, package.json for npm dependencies, optional server.ts backend) and run them with dev_server; it bundles TypeScript/JSX, reloads on save and shows the app in Preview. Check your work with preview_logs (console errors, failed requests) rather than assuming it rendered. For a single self-contained page, show_html is enough.
 - A desktop the user is looking at. show_html opens a rendered page in a window — the best way to present charts, reports and interactive results. open_app opens the editor, file manager and other apps.
 - Network access is limited by the browser: requests only succeed against servers that allow cross-origin access (CORS).${cfg.provider === 'anthropic' && cfg.webSearch ? ' For general web research use the web_search and web_fetch tools, which run server-side and are not limited by CORS.' : ''}
 
