@@ -158,7 +158,9 @@ export class Agent {
       this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
       emit({ type: 'start', model: describeModel(cfg) });
       // Compact before taking on new work, so the new request itself is never summarised away.
-      if (cfg.autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
+      // Tiny in-browser models summarise badly; for them the oldest turns simply drop out of view (see the provider).
+      const autoCompact = cfg.autoCompact && !lite;
+      if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
       this.#push({ role: 'user', content: [{ type: 'text', text }] });
 
       for (let step = 0; ; step++) {
@@ -190,7 +192,7 @@ export class Agent {
             ? calls.map((c): ToolResult => ({ type: 'tool_result', tool_use_id: c.id, is_error: true, content: 'Your output was cut off before this tool call was complete, so it was not run. Retry with a smaller input (for example, write large files in several parts).' }))
             : await this.#runTools(calls, tools, run.signal, emit);
         this.#push({ role: 'user', content: results });
-        if (cfg.autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, true);
+        if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, true);
       }
     } catch (err) {
       if (run.signal.aborted) reason = 'stopped';
