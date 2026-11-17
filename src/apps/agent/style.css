@@ -46,15 +46,13 @@
 .bb.sb-collapsed .bb-sb-toggle { visibility: visible; }
 .bb-titlebox { display: grid; justify-items: center; min-width: 0; line-height: 1.25; }
 .bb-title { max-width: 100%; margin: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
-.bb-sub { max-width: 100%; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
-.bb-sub:hover { color: var(--text); }
 .bb.is-empty .bb-title { display: none; }
 .bb-head-end { display: flex; align-items: center; justify-content: flex-end; gap: 2px; min-width: 42px; }
 .bb-spin { display: grid; margin: 0 6px; }
 .ag-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; }
 .bb-col { max-width: 720px; margin: 0 auto; padding: 8px 20px 28px; }
 .bb.is-empty .ag-scroll { display: flex; }
-.bb.is-empty .bb-col { margin: auto; width: 100%; padding-bottom: 8vh; }
+.bb.is-empty .bb-col { margin: auto auto 0; width: 100%; padding-bottom: 22px; }
 
 /* Empty chat: the mark and a greeting, nothing else. */
 .bb-hero { display: grid; justify-items: center; gap: 14px; }
@@ -97,7 +95,6 @@
 .bb-head .icon-btn { color: var(--text); }
 @media (max-width: 760px) {
   /* On phones the context meter lives in ⋮ → Context; a ring here reads as a spinner. */
-  .bb-meter { display: none; }
 }
 
 /* Private chat: the toggle shows on an empty or private chat only. */
@@ -106,3 +103,8 @@
 .bb.is-private .bb-private { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .bb-private-note { margin: -6px 0 0; color: var(--muted); font-size: 14px; text-align: center; }
 .bb.is-private .bb-hero .bb-mark { color: var(--muted); }
+
+/* An empty chat: greeting and a taller message box together in the middle, as on claude.ai. */
+.bb.is-empty .ag-scroll { flex: 0 1 auto; margin-top: auto; }
+.bb.is-empty .bb-dock { margin-bottom: auto; padding-bottom: max(16px, 12vh); }
+.bb.is-empty .ag-input { min-height: 76px; }

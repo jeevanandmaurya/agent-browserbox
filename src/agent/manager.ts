@@ -2,7 +2,7 @@ import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from '@/kernel/
 import type { KernelCore } from '@/kernel/kernel';
 import type { Prompter } from '@/kernel/perms';
 import { Agent, type AgentEvent } from './agent';
-import { probeOpenAi, SECRET } from './config';
+import { loadConfig, probeOpenAi, SECRET } from './config';
 import { loadSession, saveSession, titleFrom } from './session';
 
 interface Session {
@@ -79,7 +79,7 @@ export class AgentManager implements AgentsApi {
   }
 
   async probeModels(baseUrl: string, kind: 'local' | 'openai' = 'local'): Promise<string[]> {
-    return probeOpenAi(baseUrl, await this.os.secrets.get(kind === 'local' ? SECRET.local : SECRET.openai));
+    return probeOpenAi(baseUrl, await this.os.secrets.get(kind === 'local' ? SECRET.local : SECRET.openai), undefined, { kind, relay: kind === 'openai' ? loadConfig(this.os).corsRelay : '' });
   }
 
   async #save(s: Session): Promise<void> {

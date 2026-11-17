@@ -4,7 +4,6 @@ import {
   API_PRESETS,
   LOCAL_PRESETS,
   SECRET,
-  WEBLLM_MODELS,
   loadConfig,
   saveConfig,
   type AgentConfig,
@@ -14,6 +13,7 @@ import {
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { keyField } from './keyfield';
+import { webllmManager } from './webllm';
 import { errText, heading, nextId } from './nav';
 
 const CUSTOM = '__custom__';
@@ -223,6 +223,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
         note: 'Stored encrypted; sent only to the URL above.',
         onSaved: saved,
       }),
+      local ? null : relayField(),
       h('div', { class: 'row st-wrap' }, testBtn, found),
       probeStatus,
       field('Model', model),
@@ -230,24 +231,21 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     );
   }
 
-  // ---- WebLLM
-  const gpuOk = os.hasCap('webgpu');
-  panels.set(
-    'webllm',
-    h(
-      'div',
-      { class: 'st-panel' },
-      gpuOk
-        ? null
-        : h('p', { class: 'st-callout' }, h('span', { class: 'badge warn' }, 'WebGPU unavailable'), ' This browser cannot run in-browser models. Use Chrome, Edge or Safari with WebGPU enabled, or pick another option.'),
-      field('Model', select([...WEBLLM_MODELS], cfg.webllmModel, (v) => save({ webllmModel: v }))),
-      h(
-        'p',
-        { class: 'muted st-note' },
-        'The weights download once on first use (roughly 1–5 GB) and are cached by the browser, so later starts work offline. Larger models need more graphics memory; small models follow complex instructions less reliably.',
-      ),
-    ),
-  );
+  /** For hosted APIs that refuse requests from web pages. */
+  function relayField(): HTMLElement {
+    const input = h('input', { class: 'input mono', type: 'url', value: cfg.corsRelay, placeholder: 'https://your-relay.workers.dev', autocomplete: 'off' });
+    const store = () => input.value.trim() !== cfg.corsRelay && save({ corsRelay: input.value.trim() });
+    input.addEventListener('input', debounce(store, 500));
+    input.addEventListener('change', store);
+    return field(
+      'Relay (optional)',
+      input,
+      h('p', { class: 'muted st-note' }, 'Only for services that do not accept requests from web pages, such as ollama.com. Requests (and your key) pass through it, so use one you run: relay/worker.js in the BrowserBox repository deploys to Cloudflare Workers for free.'),
+    );
+  }
+
+  // ---- WebLLM: download, use, delete and import in-browser models
+  panels.set('webllm', h('div', { class: 'st-panel' }, webllmManager(ctx, () => cfg, save)));
   for (const [pid, el] of panels) el.hidden = pid !== cfg.provider;
 
   // ---- Common

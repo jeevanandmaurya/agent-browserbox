@@ -1,4 +1,4 @@
-import type { AgentConfig } from '../config';
+import { relayed, unreachable, type AgentConfig } from '../config';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types';
 
 interface WireMsg {
@@ -65,6 +65,8 @@ export interface ServerTarget {
 export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, apiKey: string | null): Provider {
   const base = target.baseUrl.replace(/\/+$/, '');
   const where = target.kind === 'local' ? 'the local server' : 'the API';
+  // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
+  const relay = target.kind === 'openai' ? cfg.corsRelay : '';
   return {
     id: target.kind,
     contextBudget: Math.floor(cfg.contextWindow * 0.75),
@@ -73,7 +75,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
       if (!target.model) throw new ProviderError(`No model selected for ${where}. Pick one in Settings → Model.`);
       let res: Response;
       try {
-        res = await fetch(`${base}/chat/completions`, {
+        res = await fetch(relayed(`${base}/chat/completions`, relay), {
           method: 'POST',
           signal: req.signal,
           headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
@@ -86,7 +88,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
         });
       } catch (err) {
         if (req.signal.aborted) throw err;
-        throw new ProviderError(`Could not reach ${base}. ${target.kind === 'local' ? 'Is the server running, and does it allow this page\'s origin (CORS)? For Ollama: OLLAMA_ORIGINS="*" ollama serve' : 'Check the URL, your connection, and that this API allows browser (CORS) requests.'}`, true);
+        throw new ProviderError(unreachable(base, target.kind, relay), true);
       }
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');

@@ -24,6 +24,8 @@ export class Transcript {
   readonly el = h('div', { class: 'ag-log', role: 'log', 'aria-live': 'polite' });
   #turn: HTMLElement | null = null;
   #turnText: string[] = [];
+  /** Model calls in the current reply: their tokens and timing. */
+  #stats: { calls: number; context: number; output: number; timedOutput: number; ms: number; genMs: number; ttft: number } | null = null;
   #textEl: HTMLElement | null = null;
   #text = '';
   #thinkEl: HTMLElement | null = null;
@@ -76,6 +78,21 @@ export class Transcript {
       );
       turn.append(h('div', { class: 'ag-actions' }, btn));
     }
+    // Tokens and speed for the reply, next to its actions.
+    const st = this.#stats;
+    if (turn && st) {
+      let row = turn.querySelector<HTMLElement>(':scope > .ag-actions');
+      if (!row) turn.append((row = h('div', { class: 'ag-actions' })));
+      const tps = st.genMs > 0 && st.timedOutput ? st.timedOutput / (st.genMs / 1000) : 0;
+      row.append(
+        h(
+          'span',
+          { class: 'ag-stats', title: `${st.calls} model call${st.calls === 1 ? '' : 's'} · first token after ${fmtDuration(st.ttft)} · ${st.output.toLocaleString()} tokens written · ${st.context.toLocaleString()} tokens in context at the end` },
+          `${fmtDuration(st.ms)}${tps ? ` · ${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s` : ''} · ${kTokens(st.output)} out · ${kTokens(st.context)} context`,
+        ),
+      );
+    }
+    this.#stats = null;
     this.#turn = null;
     this.#turnText = [];
   }
@@ -221,6 +238,19 @@ export class Transcript {
       case 'note':
         this.addNote(e.text);
         break;
+      case 'usage': {
+        const st = (this.#stats ??= { calls: 0, context: 0, output: 0, timedOutput: 0, ms: 0, genMs: 0, ttft: 0 });
+        if (!st.calls) st.ttft = e.stats.ttft;
+        st.calls++;
+        st.context = e.context.used;
+        st.output += e.usage.output;
+        st.ms += e.stats.ms;
+        if (e.stats.tps) {
+          st.genMs += (e.usage.output / e.stats.tps) * 1000;
+          st.timedOutput += e.usage.output;
+        }
+        break;
+      }
       case 'done':
         this.#setStatus('');
         this.#finishTurn();
@@ -260,6 +290,11 @@ export class Transcript {
     this.#finishTurn();
     this.#scroll(true);
   }
+}
+
+/** 1234 → 1.2k */
+function kTokens(n: number): string {
+  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
 function thinkBlock(body: HTMLElement): HTMLElement {

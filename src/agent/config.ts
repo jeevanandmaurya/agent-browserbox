@@ -31,6 +31,11 @@ export interface AgentConfig {
   contextWindow: number;
   /** Summarise the conversation automatically when the context is nearly full. */
   autoCompact: boolean;
+  /**
+   * A relay for hosted APIs that do not accept requests from web pages (no CORS),
+   * e.g. ollama.com. Requests go to `<relay>/<full API URL>`; see relay/worker.js.
+   */
+  corsRelay: string;
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -47,6 +52,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   webSearch: true,
   contextWindow: 32768,
   autoCompact: true,
+  corsRelay: '',
 };
 
 export const ANTHROPIC_MODELS = [
@@ -71,15 +77,7 @@ export const API_PRESETS = [
   { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', hint: 'Fast open models.' },
   { label: 'Together', baseUrl: 'https://api.together.xyz/v1', hint: 'Open models.' },
   { label: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', hint: 'Mistral models.' },
-] as const;
-
-/** Models that run fully inside this tab on WebGPU (weights are cached after the first download). */
-export const WEBLLM_MODELS = [
-  { id: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 Coder 1.5B — ~1.5 GB VRAM' },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', label: 'Llama 3.2 3B — ~2.5 GB VRAM' },
-  { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi 3.5 mini — ~3.7 GB VRAM' },
-  { id: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen2.5 7B — ~5 GB VRAM' },
-  { id: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', label: 'Hermes 3 Llama 3.1 8B — ~5 GB VRAM' },
+  { label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', hint: 'ollama.com does not accept requests from web pages, so it needs a relay (below). Or use Local server instead: a local Ollama signed in to your account (ollama signin) runs the -cloud models for you.' },
 ] as const;
 
 /** Names under which API keys are kept in the encrypted secret store (`os.secrets`). */
@@ -119,13 +117,34 @@ export function describeModel(cfg: AgentConfig): string {
   return `${cfg.webllmModel} (WebGPU)`;
 }
 
+/** The URL to request, through the relay when one is set. */
+export function relayed(url: string, relay = ''): string {
+  return relay.trim() ? `${relay.trim().replace(/\/+$/, '')}/${url}` : url;
+}
+
+/** Why a browser could not reach a server, and what to do about it. */
+export function unreachable(url: string, kind: 'local' | 'openai', relay = ''): string {
+  let host = url;
+  try {
+    host = new URL(url).host;
+  } catch {
+    /* keep the raw text */
+  }
+  if (relay.trim()) return `Could not reach ${host} through the relay ${relay}. Check that the relay is running and allows ${host}.`;
+  if (kind === 'local') return `Could not reach ${host}. Is the server running, and does it allow this page's origin (CORS)? For Ollama: OLLAMA_ORIGINS="*" ollama serve`;
+  const ollama = /(^|\.)ollama\.com$/.test(host)
+    ? ' For Ollama Cloud you can instead run Ollama on your computer, sign in (ollama signin) and use Local server: it runs the -cloud models for you.'
+    : '';
+  return `${host} did not accept a request from this page. Browsers only let a web page call servers that allow it (CORS), and ${host} does not (or the address is wrong, or you are offline). Set a relay in Settings → Model → OpenAI-compatible API (relay/worker.js in the BrowserBox repository is one you can deploy for free), or use a provider that allows browser requests, such as OpenRouter.${ollama}`;
+}
+
 /** Lists model ids from an OpenAI-compatible server. Throws with a readable message when unreachable. */
-export async function probeOpenAi(baseUrl: string, apiKey?: string | null, signal?: AbortSignal): Promise<string[]> {
+export async function probeOpenAi(baseUrl: string, apiKey?: string | null, signal?: AbortSignal, opts: { kind?: 'local' | 'openai'; relay?: string } = {}): Promise<string[]> {
   let res: Response;
   try {
-    res = await fetch(`${baseUrl.replace(/\/+$/, '')}/models`, { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}, signal });
+    res = await fetch(relayed(`${baseUrl.replace(/\/+$/, '')}/models`, opts.relay), { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}, signal });
   } catch {
-    throw new Error(`Could not reach ${baseUrl}. Is the server running, and does it allow this page's origin (CORS)?`);
+    throw new Error(unreachable(baseUrl, opts.kind ?? 'local', opts.relay));
   }
   if (!res.ok) throw new Error(`${baseUrl} answered ${res.status} ${res.statusText}`);
   const body = (await res.json()) as { data?: Array<{ id: string }> };

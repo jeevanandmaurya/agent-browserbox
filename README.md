@@ -156,9 +156,11 @@ says which package provides it.
   files, terminal, preview, processes, context, compaction and settings.
 - **Empty chat**: the BrowserBox mark and a greeting (Settings → Appearance
   takes a name for it).
-- **Composer**: one rounded bar — **+** (attach files, model, commands), the
-  message, dictation via the browser's speech recognition where available,
-  and a round send button. Menus open as bottom sheets on phones.
+- **Composer**: the message box, with a row underneath: **+** (attach
+  files, commands), the context gauge, the model picker, dictation via the
+  browser's speech recognition where available, and send. An empty chat
+  shows the greeting and a taller box in the middle of the window. Menus
+  open as bottom sheets on phones.
 - **Conversation**: Markdown replies (rendered to DOM nodes, never
   `innerHTML`), collapsible thinking, tool calls as `tool argument` rows that
   expand to input and output, inline permission and question cards.
@@ -202,7 +204,33 @@ Pick one in **Settings → Model**:
   Groq, Together or Mistral, with your API key. Kept separate from the local
   server, so switching between them keeps both settings.
 - **In this browser** — a model running on WebGPU via WebLLM in a worker.
-  Nothing leaves the device. Small models get a reduced tool set.
+  Nothing leaves the device. Small models get a reduced tool set. Settings →
+  Model lists the models with the GPU memory each needs: download them (with
+  progress; a cancelled download resumes), use, delete, free GPU memory, or
+  import an MLC-compiled model from a folder on your computer
+  (`mlc-chat-config.json`, `tensor-cache.json` or `ndarray-cache.json` with
+  its shards, the tokenizer, and the WebGPU `.wasm` library).
+
+### Hosted APIs that block web pages (CORS)
+
+A web page may only call servers that allow it. OpenRouter, OpenAI and most
+local servers do; **ollama.com does not** (it rejects the browser's preflight),
+so no page can call it directly. Two ways round it:
+
+- Run Ollama on your computer, sign in (`ollama signin`) and use **Local
+  server**: local Ollama runs the `-cloud` models for you.
+- Deploy the relay in [`relay/worker.js`](relay/worker.js) (free on Cloudflare
+  Workers) and set its URL in Settings → Model → OpenAI-compatible API →
+  Relay. It only forwards to the hosts in `ALLOWED_HOSTS` and only for pages
+  from `ALLOWED_ORIGINS`; your API key passes through it, so run your own.
+
+### Tokens, context and speed
+
+Each reply ends with its time, output speed (tokens per second), tokens
+written and the context size. The gauge next to the model picker shows how
+full the context window is; open it for the split (system prompt, tools,
+messages, tool results), the session's input, cached and output tokens, the
+last reply's speed and time to first token, and a Compact button.
 
 ### Agent tools
 

@@ -105,3 +105,12 @@
 [data-app="settings"] .wp-swatch[aria-pressed='true'] { outline: 2px solid var(--accent); outline-offset: 2px; }
 [data-app="settings"] .wp-custom { display: grid; place-items: center; color: var(--muted); border-style: dashed; }
 [data-app="settings"] .wp-note { margin: 8px 0 0; font-size: 12px; }
+
+[data-app="settings"] .wl-list { display: grid; gap: 6px; }
+[data-app="settings"] .wl-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+[data-app="settings"] .wl-row.active { border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
+[data-app="settings"] .wl-name { flex: 1 1 220px; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+[data-app="settings"] .wl-meta { flex-basis: 100%; font-size: 12px; }
+[data-app="settings"] .wl-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+[data-app="settings"] .wl-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+[data-app="settings"] .wl-progress progress { width: 120px; accent-color: var(--accent); }

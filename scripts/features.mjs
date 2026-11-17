@@ -5,6 +5,9 @@
 // Usage: npm run build && node scripts/features.mjs
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { preview } from 'vite';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -111,7 +114,7 @@ await check('first boot: setup in the console connects to a local model server',
   // The rest of this suite runs without prompts and with a small window so compaction triggers.
   await page.evaluate(() => {
     bbx.perms.mode = 'auto';
-    bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), contextWindow: 8192 });
+    bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), contextWindow: 16384 });
   });
   return `model ${out.cfg.localModel} @ ${out.cfg.localBaseUrl}; installed ${out.installed.join(', ')}`;
 });
@@ -535,6 +538,82 @@ await check('phone: home screen, apps fill the screen, the home bar goes home an
   } catch (err) {
     throw new Error(`${step}: ${err.message.split('\n')[0]} · ${await desk.evaluate(() => `${document.getElementById('desk').className} ${document.querySelector('.desk-area').className} wins=${[...document.querySelectorAll('.win')].map((w) => w.className).join('|')}`)}`);
   }
+});
+
+await check('composer: model picker under the message box; an empty chat sits in the middle', async () => {
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  await page.waitForSelector('.bb.is-empty');
+  const r = await page.evaluate(() => {
+    const box = (s) => document.querySelector(s).getBoundingClientRect();
+    return { input: box('.ag-input'), model: box('.composer .cp-model'), dock: box('.bb-dock'), main: box('.bb-main'), model_text: document.querySelector('.cp-model').textContent };
+  });
+  if (!(r.model.top >= r.input.bottom - 2)) throw new Error(`model picker is not below the input: ${JSON.stringify(r)}`);
+  const mid = r.dock.top + r.dock.height / 2;
+  if (!(mid > r.main.top + r.main.height * 0.3 && mid < r.main.top + r.main.height * 0.75)) throw new Error(`empty chat composer is not near the middle: ${mid} in ${r.main.height}`);
+  if (r.input.height < 70) throw new Error(`empty chat message box is short: ${r.input.height}`);
+  return `model "${r.model_text}" under the box; composer centre at ${Math.round(((mid - r.main.top) / r.main.height) * 100)}% of the height`;
+});
+
+await check('reply stats, session usage and the sandbox section of the system prompt', async () => {
+  const reqs = await send('hello stats', 'echo: hello stats');
+  await page.waitForSelector('.ag-stats');
+  const stats = await page.locator('.ag-stats').last().textContent();
+  if (!/out · .* context/.test(stats)) throw new Error(`stats: ${stats}`);
+  await page.locator('.cm-btn').click();
+  await page.waitForSelector('.cm-session');
+  const session = await page.locator('.cm-session').textContent();
+  await page.keyboard.press('Escape');
+  if (!/Model calls\s*\d/.test(session) || !/Output tokens/.test(session)) throw new Error(`session: ${session}`);
+  const system = reqs[0].messages[0].content;
+  for (const want of ['The sandbox: what this machine is', 'No native toolchains', 'pip install', 'CORS']) if (!system.includes(want)) throw new Error(`system prompt lacks "${want}"`);
+  return `${stats.trim()} · session panel shown · sandbox rules in the prompt`;
+});
+
+await check('in-browser models: download, use, delete, and import from a folder', async () => {
+  const ID = 'SmolLM2-360M-Instruct-q4f16_1-MLC';
+  // Tiny stand-ins for the model's files, served where WebLLM would fetch them.
+  const shard = Buffer.alloc(4096, 7);
+  await page.route(`https://huggingface.co/mlc-ai/${ID}/resolve/main/**`, (route) => {
+    const name = route.request().url().split('/').pop();
+    const body = name === 'mlc-chat-config.json' ? JSON.stringify({ tokenizer_files: ['tokenizer.json'] }) : name === 'tensor-cache.json' ? JSON.stringify({ records: [{ dataPath: 'params_shard_0.bin', nbytes: shard.length }], metadata: {} }) : name === 'tokenizer.json' ? '{}' : name === 'params_shard_0.bin' ? shard : null;
+    return body === null ? route.fulfill({ status: 404, body: 'no' }) : route.fulfill({ status: 200, body, headers: { 'access-control-allow-origin': '*' } });
+  });
+  await page.route(/raw\.githubusercontent\.com\/.*SmolLM2-360M.*\.wasm$/, (route) => route.fulfill({ status: 200, body: Buffer.from([0, 97, 115, 109]), headers: { 'access-control-allow-origin': '*' } }));
+  await page.evaluate(() => bbx.openApp('settings', { section: 'model' }));
+  await page.locator('.st-choice', { hasText: 'In this browser' }).click();
+  const row = page.locator('.wl-row', { hasText: 'SmolLM2 360M Instruct' });
+  await row.waitFor({ timeout: 30000 });
+  await row.getByRole('button', { name: 'Download' }).click();
+  await row.locator('.badge', { hasText: 'On this device' }).waitFor({ timeout: 20000 });
+  await row.getByRole('button', { name: 'Use' }).click();
+  await row.locator('.badge', { hasText: 'In use' }).waitFor();
+  const cfg = await page.evaluate(() => bbx.settings.get('agent.config', {}));
+  if (cfg.webllmModel !== ID || cfg.provider !== 'webllm') throw new Error(JSON.stringify(cfg));
+  await row.getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.modal .btn.danger').click();
+  await row.getByRole('button', { name: 'Download' }).waitFor({ timeout: 10000 });
+  const left = await page.evaluate(async (id) => (await (await caches.open('webllm/model')).keys()).filter((k) => k.url.includes(id)).length, ID);
+  if (left) throw new Error(`${left} files left after delete`);
+
+  // Import a compiled model from a folder on the computer.
+  const dir = join(mkdtempSync(join(tmpdir(), 'bbx-model-')), 'tiny-model');
+  (await import('node:fs')).mkdirSync(dir);
+  writeFileSync(join(dir, 'mlc-chat-config.json'), JSON.stringify({ model_id: 'tiny-model', context_window_size: 2048, tokenizer_files: ['tokenizer.json'] }));
+  writeFileSync(join(dir, 'ndarray-cache.json'), JSON.stringify({ records: [{ dataPath: 'params_shard_0.bin', nbytes: 4 }], metadata: {} }));
+  writeFileSync(join(dir, 'params_shard_0.bin'), Buffer.from([1, 2, 3, 4]));
+  writeFileSync(join(dir, 'tokenizer.json'), '{}');
+  writeFileSync(join(dir, 'tiny-model-webgpu.wasm'), Buffer.from([0, 97, 115, 109]));
+  await page.locator('.wl input[type="file"]').setInputFiles(dir);
+  const imported = page.locator('.wl-row', { hasText: 'tiny model' });
+  await imported.locator('.badge', { hasText: 'In use' }).waitFor({ timeout: 15000 });
+  const custom = await page.evaluate(() => bbx.settings.get('webllm.custom', []));
+  const cached = await page.evaluate(async () => (await (await caches.open('webllm/model')).keys()).map((k) => k.url).filter((u) => u.includes('tiny-model')));
+  if (custom[0]?.model_id !== 'tiny-model' || !cached.some((u) => u.endsWith('/tensor-cache.json'))) throw new Error(JSON.stringify({ custom, cached }));
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), provider: 'local' }));
+  await page.unroute(`https://huggingface.co/mlc-ai/${ID}/resolve/main/**`);
+  return `downloaded, used and deleted ${ID}; imported tiny-model (${cached.length} files cached)`;
 });
 
 if (errors.length) {

@@ -10,6 +10,18 @@ const PARTS: Array<{ key: keyof ContextReport['parts']; label: string; color: st
   { key: 'toolResults', label: 'Tool results', color: 'var(--ok)' },
 ];
 
+/** Running totals for the session, and the speed of the last reply. */
+export interface SessionUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  calls: number;
+  /** Output tokens per second of the last model call. */
+  tps: number;
+  ttft: number;
+  model: string;
+}
+
 const k = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(Math.round(n)));
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -17,7 +29,8 @@ const NS = 'http://www.w3.org/2000/svg';
  * How full the model's context window is, and what is taking the space.
  * The ring shows the total; the panel breaks it down and offers to compact.
  */
-export function contextMeter(opts: { load(): Promise<ContextReport | null>; compact(): void }): { el: HTMLElement; refresh(): void; open(): void } {
+export function contextMeter(opts: { load(): Promise<ContextReport | null>; compact(): void }): { el: HTMLElement; refresh(): void; open(): void; usage(u: SessionUsage): void } {
+  let session: SessionUsage | null = null;
   const ring = document.createElementNS(NS, 'svg');
   ring.setAttribute('viewBox', '0 0 20 20');
   ring.setAttribute('width', '18');
@@ -89,6 +102,27 @@ export function contextMeter(opts: { load(): Promise<ContextReport | null>; comp
         r.autoCompactAt ? ` The conversation is summarised automatically at ${Math.round(r.autoCompactAt * 100)}%.` : ' Automatic compaction is off (Settings → Model).',
         r.compactions ? ` Compacted ${r.compactions} time${r.compactions === 1 ? '' : 's'} so far.` : '',
       ),
+      session
+        ? h(
+            'div',
+            { class: 'cm-session' },
+            h('strong', null, 'This session'),
+            h(
+              'table',
+              { class: 'cm-table' },
+              h(
+                'tbody',
+                null,
+                h('tr', null, h('td', null, 'Model calls'), h('td', null, String(session.calls))),
+                h('tr', null, h('td', null, 'Input tokens'), h('td', null, k(session.input))),
+                session.cacheRead ? h('tr', null, h('td', null, 'Read from cache'), h('td', null, k(session.cacheRead))) : null,
+                h('tr', null, h('td', null, 'Output tokens'), h('td', null, k(session.output))),
+                session.tps ? h('tr', null, h('td', null, 'Last reply speed'), h('td', null, `${session.tps >= 100 ? Math.round(session.tps) : session.tps.toFixed(1)} tok/s`)) : null,
+                h('tr', null, h('td', null, 'First token after'), h('td', null, `${(session.ttft / 1000).toFixed(1)} s`)),
+              ),
+            ),
+          )
+        : '',
       h(
         'div',
         { class: 'cm-actions' },
@@ -128,6 +162,10 @@ export function contextMeter(opts: { load(): Promise<ContextReport | null>; comp
 
   return {
     el,
+    usage(u) {
+      session = u;
+      if (!panel.hidden && last) renderPanel(last);
+    },
     refresh: () => void opts.load().then(paint, () => paint(null)),
     open: () => void opts.load().then((r) => (paint(r), open())),
   };

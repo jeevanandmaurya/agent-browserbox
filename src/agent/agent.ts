@@ -13,6 +13,16 @@ import { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } 
 import { loadExtensions, type Extension } from './ext/library';
 import { ProviderError, type Block, type ContextReport, type Msg, type Provider, type Usage } from './types';
 
+/** Timing of one model call. */
+export interface TurnStats {
+  /** Whole call, ms. */
+  ms: number;
+  /** Time to the first streamed token, ms. */
+  ttft: number;
+  /** Output tokens per second while generating. */
+  tps: number;
+}
+
 export type AgentEvent =
   | { type: 'start'; model: string }
   | { type: 'text'; delta: string }
@@ -23,7 +33,7 @@ export type AgentEvent =
   | { type: 'tool_progress'; id: string; chunk: string }
   | { type: 'tool_end'; id: string; result: string; isError: boolean; ms: number }
   | { type: 'todos'; items: TodoItem[] }
-  | { type: 'usage'; usage: Usage; total: Usage; model: string; context: { used: number; window: number } }
+  | { type: 'usage'; usage: Usage; total: Usage; model: string; context: { used: number; window: number }; stats: TurnStats }
   | { type: 'compact'; before: number; after: number; auto: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; reason: 'end' | 'stopped' | 'error' | 'max_steps' };
@@ -162,7 +172,7 @@ export class Agent {
         this.#push({ role: 'assistant', content: result.content, raw: result.raw });
         for (const k of ['input', 'output', 'cacheRead'] as const) this.total[k] += result.usage[k];
         this.#lastContext = result.usage.input + result.usage.cacheRead + result.usage.output;
-        emit({ type: 'usage', usage: result.usage, total: { ...this.total }, model: result.model, context: { used: this.#used(), window: this.#window } });
+        emit({ type: 'usage', usage: result.usage, total: { ...this.total }, model: result.model, context: { used: this.#used(), window: this.#window }, stats: result.stats });
 
         if (result.stop === 'pause') continue;
         if (result.stop === 'refusal') {
@@ -295,16 +305,24 @@ export class Agent {
     return true;
   }
 
-  #turn(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
-    return provider.turn({
+  /** One model call, timed: time to first token, and output speed over the time spent generating. */
+  async #turn(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
+    const t0 = performance.now();
+    let first = 0;
+    const result = await provider.turn({
       system: this.#system!,
       messages: provider.contextBudget ? fitContext(this.os, this.messages, provider.contextBudget) : this.messages,
       tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
       signal,
-      onText: (delta) => emit({ type: 'text', delta }),
-      onThinking: (delta) => emit({ type: 'thinking', delta }),
+      onText: (delta) => ((first ||= performance.now()), emit({ type: 'text', delta })),
+      onThinking: (delta) => ((first ||= performance.now()), emit({ type: 'thinking', delta })),
       onStatus: (text) => emit({ type: 'status', text }),
     });
+    const end = performance.now();
+    const generating = Math.max(1, end - (first || t0));
+    // Too short a burst to measure (a cached or very short answer) gives no speed rather than a silly one.
+    const stats: TurnStats = { ms: end - t0, ttft: (first || end) - t0, tps: result.usage.output > 1 && generating >= 150 ? result.usage.output / (generating / 1000) : 0 };
+    return { ...result, stats };
   }
 
   async #runTools(calls: ToolUse[], tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void): Promise<ToolResult[]> {

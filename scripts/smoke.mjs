@@ -288,7 +288,7 @@ await check('agent window: settings open inside the page on the Model section', 
   await agent.keyboard.press('Escape');
   await agent.waitForSelector('.sm-overlay', { state: 'detached' });
   // The model name under the title leads to the same place.
-  await agent.locator('.bb-sub').click();
+  await agent.locator('.cp-model').click();
   await agent.locator('.menu .pop-item', { hasText: 'Model settings' }).click();
   await agent.locator('.sm-dialog .sn-tab[aria-selected="true"]', { hasText: 'Model' }).waitFor({ timeout: 10000 });
   await agent.keyboard.press('Escape');

@@ -12,6 +12,10 @@ export interface Composer {
   setBusy(busy: boolean): void;
   focus(): void;
   setText(text: string): void;
+  /** The model name on the picker under the text field. */
+  setModel(label: string): void;
+  /** Holds the context gauge, next to the model picker. */
+  meterSlot: HTMLElement;
 }
 
 /** Picks a name in the uploads folder that does not overwrite an earlier upload. */
@@ -41,6 +45,9 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   const file = h('input', { type: 'file', multiple: true, hidden: true, tabindex: -1, 'aria-hidden': 'true' });
   const plusBtn = h('button', { class: 'cp-round cp-plus', type: 'button', title: 'Add', 'aria-label': 'Attach files, model and commands', 'aria-haspopup': 'menu', onclick: () => plusMenu() }, icon('plus', 20));
   const micBtn = h('button', { class: 'cp-round cp-mic', type: 'button', title: 'Dictate', 'aria-label': 'Dictate', 'aria-pressed': 'false', hidden: !SpeechRecognition, onclick: () => toggleDictation() }, icon('mic', 20));
+  const modelLabel = h('span', { class: 'cp-model-name' });
+  const modelBtn = h('button', { class: 'cp-model', type: 'button', title: 'Model', 'aria-label': 'Change model', 'aria-haspopup': 'menu', onclick: () => opts.openModelMenu(modelBtn) }, modelLabel, icon('chevron', 14));
+  const meterSlot = h('span', { class: 'cp-meter' });
   const sendBtn = h('button', { class: 'cp-send', type: 'submit', title: 'Send (Enter)', 'aria-label': 'Send message', disabled: true }, icon('send', 20));
   const stopBtn = h('button', { class: 'cp-send stop', type: 'button', title: 'Stop', 'aria-label': 'Stop the agent', hidden: true, onclick: () => opts.onStop() }, icon('stop', 16));
 
@@ -54,13 +61,14 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
       },
     },
     chips,
-    h('div', { class: 'cp-row' }, plusBtn, input, micBtn, sendBtn, stopBtn),
+    input,
+    h('div', { class: 'cp-bar' }, plusBtn, h('span', { class: 'cp-space' }), meterSlot, modelBtn, micBtn, sendBtn, stopBtn),
     file,
   );
   const slash = slashMenu(os, input, opts.commands);
   el.prepend(slash.el);
   el.addEventListener('click', (e) => {
-    if (e.target === el || (e.target as HTMLElement).classList.contains('cp-row')) input.focus();
+    if (e.target === el || (e.target as HTMLElement).classList.contains('cp-bar') || (e.target as HTMLElement).classList.contains('cp-space')) input.focus();
   });
 
   const grow = () => {
@@ -68,7 +76,6 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
     input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
     // A scrollbar only once the text is taller than the box can grow.
     input.style.overflowY = input.scrollHeight > 200 ? 'auto' : 'hidden';
-    el.classList.toggle('multiline', input.scrollHeight > 44);
     sendBtn.disabled = busy || (!input.value.trim() && !attached.length);
   };
 
@@ -77,7 +84,6 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
       plusBtn,
       [
         { label: 'Attach files', icon: 'clip', onSelect: () => file.click() },
-        { label: 'Model', icon: 'chip', hint: 'Switch model or effort', onSelect: () => opts.openModelMenu(plusBtn) },
         { label: 'Commands', icon: 'slash', hint: '/compact, /context, your own…', onSelect: () => setText('/') },
       ],
       'Add',
@@ -212,5 +218,10 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
     },
     focus: () => input.focus({ preventScroll: true }),
     setText,
+    meterSlot,
+    setModel(label) {
+      modelLabel.textContent = label;
+      modelBtn.title = `Model: ${label}`;
+    },
   };
 }

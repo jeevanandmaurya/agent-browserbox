@@ -16,7 +16,7 @@ export interface Shell {
   /** Whether the chat has no messages yet. */
   setEmpty(empty: boolean): void;
   setTitle(title: string): void;
-  /** The model name under the title. */
+  /** The model name, shown on the composer's model picker. */
   setSubtitle(text: string): void;
   setBusy(busy: boolean): void;
   /** Marks the chat as private (not saved). */
@@ -47,17 +47,15 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   const { sidebar, workbench, composer, log, actions } = parts;
   const mobile = matchMedia(MOBILE);
 
-  // Header: menu · title (model underneath) · status · ⋮
+  // Header: menu · title · status · ⋮ (the model picker is under the message box)
   const toggleBtn = h('button', { class: 'icon-btn bb-sb-toggle', type: 'button', title: 'Chats', 'aria-label': 'Open chats', 'aria-expanded': 'false', onclick: () => openSidebar() }, icon('menu', 22));
   const title = h('h1', { class: 'bb-title' });
-  const subtitle = h('button', { class: 'bb-sub', type: 'button', 'aria-haspopup': 'menu', title: 'Change model', onclick: () => actions.model(subtitle) });
-  const titleBox = h('div', { class: 'bb-titlebox' }, title, subtitle);
+  const titleBox = h('div', { class: 'bb-titlebox' }, title);
   const spinner = h('span', { class: 'bb-spin', hidden: true }, loader(20, 'Working'));
-  const meterSlot = h('span', { class: 'bb-meter' });
   const wbBtn = h('button', { class: 'icon-btn bb-wb-toggle', type: 'button', title: 'Workbench', 'aria-label': 'Toggle workbench', 'aria-pressed': 'false', onclick: () => workbench.toggle() }, icon('panel', 20));
   const privateBtn = h('button', { class: 'icon-btn bb-private', type: 'button', title: 'Private chat', 'aria-label': 'Private chat: not saved, gone when you leave', 'aria-pressed': 'false', onclick: () => actions.togglePrivate() }, icon('ghost', 22));
   const moreBtn = h('button', { class: 'icon-btn bb-more', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', onclick: () => actions.more(moreBtn) }, icon('more', 22));
-  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, privateBtn, meterSlot, wbBtn, moreBtn));
+  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, privateBtn, wbBtn, moreBtn));
 
   // An empty chat is just the mark and a greeting.
   const greet = h('h2', { class: 'bb-greet' });
@@ -126,7 +124,7 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   }
 
   return {
-    meterSlot,
+    meterSlot: composer.meterSlot,
     el,
     todoSlot,
     setEmpty(empty) {
@@ -139,7 +137,7 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
       title.hidden = !text;
     },
     setSubtitle(text) {
-      subtitle.textContent = text;
+      composer.setModel(text);
     },
     setBusy(busy) {
       spinner.hidden = !busy;

@@ -1,6 +1,7 @@
 import type { MLCEngineInterface } from '@mlc-ai/web-llm';
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import type { AgentConfig } from '../config';
+import { appConfig } from './webllm-store';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types';
 
 // One engine (and one multi-gigabyte model in VRAM) is shared by every agent.
@@ -25,7 +26,9 @@ async function getEngine(os: Kernel, model: string, onStatus: (s: string) => voi
       },
     });
     try {
+      // The catalogue plus models imported from a folder (Settings → Model).
       const engine = (engineRef = await CreateMLCEngine(model, {
+        appConfig: await appConfig(os.settings),
         initProgressCallback: (p) => onStatus(`Loading ${model}: ${p.text}`),
       }));
       current = { model, engine, pid: proc.pid };

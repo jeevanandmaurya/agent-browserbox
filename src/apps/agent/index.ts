@@ -44,6 +44,7 @@ const app: AppModule = {
     let busy = false;
     let todos: TodoItem[] = [];
     let wake: WakeLockSentinel | null = null;
+    let callCount = 0;
 
     // --- routing: everything opens inside this window ------------------------
     const openDesktop = () => {
@@ -135,6 +136,7 @@ const app: AppModule = {
           todos = e.items;
           showTodos();
         } else if (e.type === 'usage') {
+          meter.usage({ ...e.total, calls: (callCount += 1), tps: e.stats.tps, ttft: e.stats.ttft, model: e.model });
           meter.refresh();
         } else if (e.type === 'compact') {
           log.addNote(`${e.auto ? 'The context was nearly full, so the conversation was summarised' : 'Conversation summarised'}: about ${e.before.toLocaleString()} → ${e.after.toLocaleString()} tokens. The full history stays visible here.`);
