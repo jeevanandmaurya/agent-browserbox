@@ -100,7 +100,8 @@ export class KernelCore implements Kernel {
     this.log('kernel', `BrowserBox ${this.version}`);
     const init = this.procs.spawn({ name: 'kernel', kind: 'service', detail: 'event bus, vfs, process table' });
     this.procs.update(init.pid, { state: 'idle' });
-    void this.kcore.load().then(() => this.log('kcore', this.kcore.loaded ? 'WebAssembly core loaded' : 'WebAssembly unavailable, using JavaScript fallbacks'));
+    // Loads in parallel with storage; awaited before "ready" so the log reads in order.
+    const kcore = this.kcore.load().then(() => this.log('kcore', this.kcore.loaded ? 'WebAssembly core loaded' : 'WebAssembly unavailable, using JavaScript fallbacks'));
     this.settings.hydrate(await loadSettings());
     this.log('settings', `${this.settings.keys().length} keys loaded`);
 
@@ -132,6 +133,7 @@ export class KernelCore implements Kernel {
       ?.persist?.()
       .then((ok) => this.log('vfs', ok ? 'storage marked persistent' : 'storage may be evicted under pressure'))
       .catch(() => false);
+    await kcore;
     this.log('kernel', 'ready');
   }
 
