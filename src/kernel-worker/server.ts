@@ -43,7 +43,7 @@ interface Client {
 }
 
 const wire = (p: Proc): WireProc => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, started: p.started, state: p.state, detail: p.detail, cpuMs: p.cpuMs, memBytes: p.memBytes });
-const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open'];
+const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'pack:change'];
 
 /**
  * Exposes the kernel to windows over message ports. Each connection is a
@@ -227,6 +227,11 @@ export class KernelServer {
         as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: true } as never) : payload));
       },
 
+      // Tool packs
+      'packs.list': () => os.packs.list(),
+      'packs.install': (id: string) => os.packs.install(id),
+      'packs.remove': (id: string) => os.packs.remove(id),
+
       // Agents
       'agent.create': async (opts?: { resume?: string; ppid?: number }) => adoptAgent(await os.agents.create(opts)),
       'agent.attach': async (sid: string) => adoptAgent(await os.agents.attach(sid)),
@@ -235,6 +240,9 @@ export class KernelServer {
       'agent.send': (sid: string, text: string) => agent(sid).send(text),
       'agent.stop': (sid: string) => agent(sid).stop(),
       'agent.snapshot': (sid: string) => agent(sid).snapshot(),
+      'agent.context': (sid: string) => agent(sid).context(),
+      'agent.compact': (sid: string) => agent(sid).compact(),
+      'agent.probeMcp': (name: string) => os.agents.probeMcp(name),
       'agent.detach': (sid: string) => {
         client.agents.get(sid)?.detach();
         client.agents.delete(sid);
@@ -283,6 +291,7 @@ export class KernelServer {
       const run = this.#runs.get(runId);
       (s === 'o' ? run?.onStdout : run?.onStderr)?.(t);
     });
+    peer.on<{ runId: number; label: string; loaded: number; total: number }>('host:progress', ({ runId, ...p }) => this.#runs.get(runId)?.onProgress?.(p));
     // A window announces which Web Lock it holds; when we can take it, the window is gone.
     peer.on<string>('alive', (lockName) => {
       void navigator.locks?.request(lockName, () => this.#drop(client));

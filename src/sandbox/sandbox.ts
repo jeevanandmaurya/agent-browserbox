@@ -8,6 +8,10 @@ export const PYODIDE_URL = 'https://cdn.jsdelivr.net/pyodide/v0.29.0/full/';
 
 export interface RunOptions {
   cwd?: string;
+  /** Environment variables visible to the program (`env` in JS, os.environ in Python). */
+  env?: Record<string, string>;
+  /** Download progress while a runtime is being fetched. */
+  onProgress?: (p: { label: string; loaded: number; total: number }) => void;
   timeoutMs?: number;
   signal?: AbortSignal;
   onStdout?: (chunk: string) => void;
@@ -32,12 +36,13 @@ interface FileBlob {
 }
 
 type Job =
-  | { op: 'js'; code: string; args?: string[] }
-  | { op: 'python'; code: string; packages?: string[]; files?: FileBlob[]; pyodideUrl: string }
+  | { op: 'js'; code: string; args?: string[]; env?: Record<string, string> }
+  | { op: 'python'; code: string; packages?: string[]; files?: FileBlob[]; pyodideUrl: string; env?: Record<string, string>; runtime?: FileBlob[] }
   | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string };
 
 type Reply =
   | { id: number; type: 'stdout' | 'stderr'; data: string }
+  | { id: number; type: 'progress'; label: string; loaded: number; total: number }
   | { id: number; type: 'rpc'; rid: number; method: string; params: unknown[] }
   | { id: number; type: 'done'; result?: { value?: string; exitCode?: number; files?: FileBlob[] }; error?: string };
 
@@ -165,6 +170,8 @@ export class Sandbox {
         } else if (m.type === 'stderr') {
           if (stderr.length < MAX_CAPTURE) stderr += m.data;
           opts.onStderr?.(m.data);
+        } else if (m.type === 'progress') {
+          opts.onProgress?.({ label: m.label, loaded: m.loaded, total: m.total });
         } else if (m.type === 'rpc') {
           this.#rpc(cwd, m.method, m.params).then(
             (value) => port.postMessage({ type: 'rpc-result', rid: m.rid, value }),
@@ -232,10 +239,10 @@ export function setSandboxHost(h: SandboxHost): void {
 }
 
 export async function runJs(os: Kernel, code: string, opts: RunOptions & { network?: boolean; args?: string[]; ppid?: number } = {}): Promise<RunResult> {
-  if (host) return host.run('js', { code, args: opts.args, network: opts.network, ppid: opts.ppid }, opts);
+  if (host) return host.run('js', { code, args: opts.args, network: opts.network, ppid: opts.ppid, env: opts.env }, opts);
   const sb = new Sandbox(os, { name: 'js', network: opts.network, ppid: opts.ppid });
   try {
-    return await sb.run({ op: 'js', code, args: opts.args }, opts);
+    return await sb.run({ op: 'js', code, args: opts.args, env: opts.env }, opts);
   } finally {
     sb.dispose();
   }
@@ -253,6 +260,31 @@ export async function runWasm(os: Kernel, wasm: Uint8Array, opts: RunOptions & {
 
 // Pyodide takes seconds to start, so one interpreter is kept warm and reused.
 let python: Sandbox | null = null;
+let pythonBooted = false;
+
+/** Files that make up the Python runtime, relative to PYODIDE_URL. */
+export const PYTHON_RUNTIME_FILES = ['pyodide.js', 'pyodide.asm.js', 'pyodide.asm.wasm', 'python_stdlib.zip', 'pyodide-lock.json'];
+export const PACK_CACHE = 'bbx-packs';
+
+/**
+ * Reads the Python runtime from Cache Storage, where installing the Python
+ * pack puts it. A sandbox runs in an opaque origin whose HTTP cache does not
+ * persist, so without this the 10 MB runtime would be downloaded every session.
+ */
+async function cachedPythonRuntime(): Promise<FileBlob[] | undefined> {
+  try {
+    const cache = await caches.open(PACK_CACHE);
+    const files = await Promise.all(
+      PYTHON_RUNTIME_FILES.map(async (name) => {
+        const hit = await cache.match(PYODIDE_URL + name);
+        return hit ? { path: name, data: new Uint8Array(await hit.arrayBuffer()) } : null;
+      }),
+    );
+    return files.every((f) => f !== null) ? (files as FileBlob[]) : undefined;
+  } catch {
+    return undefined; // Cache Storage unavailable (e.g. another origin): fall back to the CDN
+  }
+}
 
 async function snapshot(os: Kernel, cwd: string): Promise<FileBlob[]> {
   const files: FileBlob[] = [];
@@ -271,10 +303,19 @@ async function snapshot(os: Kernel, cwd: string): Promise<FileBlob[]> {
  * interpreter's working directory and anything it writes is copied back.
  */
 export async function runPython(os: Kernel, code: string, opts: RunOptions & { packages?: string[] } = {}): Promise<RunResult> {
-  if (host) return host.run('python', { code, packages: opts.packages }, opts);
+  if (host) return host.run('python', { code, packages: opts.packages, env: opts.env }, opts);
   // Deliberately parentless: the warm interpreter outlives whichever app first used it.
-  if (!python?.alive) python = new Sandbox(os, { name: 'python', network: false });
+  if (!python?.alive) {
+    python = new Sandbox(os, { name: 'python', network: false });
+    pythonBooted = false;
+  }
   const cwd = opts.cwd ?? '/tmp';
   const files = await snapshot(os, cwd);
-  return python.run({ op: 'python', code, packages: opts.packages, files, pyodideUrl: PYODIDE_URL }, { timeoutMs: 120000, ...opts, cwd });
+  // The interpreter's own files come from the Python pack's cache when it has been installed;
+  // otherwise the sandbox downloads them from the CDN (and reports progress).
+  const fresh = !pythonBooted;
+  const runtime = fresh ? await cachedPythonRuntime() : undefined;
+  const result = await python.run({ op: 'python', code, packages: opts.packages, files, pyodideUrl: PYODIDE_URL, env: opts.env, runtime }, { timeoutMs: 180000, ...opts, cwd });
+  pythonBooted = python.alive && !result.timedOut;
+  return result;
 }

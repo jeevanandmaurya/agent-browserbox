@@ -69,19 +69,55 @@ async function runJs(m, out, err) {
     glob: call('fs.glob'),
   };
   const AsyncFunction = (async () => {}).constructor;
-  const fn = new AsyncFunction('fs', 'console', 'print', 'args', m.code);
-  const value = await fn(fs, console, line(out), m.args ?? []);
+  const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', m.code);
+  const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }));
   return { value: value === undefined ? undefined : show(value) };
 }
 
 // ---- Python (Pyodide, CPython compiled to WebAssembly) ---------------------
 async function runPython(m, out, err) {
   if (!pyodide) {
-    out('[python] loading Pyodide runtime…\n');
-    importScripts(m.pyodideUrl + 'pyodide.js');
-    pyodide = await loadPyodide({ indexURL: m.pyodideUrl });
+    const base = m.pyodideUrl;
+    const progress = (label, loaded, total) => port.postMessage({ id: m.id, type: 'progress', label, loaded, total });
+    const have = new Map((m.runtime ?? []).map((f) => [base + f.path, f.data]));
+    if (!have.size) {
+      // Not installed as a pack: fetch the big file ourselves so the download is visible.
+      out('[python] downloading the Python runtime…\n');
+      const res = await fetch(base + 'pyodide.asm.wasm');
+      const total = Number(res.headers.get('content-length')) || 0;
+      const chunks = [];
+      let loaded = 0;
+      for (const reader = res.body.getReader(); ; ) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        progress('Python runtime', loaded, total);
+      }
+      have.set(base + 'pyodide.asm.wasm', new Uint8Array(await new Blob(chunks).arrayBuffer()));
+    }
+    // Serve the runtime's own files from memory instead of the network.
+    const realFetch = self.fetch.bind(self);
+    self.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      const data = have.get(url);
+      if (!data) return realFetch(input, init);
+      const type = url.endsWith('.wasm') ? 'application/wasm' : url.endsWith('.json') ? 'application/json' : 'application/octet-stream';
+      return Promise.resolve(new Response(data, { headers: { 'content-type': type } }));
+    };
+    const realImport = self.importScripts.bind(self);
+    self.importScripts = (...urls) => {
+      for (const url of urls) {
+        const data = have.get(url);
+        if (data) (0, eval)(new TextDecoder().decode(data));
+        else realImport(url);
+      }
+    };
+    importScripts(base + 'pyodide.js');
+    pyodide = await loadPyodide({ indexURL: base });
     pyodide.FS.mkdirTree('/work');
   }
+  if (m.env) pyodide.runPython('import os\nos.environ.update(' + JSON.stringify(m.env) + ')');
   pyodide.setStdout({ batched: (s) => out(s + '\n') });
   pyodide.setStderr({ batched: (s) => err(s + '\n') });
   const FS = pyodide.FS;

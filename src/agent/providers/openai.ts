@@ -59,7 +59,8 @@ export function createOpenAiProvider(cfg: AgentConfig, apiKey: string | null): P
   const base = cfg.openaiBaseUrl.replace(/\/+$/, '');
   return {
     id: 'openai',
-    contextBudget: 24000,
+    contextBudget: Math.floor(cfg.contextWindow * 0.75),
+    contextWindow: cfg.contextWindow,
     async turn(req: TurnRequest): Promise<TurnResult> {
       if (!cfg.openaiModel) throw new ProviderError('No model selected for the local server. Pick one in Settings → Model.');
       let res: Response;

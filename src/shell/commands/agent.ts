@@ -81,7 +81,7 @@ export const agentCommand: Command = {
         const line = await tty.readLine(`${C.magenta}agent>${C.reset} `);
         if (line === null || line.trim() === '/exit' || line.trim() === '/quit') break;
         if (line.trim() === '/new') {
-          agent.messages = [];
+          agent.reset();
           out(`${C.dim}Started a new session.${C.reset}\n`);
         } else if (line.trim()) await agent.send(line);
         if (ctx.signal.aborted) break;

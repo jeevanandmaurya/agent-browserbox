@@ -37,13 +37,14 @@ interface Job {
   packages?: string[];
   stdin?: string;
   name?: string;
+  env?: Record<string, string>;
 }
 void os.handle({
   'host.run': async (runId: number, kind: 'js' | 'python' | 'wasm', p: Job, o: { cwd?: string; timeoutMs?: number }): Promise<RunResult> => {
     const ctl = new AbortController();
     aborts.set(runId, ctl);
     const peer = await os.handle({});
-    const opts = { ...o, signal: ctl.signal, onStdout: (t: string) => peer.emit('host:out', { runId, s: 'o', t }), onStderr: (t: string) => peer.emit('host:out', { runId, s: 'e', t }) };
+    const opts = { ...o, signal: ctl.signal, onStdout: (t: string) => peer.emit('host:out', { runId, s: 'o', t }), onStderr: (t: string) => peer.emit('host:out', { runId, s: 'e', t }), onProgress: (pr: object) => peer.emit('host:progress', { runId, ...pr }), env: p.env };
     try {
       if (kind === 'js') return await runJs(os, p.code, { ...opts, args: p.args, network: p.network, ppid: p.ppid });
       if (kind === 'python') return await runPython(os, p.code, { ...opts, packages: p.packages });

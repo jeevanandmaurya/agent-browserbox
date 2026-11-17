@@ -1,9 +1,10 @@
 import type { AgentEvent } from '@/agent/agent';
 import type { TodoItem } from '@/agent/tools/types';
-import type { Msg, Usage } from '@/agent/types';
+import type { ContextReport, Msg, Usage } from '@/agent/types';
 import type { Bus } from './bus';
 import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
+import type { PacksApi } from './packs';
 import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
 import type { KernelEvents, Notice } from './types';
@@ -28,6 +29,7 @@ export interface Kernel {
   readonly kcore: KCore;
   readonly agents: AgentsApi;
   readonly shells: ShellsApi;
+  readonly packs: PacksApi;
   readonly caps: PlatformCap[];
   rootKind: 'opfs' | 'memory';
   readonly bootStart: number;
@@ -94,9 +96,11 @@ export interface AgentSnapshot {
   pid: number;
   busy: boolean;
   title: string;
+  /** The full conversation (never shortened by compaction). */
   messages: Msg[];
   todos: TodoItem[];
   total: Usage;
+  context: ContextReport;
 }
 
 export interface AgentInfo {
@@ -114,6 +118,10 @@ export interface AgentHandle {
   send(text: string): Promise<void>;
   stop(): void;
   snapshot(): Promise<AgentSnapshot>;
+  /** Where the context window is going. */
+  context(): Promise<ContextReport>;
+  /** Summarise the conversation now to free context. Resolves false if nothing was done. */
+  compact(): Promise<boolean>;
   onEvent(fn: (e: AgentEvent) => void): () => void;
   /** Supplies answers to the agent's ask_user questions. */
   onAsk(fn: (question: string, options?: string[]) => Promise<string>): void;
@@ -133,6 +141,8 @@ export interface AgentsApi {
   live(): Promise<AgentInfo[]>;
   /** Lists models on an OpenAI-compatible server, using the stored API key if any. */
   probeModels(baseUrl: string): Promise<string[]>;
+  /** Connects to a configured MCP server and lists its tools. */
+  probeMcp(name: string): Promise<Array<{ name: string; description: string }>>;
 }
 
 // ---- Shell sessions ---------------------------------------------------------

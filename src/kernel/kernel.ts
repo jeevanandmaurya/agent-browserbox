@@ -1,6 +1,8 @@
+import { McpHub } from '@/agent/ext/mcp';
 import { Bus } from './bus';
 import { detectCaps, type PlatformCap } from './caps';
 import { KCore } from './kcore';
+import { PackManager } from './packs';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
@@ -60,6 +62,9 @@ export class KernelCore implements Kernel {
   agents!: AgentsApi;
   shells!: ShellsApi;
   ui: UiBridge | null = null;
+  /** Connections to remote MCP servers (connectors). */
+  readonly mcp = new McpHub(this);
+  readonly packs = new PackManager(this);
   /** 'opfs' when the root is persistent, 'memory' when it is not. */
   rootKind: 'opfs' | 'memory' = 'memory';
   /** Milestones recorded during boot, in ms since navigation start. */
@@ -110,6 +115,11 @@ export class KernelCore implements Kernel {
   }
 
   async #seed(): Promise<void> {
+    // Example skills, agents and commands; only when the folder has never existed.
+    if (!(await this.fs.exists(`${AGENT_HOME}/skills`))) {
+      const { SEED } = await import('@/agent/ext/library');
+      for (const [path, text] of SEED) await this.fs.writeFile(path, text);
+    }
     if (await this.fs.exists(`${HOME}/Welcome.md`)) return;
     await Promise.all([this.fs.mkdir(`${HOME}/Documents`), this.fs.mkdir(AGENT_HOME), this.fs.mkdir('/mnt')]);
     await this.fs.writeFile(`${HOME}/Welcome.md`, WELCOME);

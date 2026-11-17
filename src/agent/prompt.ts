@@ -1,13 +1,17 @@
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { AGENT_HOME, HOME } from '@/kernel/paths';
 import type { AgentConfig } from './config';
+import { loadExtensions, type Extension } from './ext/library';
 
 /** Built once per session so the prompt prefix stays byte-stable and cacheable. */
-export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean }): Promise<string> {
+export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null }): Promise<string> {
   if (opts.lite) {
     return `You are the assistant inside BrowserBox, an operating system running in a browser tab. You can read and write files in a virtual filesystem (your working directory is ${AGENT_HOME}) and run shell commands and JavaScript. Be concise. Use a tool when the task needs one; otherwise just answer.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
   }
   const memory = await os.fs.readText(`${AGENT_HOME}/MEMORY.md`).catch(() => '');
+  const [skills, agents] = await Promise.all([loadExtensions(os, 'skill'), opts.subagent ? [] : loadExtensions(os, 'agent')]);
+  const list = (items: Extension[]) => items.filter((e) => e.enabled).map((e) => `- ${e.name}: ${e.description}`).join('\n');
+  const envNames = Object.keys(os.settings.get<Record<string, string>>('env.vars', {}));
   const gpu = os.hasCap('webgpu') ? 'available' : 'not available in this browser';
   return `You are the agent built into BrowserBox, an operating system that runs entirely inside the user's browser tab. You act for the user through tools; everything you do happens on their device, inside a sandbox.
 
@@ -26,5 +30,5 @@ export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { li
 ${opts.subagent ? '- You are a sub-agent: complete the task you were given and finish with a clear report of what you did and found. You cannot ask the user questions.\n' : ''}
 # Style
 Write for someone reading a chat window: lead with the outcome, keep it brief, use Markdown where it helps, and refer to files by their path.
-${memory.trim() ? `\n# Memory (${AGENT_HOME}/MEMORY.md)\n${memory.trim().slice(0, 6000)}\n` : ''}${cfg.instructions.trim() ? `\n# User instructions\n${cfg.instructions.trim()}\n` : ''}`;
+${list(skills) ? `\n# Skills\nReusable instructions for specific kinds of task. When a request matches one, call use_skill with its name first and follow what it says.\n${list(skills)}\n` : ''}${list(agents) ? `\n# Custom agents\nSpecialised sub-agents you can delegate to with spawn_agent (pass the name as \`agent\`).\n${list(agents)}\n` : ''}${envNames.length ? `\n# Environment variables\nSet by the user and available in the shell (as $NAME), in run_js (as env.NAME) and in Python (os.environ): ${envNames.join(', ')}\n` : ''}${opts.persona ? `\n# Your role: ${opts.persona.name}\n${opts.persona.body}\n` : ''}${memory.trim() ? `\n# Memory (${AGENT_HOME}/MEMORY.md)\n${memory.trim().slice(0, 6000)}\n` : ''}${cfg.instructions.trim() ? `\n# User instructions\n${cfg.instructions.trim()}\n` : ''}`;
 }

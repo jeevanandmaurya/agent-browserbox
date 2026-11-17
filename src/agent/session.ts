@@ -9,7 +9,10 @@ export interface SessionFile {
   id: string;
   title: string;
   updated: number;
+  /** The model's context (a summary after compaction). */
   messages: Msg[];
+  /** The full conversation for display; absent in files saved before compaction existed. */
+  transcript?: Msg[];
   todos: TodoItem[];
 }
 

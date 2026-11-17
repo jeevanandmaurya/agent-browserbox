@@ -80,6 +80,7 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
   return {
     id: 'webllm',
     contextBudget: 3000,
+    contextWindow: 4096,
     async turn(req: TurnRequest): Promise<TurnResult> {
       if (!os.hasCap('webgpu')) throw new ProviderError('This browser has no WebGPU, which the in-browser model needs. Choose another provider in Settings → Model.');
       const engine = await getEngine(os, cfg.webllmModel, req.onStatus);

@@ -3,6 +3,7 @@ import type { AgentHandle, AgentsApi, FsApi, Kernel, MountInfo, ProcsApi, Secret
 import { Bus } from '@/kernel/bus';
 import { detectCaps, type PlatformCap } from '@/kernel/caps';
 import { KCore } from '@/kernel/kcore';
+import type { PacksApi } from '@/kernel/packs';
 import { Permissions, type PermRequest, type Prompter } from '@/kernel/perms';
 import type { Proc, SpawnOptions } from '@/kernel/proc';
 import { Settings } from '@/kernel/settings';
@@ -252,11 +253,18 @@ export class RemoteKernel implements Kernel {
     delete: (name) => this.call('secrets.delete', name),
   };
 
+  readonly packs: PacksApi = {
+    list: () => this.call('packs.list'),
+    install: (id) => this.call('packs.install', id),
+    remove: (id) => this.call('packs.remove', id),
+  };
+
   readonly agents: AgentsApi = {
     create: async (opts) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.create', opts)),
     attach: async (sid) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.attach', sid)),
     live: () => this.call('agent.live'),
     probeModels: (baseUrl) => this.call('agent.probeModels', baseUrl),
+    probeMcp: (name) => this.call('agent.probeMcp', name),
   };
 
   #agentHandle({ sid, pid }: { sid: string; pid: number }): AgentHandle {
@@ -271,6 +279,8 @@ export class RemoteKernel implements Kernel {
       send: (text) => this.call('agent.send', sid, text),
       stop: () => void this.call('agent.stop', sid),
       snapshot: () => this.call('agent.snapshot', sid),
+      context: () => this.call('agent.context', sid),
+      compact: () => this.call('agent.compact', sid),
       onEvent: (fn) => {
         local.events.add(fn);
         return () => local.events.delete(fn);

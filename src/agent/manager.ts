@@ -52,6 +52,7 @@ export class AgentManager implements AgentsApi {
     session.agent = agent;
     if (saved) {
       agent.messages = saved.messages;
+      agent.transcript = saved.transcript ?? saved.messages;
       agent.todos = saved.todos ?? [];
     }
     this.#sessions.set(agent.id, session);
@@ -67,7 +68,11 @@ export class AgentManager implements AgentsApi {
   async live(): Promise<AgentInfo[]> {
     return [...this.#sessions.entries()]
       .sort((a, b) => b[1].created - a[1].created)
-      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.messages) }));
+      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript) }));
+  }
+
+  probeMcp(name: string): Promise<Array<{ name: string; description: string }>> {
+    return this.os.mcp.probe(name);
   }
 
   async probeModels(baseUrl: string): Promise<string[]> {
@@ -75,8 +80,8 @@ export class AgentManager implements AgentsApi {
   }
 
   async #save(s: Session): Promise<void> {
-    if (!s.agent.messages.length) return;
-    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.messages), updated: Date.now(), messages: s.agent.messages, todos: s.agent.todos }).catch((err: Error) =>
+    if (!s.agent.transcript.length) return;
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
   }
@@ -90,8 +95,10 @@ export class AgentManager implements AgentsApi {
       pid: s.agent.proc.pid,
       send: (text) => s.agent.send(text),
       stop: () => s.agent.stop(),
+      context: async () => s.agent.context(),
+      compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.messages), messages: s.agent.messages, todos: s.agent.todos, total: { ...s.agent.total } };
+        return { sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context() };
       },
       onEvent(fn) {
         mine.add(fn);

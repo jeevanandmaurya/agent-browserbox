@@ -23,8 +23,8 @@ export interface ToolContext {
   /** Streams partial output of a running tool to the UI. */
   progress(chunk: string): void;
   setTodos(items: TodoItem[]): void;
-  /** Runs a nested agent to completion and returns its final answer. */
-  spawnAgent(task: string): Promise<string>;
+  /** Runs a nested agent (optionally a named custom agent) to completion and returns its final answer. */
+  spawnAgent(task: string, agent?: string): Promise<string>;
 }
 
 export interface ToolDef<I = Record<string, unknown>> {

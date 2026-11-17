@@ -8,12 +8,25 @@ import { gitCommand } from './git';
 
 export const installed = (os: KernelCore): string[] => os.settings.get<string[]>(PACKS_KEY, DEFAULT_PACKS);
 
+/** Reports a download at each 20% step, as plain lines. */
+export function stepProgress(label: string, write: (line: string) => void): (loaded: number, bytes: number) => void {
+  let shown = -1;
+  return (loaded, bytes) => {
+    const step = bytes ? Math.floor((loaded / bytes) * 5) : -1;
+    if (step > shown) {
+      shown = step;
+      write(`${C.dim}downloading ${label}: ${step * 20}% of ${fmtBytes(bytes)}${C.reset}\n`);
+    }
+  };
+}
+
 /** Wraps a command so it only runs when its pack is installed. */
 export function fromPack(pack: string, cmd: Command): Command {
   return {
     ...cmd,
     async run(ctx) {
       if (!installed(ctx.os).includes(pack)) throw new Error(`the ${pack} pack is not installed. Run: pkg install ${pack}`);
+      await ctx.os.packs.ensure(pack, stepProgress(pack, (line) => ctx.err(line)));
       return cmd.run(ctx);
     },
   };
@@ -25,22 +38,33 @@ const pkg: Command = {
   usage: 'pkg list | pkg install <pack>… | pkg remove <pack>…',
   async run({ args, os, out }) {
     const [verb = 'list', ...names] = args;
-    const have = new Set(installed(os));
     if (verb === 'list') {
-      for (const p of PACKS) out(`${have.has(p.id) ? `${C.green}installed${C.reset}` : p.available ? '         ' : `${C.dim}  planned${C.reset}`}  ${C.bold}${p.id.padEnd(8)}${C.reset} ${p.size.padEnd(8)} ${C.dim}${p.description}${C.reset}\n`);
+      for (const p of await os.packs.list()) {
+        const status = !p.available ? `${C.dim}planned     ${C.reset}` : p.selected && p.cached ? `${C.green}installed   ${C.reset}` : p.selected ? `${C.yellow}on first use${C.reset}` : '            ';
+        out(`${status}  ${C.bold}${p.id.padEnd(8)}${C.reset} ${(p.bytes ? fmtBytes(p.bytes) : 'size unknown').padEnd(12)} ${C.dim}${p.description}${C.reset}\n`);
+      }
       return;
     }
     if (verb !== 'install' && verb !== 'remove') throw new Error('usage: pkg list | pkg install <pack>… | pkg remove <pack>…');
     if (!names.length) throw new Error(`usage: pkg ${verb} <pack>…`);
     for (const name of names) {
-      const pack = PACKS.find((p) => p.id === name);
-      if (!pack) throw new Error(`no such pack: ${name} (see pkg list)`);
-      if (!pack.available) throw new Error(`${name} is planned but not available yet`);
-      if (verb === 'install') have.add(name);
-      else have.delete(name);
-      out(`${verb === 'install' ? 'installed' : 'removed'} ${name}\n`);
+      if (verb === 'remove') {
+        await os.packs.remove(name);
+        out(`removed ${name}\n`);
+        continue;
+      }
+      // Print progress at each 10% step; a terminal here cannot redraw a line in place.
+      let shown = -1;
+      await os.packs.install(name, (loaded, bytes) => {
+        const step = bytes ? Math.floor((loaded / bytes) * 10) : -1;
+        if (step > shown && step < 10) {
+          shown = step;
+          out(`${C.dim}${name}: ${step * 10}% of ${fmtBytes(bytes)}${C.reset}\n`);
+        }
+      });
+      const state = (await os.packs.list()).find((p) => p.id === name);
+      out(`installed ${name}${state?.bytes ? ` (${fmtBytes(state.bytes)})` : ''}\n`);
     }
-    os.settings.set(PACKS_KEY, [...have]);
   },
 };
 

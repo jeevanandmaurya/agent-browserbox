@@ -8,6 +8,20 @@ export type Block =
   /** Something the provider did on its side (e.g. a web search). Display only. */
   | { type: 'server_note'; text: string };
 
+/** Where the context window is going. Counts are estimates except `used` when `reported` is true. */
+export interface ContextReport {
+  window: number;
+  /** Tokens in the context as of the last model call. */
+  used: number;
+  /** True when `used` was reported by the model rather than estimated. */
+  reported: boolean;
+  parts: { system: number; tools: number; user: number; assistant: number; toolCalls: number; toolResults: number };
+  messages: number;
+  compactions: number;
+  /** Fraction of the window at which the conversation is compacted automatically (0 = off). */
+  autoCompactAt: number;
+}
+
 export interface Msg {
   role: 'user' | 'assistant';
   content: Block[];
@@ -60,6 +74,8 @@ export interface Provider {
   readonly id: string;
   /** Rough context budget in tokens; the loop elides old tool output beyond it. 0 = provider manages it. */
   readonly contextBudget: number;
+  /** Size of the model's context window in tokens. */
+  readonly contextWindow: number;
   turn(req: TurnRequest): Promise<TurnResult>;
 }
 

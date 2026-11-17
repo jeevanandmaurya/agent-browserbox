@@ -10,7 +10,8 @@ import { buildSystemPrompt } from './prompt';
 import { createProvider } from './providers/index';
 import { validate } from './schema';
 import { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index';
-import { ProviderError, type Block, type Msg, type Provider, type Usage } from './types';
+import { loadExtensions, type Extension } from './ext/library';
+import { ProviderError, type Block, type ContextReport, type Msg, type Provider, type Usage } from './types';
 
 export type AgentEvent =
   | { type: 'start'; model: string }
@@ -22,7 +23,8 @@ export type AgentEvent =
   | { type: 'tool_progress'; id: string; chunk: string }
   | { type: 'tool_end'; id: string; result: string; isError: boolean; ms: number }
   | { type: 'todos'; items: TodoItem[] }
-  | { type: 'usage'; usage: Usage; total: Usage; model: string }
+  | { type: 'usage'; usage: Usage; total: Usage; model: string; context: { used: number; window: number } }
+  | { type: 'compact'; before: number; after: number; auto: boolean }
   | { type: 'error'; message: string }
   | { type: 'done'; reason: 'end' | 'stopped' | 'error' | 'max_steps' };
 
@@ -59,8 +61,21 @@ function fitContext(os: Kernel, messages: Msg[], budget: number): Msg[] {
  * One agent session: a conversation plus the loop that lets the model act
  * through tools. It is a process — visible in the Task Manager and killable.
  */
+/** Fraction of the context window at which the conversation is summarised automatically. */
+const AUTO_COMPACT_AT = 0.85;
+const COMPACT_PROMPT = `Your context window is nearly full, so this conversation is about to be replaced by a summary that you write now. Do not call any tools. Write the summary for yourself to continue from, covering:
+1. What the user asked for, in their words where it matters, including constraints and preferences.
+2. What has been done so far: files created or changed (with paths), commands run and their outcomes, decisions made and why.
+3. What is in progress right now and the exact next step.
+4. Anything learned that must not be lost: errors hit and how they were resolved, facts about the environment, open questions.
+Be specific and complete rather than brief; anything left out is forgotten.`;
+const CONTINUATION = 'This session continues an earlier conversation that was compacted to free up context. Summary of everything so far:';
+
 export class Agent {
+  /** What the model sees. Replaced by a summary when the conversation is compacted. */
   messages: Msg[] = [];
+  /** The full conversation for display and saving; never shortened. */
+  transcript: Msg[] = [];
   todos: TodoItem[] = [];
   readonly total: Usage = { input: 0, output: 0, cacheRead: 0 };
   readonly proc: Proc;
@@ -69,15 +84,22 @@ export class Agent {
   #run: AbortController | null = null;
   #system: string | null = null;
   #depth: number;
+  #persona: Extension | null;
+  #tools: ToolDef[] = [];
+  #window = 0;
+  /** Context size after the last model call, as reported by the model (0 = unknown). */
+  #lastContext = 0;
+  #compactions = 0;
 
   constructor(
     private os: Kernel,
     private host: AgentHost,
-    opts: { ppid?: number; depth?: number; id?: string } = {},
+    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension } = {},
   ) {
     this.#depth = opts.depth ?? 0;
+    this.#persona = opts.persona ?? null;
     this.id = opts.id ?? `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
-    this.proc = os.procs.spawn({ name: this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
+    this.proc = os.procs.spawn({ name: this.#persona ? `agent:${this.#persona.name}` : this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
     os.procs.update(this.proc.pid, { state: 'idle' });
     this.shell = registerCommands(new Shell(os, { cwd: AGENT_HOME, ppid: this.proc.pid }));
   }
@@ -97,7 +119,7 @@ export class Agent {
 
   /** Text of the last assistant turn. */
   lastText(): string {
-    const last = this.messages.findLast((m) => m.role === 'assistant');
+    const last = this.transcript.findLast((m) => m.role === 'assistant' && m.content.some((b) => b.type === 'text'));
     return last?.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n') ?? '';
   }
 
@@ -108,7 +130,6 @@ export class Agent {
     const emit = (e: AgentEvent) => this.host.onEvent(e);
     const started = performance.now();
     const cfg = loadConfig(this.os);
-    this.messages.push({ role: 'user', content: [{ type: 'text', text }] });
     this.os.procs.update(this.proc.pid, { state: 'running', detail: describeModel(cfg) });
     const wake = await navigator.wakeLock?.request('screen').catch(() => null);
     let reason: Extract<AgentEvent, { type: 'done' }>['reason'] = 'end';
@@ -116,9 +137,17 @@ export class Agent {
     try {
       const provider = await createProvider(this.os, cfg);
       const lite = provider.id === 'webllm';
-      const tools = (lite ? LITE_TOOLS : ALL_TOOLS).filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name));
-      this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0 });
+      const allowed = this.#persona?.tools.length ? new Set(this.#persona.tools) : null;
+      const tools = [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.mcp.tools())]
+        .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
+        .filter((t) => !allowed || allowed.has(t.name));
+      this.#tools = tools;
+      this.#window = provider.contextWindow;
+      this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
       emit({ type: 'start', model: describeModel(cfg) });
+      // Compact before taking on new work, so the new request itself is never summarised away.
+      if (cfg.autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
+      this.#push({ role: 'user', content: [{ type: 'text', text }] });
 
       for (let step = 0; ; step++) {
         if (step >= cfg.maxSteps) {
@@ -127,9 +156,10 @@ export class Agent {
           break;
         }
         const result = await this.#turn(provider, tools, run.signal, emit);
-        this.messages.push({ role: 'assistant', content: result.content, raw: result.raw });
+        this.#push({ role: 'assistant', content: result.content, raw: result.raw });
         for (const k of ['input', 'output', 'cacheRead'] as const) this.total[k] += result.usage[k];
-        emit({ type: 'usage', usage: result.usage, total: { ...this.total }, model: result.model });
+        this.#lastContext = result.usage.input + result.usage.cacheRead + result.usage.output;
+        emit({ type: 'usage', usage: result.usage, total: { ...this.total }, model: result.model, context: { used: this.#used(), window: this.#window } });
 
         if (result.stop === 'pause') continue;
         if (result.stop === 'refusal') {
@@ -146,7 +176,8 @@ export class Agent {
           result.stop === 'max_tokens'
             ? calls.map((c): ToolResult => ({ type: 'tool_result', tool_use_id: c.id, is_error: true, content: 'Your output was cut off before this tool call was complete, so it was not run. Retry with a smaller input (for example, write large files in several parts).' }))
             : await this.#runTools(calls, tools, run.signal, emit);
-        this.messages.push({ role: 'user', content: results });
+        this.#push({ role: 'user', content: results });
+        if (cfg.autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, true);
       }
     } catch (err) {
       if (run.signal.aborted) reason = 'stopped';
@@ -160,9 +191,105 @@ export class Agent {
       this.#run = null;
       void wake?.release().catch(() => undefined);
       this.os.procs.account(this.proc.pid, performance.now() - started);
-      this.os.procs.update(this.proc.pid, { state: 'idle', detail: `${this.messages.length} messages` });
+      this.os.procs.update(this.proc.pid, { state: 'idle', detail: `${this.transcript.length} messages` });
       emit({ type: 'done', reason });
     }
+  }
+
+  #push(msg: Msg): void {
+    this.messages.push(msg);
+    this.transcript.push(msg);
+  }
+
+  /** Forgets the conversation (the session and its process stay). */
+  reset(): void {
+    this.messages = [];
+    this.transcript = [];
+    this.#lastContext = 0;
+  }
+
+  #parts(): ContextReport['parts'] {
+    const est = (s: string) => this.os.kcore.estimateTokens(s);
+    const parts = { system: est(this.#system ?? ''), tools: est(JSON.stringify(this.#tools.map((t) => [t.name, t.description, t.input_schema]))), user: 0, assistant: 0, toolCalls: 0, toolResults: 0 };
+    for (const m of this.messages) {
+      for (const b of m.content) {
+        if (b.type === 'tool_use') parts.toolCalls += est(JSON.stringify(b.input)) + 8;
+        else if (b.type === 'tool_result') parts.toolResults += est(b.content) + 8;
+        else if (m.role === 'user') parts.user += est(b.text);
+        else parts.assistant += est(b.text);
+      }
+    }
+    return parts;
+  }
+
+  #used(): number {
+    return this.#lastContext || Object.values(this.#parts()).reduce((a, b) => a + b, 0);
+  }
+
+  #nearlyFull(): boolean {
+    return this.#window > 0 && this.messages.length > 1 && this.#used() > this.#window * AUTO_COMPACT_AT;
+  }
+
+  /** Where the context window is going right now. */
+  context(): ContextReport {
+    const cfg = loadConfig(this.os);
+    return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact ? AUTO_COMPACT_AT : 0 };
+  }
+
+  /** Summarises the conversation on request. Resolves false when there was nothing to do or it failed. */
+  async compact(): Promise<boolean> {
+    if (this.busy) throw new Error('the agent is busy');
+    const run = (this.#run = new AbortController());
+    const emit = (e: AgentEvent) => this.host.onEvent(e);
+    this.os.procs.update(this.proc.pid, { state: 'running', detail: 'compacting' });
+    try {
+      const cfg = loadConfig(this.os);
+      const provider = await createProvider(this.os, cfg);
+      this.#window = provider.contextWindow;
+      return await this.#compact(provider, run.signal, emit, false, false);
+    } catch (err) {
+      if (!run.signal.aborted) emit({ type: 'error', message: err instanceof ProviderError ? err.message : `Could not compact: ${(err as Error)?.message ?? err}` });
+      return false;
+    } finally {
+      this.#run = null;
+      this.os.procs.update(this.proc.pid, { state: 'idle', detail: `${this.transcript.length} messages` });
+      emit({ type: 'done', reason: 'end' });
+    }
+  }
+
+  /**
+   * Replaces the model's view of the conversation with a summary it writes
+   * itself. The request reuses the same system prompt and tools, so it is
+   * served from the prompt cache. The full transcript is kept for display.
+   */
+  async #compact(provider: Provider, signal: AbortSignal, emit: (e: AgentEvent) => void, auto: boolean, midTask: boolean): Promise<boolean> {
+    if (this.messages.length < 2 || !this.#system) return false;
+    emit({ type: 'status', text: 'Compacting the conversation to free up context…' });
+    const before = this.#used();
+    const history = provider.contextBudget ? fitContext(this.os, this.messages, provider.contextBudget) : this.messages;
+    const result = await provider.turn({
+      system: this.#system,
+      messages: [...history, { role: 'user', content: [{ type: 'text', text: COMPACT_PROMPT }] }],
+      tools: this.#tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+      signal,
+      onText: () => undefined,
+      onThinking: () => undefined,
+      onStatus: () => undefined,
+    });
+    for (const k of ['input', 'output', 'cacheRead'] as const) this.total[k] += result.usage[k];
+    const summary = result.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n').trim();
+    emit({ type: 'status', text: '' });
+    if (!summary) {
+      emit({ type: 'note', text: 'Compaction failed: the model returned no summary. The conversation was left as it is.' });
+      return false;
+    }
+    this.messages = [{ role: 'user', content: [{ type: 'text', text: `${CONTINUATION}\n\n${summary}${midTask ? '\n\nContinue the task from where you left off. Do not redo finished work.' : ''}` }] }];
+    this.#lastContext = 0;
+    this.#compactions++;
+    const after = this.#used();
+    this.transcript.push({ role: 'assistant', content: [{ type: 'server_note', text: `Conversation compacted: about ${before.toLocaleString()} → ${after.toLocaleString()} tokens` }] });
+    emit({ type: 'compact', before, after, auto });
+    return true;
   }
 
   #turn(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
@@ -197,7 +324,7 @@ export class Agent {
         this.todos = items;
         emit({ type: 'todos', items });
       },
-      spawnAgent: (task) => this.#spawn(task, signal, (chunk) => emit({ type: 'tool_progress', id, chunk })),
+      spawnAgent: (task, agent) => this.#spawn(task, agent, signal, (chunk) => emit({ type: 'tool_progress', id, chunk })),
     });
 
     const one = async (call: ToolUse): Promise<ToolResult> => {
@@ -253,7 +380,13 @@ export class Agent {
     return results;
   }
 
-  async #spawn(task: string, signal: AbortSignal, progress: (chunk: string) => void): Promise<string> {
+  async #spawn(task: string, agentName: string | undefined, signal: AbortSignal, progress: (chunk: string) => void): Promise<string> {
+    let persona: Extension | undefined;
+    if (agentName) {
+      const agents = (await loadExtensions(this.os, 'agent')).filter((a) => a.enabled);
+      persona = agents.find((a) => a.name === agentName);
+      if (!persona) throw new Error(`No agent named "${agentName}". Available: ${agents.map((a) => a.name).join(', ') || 'none'}`);
+    }
     const child = new Agent(
       this.os,
       {
@@ -264,7 +397,7 @@ export class Agent {
         ask: async () => 'Sub-agents cannot ask the user. Use your best judgement and note the assumption in your report.',
         prompter: this.host.prompter,
       },
-      { ppid: this.proc.pid, depth: this.#depth + 1 },
+      { ppid: this.proc.pid, depth: this.#depth + 1, persona },
     );
     const abort = () => child.stop();
     signal.addEventListener('abort', abort);
@@ -283,6 +416,6 @@ export class Agent {
     const last = this.messages.at(-1);
     if (last?.role !== 'assistant') return;
     const calls = last.content.filter((b): b is ToolUse => b.type === 'tool_use');
-    if (calls.length) this.messages.push({ role: 'user', content: calls.map((c) => ({ type: 'tool_result', tool_use_id: c.id, content: 'Interrupted before this tool ran.', is_error: true })) });
+    if (calls.length) this.#push({ role: 'user', content: calls.map((c) => ({ type: 'tool_result', tool_use_id: c.id, content: 'Interrupted before this tool ran.', is_error: true })) });
   }
 }

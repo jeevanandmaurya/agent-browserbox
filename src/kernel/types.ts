@@ -1,3 +1,4 @@
+import type { PackState } from './packs';
 import type { Proc } from './proc';
 
 export interface FsChange {
@@ -19,6 +20,8 @@ export interface KernelEvents extends Record<string, unknown> {
   'proc:exit': { proc: Proc; reason: string };
   'settings:change': { key: string; value: unknown };
   notify: Notice;
+  /** A tool pack's install state or download progress changed. */
+  'pack:change': PackState;
   /** Ask the shell UI to launch an app. */
   /** `fromWindow`: raised by a GUI window (e.g. the desktop), not by the kernel, the shell or the agent. */
   'app:open': { id: string; args?: Record<string, unknown>; fromWindow?: boolean };

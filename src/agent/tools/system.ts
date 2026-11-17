@@ -1,5 +1,6 @@
 import { APP_INFO as APPS } from '@/ui/app-list';
 import { fmtBytes } from '@/ui/dom';
+import { loadExtensions } from '../ext/library';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types';
 
 /** Clipboard and speech exist only in windows, so the kernel borrows one. */
@@ -183,13 +184,28 @@ export const systemTools: ToolDef[] = [
       return 'Task list updated.';
     },
   }),
-  tool<{ task: string }>({
+  tool<{ name: string }>({
+    name: 'use_skill',
+    description: 'Load a skill: returns its instructions and lists the supporting files in its folder. Call this before starting a task that matches a skill listed in your system prompt, then follow the instructions.',
+    input_schema: obj({ name: { type: 'string' } }, ['name']),
+    cap: () => null,
+    describe: (i) => `Use skill ${i.name}`,
+    async run(i, tc) {
+      const skills = (await loadExtensions(tc.os, 'skill')).filter((s) => s.enabled);
+      const skill = skills.find((s) => s.name === i.name);
+      if (!skill) throw new Error(`No skill named "${i.name}". Available: ${skills.map((s) => s.name).join(', ') || 'none'}`);
+      const files: string[] = [];
+      for await (const f of tc.os.fs.walk(skill.dir, { maxDepth: 4 })) if (f.kind === 'file' && f.path !== skill.path) files.push(f.path);
+      return `# Skill: ${skill.name}\nFolder: ${skill.dir}\n\n${skill.body}${files.length ? `\n\nSupporting files:\n${files.map((f) => `- ${f}`).join('\n')}` : ''}`;
+    },
+  }),
+  tool<{ task: string; agent?: string }>({
     name: 'spawn_agent',
     description:
       'Delegate a self-contained task to a sub-agent with its own fresh context and the same tools. It starts with no knowledge of this conversation, so give it everything it needs. Returns its final report. Useful for keeping long explorations out of your own context.',
-    input_schema: obj({ task: { type: 'string' } }, ['task']),
+    input_schema: obj({ task: { type: 'string' }, agent: { type: 'string', description: 'name of a custom agent listed in your system prompt; omit for a general-purpose sub-agent' } }, ['task']),
     cap: () => null,
-    describe: (i) => `Sub-agent: ${i.task.slice(0, 120)}`,
-    run: (i, tc) => tc.spawnAgent(i.task),
+    describe: (i) => `${i.agent ? `Agent ${i.agent}` : 'Sub-agent'}: ${i.task.slice(0, 120)}`,
+    run: (i, tc) => tc.spawnAgent(i.task, i.agent),
   }),
 ];

@@ -74,7 +74,8 @@ export class Shell {
     this.cwd = opts.cwd ?? HOME;
     this.tty = opts.tty;
     this.ppid = opts.ppid ?? 0;
-    this.env = { HOME, USER: 'user', SHELL: '/bin/bbsh', AGENT_HOME, PATH: '/bin', '?': '0' };
+    // Variables from Settings → Environment are present in every shell.
+    this.env = { ...os.settings.get<Record<string, string>>('env.vars', {}), HOME, USER: 'user', SHELL: '/bin/bbsh', AGENT_HOME, PATH: '/bin', '?': '0' };
   }
 
   register(...cmds: Command[]): this {

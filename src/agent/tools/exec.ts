@@ -3,6 +3,9 @@ import { gpuCompute } from '@/sandbox/gpu';
 import { runJs, runPython, runWasm, type RunResult } from '@/sandbox/sandbox';
 import { clip, obj, tool, type ToolDef } from './types';
 
+/** Shell variables minus the shell's own bookkeeping. */
+export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
+
 function report(r: RunResult): string {
   const parts: string[] = [];
   if (r.stdout) parts.push(r.stdout.trimEnd());
@@ -43,7 +46,7 @@ export const execTools: ToolDef[] = [
     cap: (i) => (i.network ? 'net' : 'exec'),
     describe: (i) => `${i.network ? '[network] ' : ''}${i.code}`,
     async run(i, tc) {
-      return report(await runJs(tc.os, i.code, { cwd: tc.shell.cwd, network: i.network, timeoutMs: Math.min(i.timeout_ms ?? 30000, 300000), signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress, ppid: tc.pid }));
+      return report(await runJs(tc.os, i.code, { cwd: tc.shell.cwd, env: userEnv(tc.shell.env), network: i.network, timeoutMs: Math.min(i.timeout_ms ?? 30000, 300000), signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress, ppid: tc.pid }));
     },
   }),
   tool<{ code: string; packages?: string[] }>({
@@ -54,7 +57,8 @@ export const execTools: ToolDef[] = [
     cap: () => 'exec',
     describe: (i) => i.code,
     async run(i, tc) {
-      return report(await runPython(tc.os, i.code, { cwd: tc.shell.cwd, packages: i.packages, signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress }));
+      await tc.os.packs.ensure('python', (loaded, bytes) => bytes && tc.progress(`downloading Python runtime: ${Math.round((loaded / bytes) * 100)}%\n`));
+      return report(await runPython(tc.os, i.code, { cwd: tc.shell.cwd, env: userEnv(tc.shell.env), packages: i.packages, signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress }));
     },
   }),
   tool<{ path: string; args?: string[]; stdin?: string }>({

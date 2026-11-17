@@ -30,7 +30,7 @@ function toBlocks(content: Anthropic.Beta.BetaContentBlock[]): Block[] {
     if (b.type === 'text') out.push({ type: 'text', text: b.text });
     else if (b.type === 'thinking' && b.thinking) out.push({ type: 'thinking', text: b.thinking });
     else if (b.type === 'tool_use') out.push({ type: 'tool_use', id: b.id, name: b.name, input: (b.input ?? {}) as Record<string, unknown> });
-    else if (b.type === 'server_tool_use') out.push({ type: 'server_note', text: `${b.name}: ${JSON.stringify(b.input)}` });
+    else if (b.type === 'server_tool_use' || b.type === 'mcp_tool_use') out.push({ type: 'server_note', text: `${b.name}: ${JSON.stringify(b.input)}` });
   }
   return out;
 }
@@ -51,15 +51,19 @@ function explain(err: unknown): never {
  * Claude via the official SDK, called directly from the browser. The key
  * never leaves this device except in requests to api.anthropic.com.
  */
-export function createAnthropicProvider(cfg: AgentConfig, apiKey: string): Provider {
+export function createAnthropicProvider(cfg: AgentConfig, apiKey: string, relayedMcp: Array<{ name: string; url: string; token: string | null }> = []): Provider {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const model = cfg.anthropicModel;
   const betas: string[] = [];
-  if (FALLBACK_MODELS.has(model)) betas.push('server-side-fallback-2026-07-01');
+  const fallback = FALLBACK_MODELS.has(model);
+  if (fallback) betas.push('server-side-fallback-2026-07-01');
+  // Connectors marked "via Claude": the API reaches the MCP server itself, so no CORS is needed.
+  if (relayedMcp.length) betas.push('mcp-client-2025-11-20');
 
   return {
     id: 'anthropic',
     contextBudget: 0,
+    contextWindow: model.startsWith('claude-haiku-4') ? 200_000 : 1_000_000,
     async turn(req: TurnRequest): Promise<TurnResult> {
       const tools: Anthropic.Beta.BetaToolUnion[] = req.tools.map((t) => ({
         name: t.name,
@@ -72,6 +76,7 @@ export function createAnthropicProvider(cfg: AgentConfig, apiKey: string): Provi
       if (cfg.webSearch) {
         tools.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }, { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 8 });
       }
+      for (const s of relayedMcp) tools.push({ type: 'mcp_toolset', mcp_server_name: s.name } as unknown as Anthropic.Beta.BetaToolUnion);
       const params = {
         model,
         max_tokens: 64000,
@@ -80,7 +85,9 @@ export function createAnthropicProvider(cfg: AgentConfig, apiKey: string): Provi
         tools,
         cache_control: { type: 'ephemeral' },
         ...(ADAPTIVE.test(model) ? { thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: cfg.effort } } : {}),
-        ...(betas.length ? { betas, fallbacks: 'default' } : {}),
+        ...(betas.length ? { betas } : {}),
+        ...(fallback ? { fallbacks: 'default' } : {}),
+        ...(relayedMcp.length ? { mcp_servers: relayedMcp.map((s) => ({ type: 'url', url: s.url, name: s.name, ...(s.token ? { authorization_token: s.token } : {}) })) } : {}),
       } as StreamParams;
 
       for (let attempt = 0; ; attempt++) {

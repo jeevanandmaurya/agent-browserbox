@@ -19,6 +19,10 @@ export interface AgentConfig {
   instructions: string;
   /** Let Claude use Anthropic's server-side web search and fetch tools. */
   webSearch: boolean;
+  /** Context window of the local/OpenAI-compatible model, in tokens (the server does not report it). */
+  contextWindow: number;
+  /** Summarise the conversation automatically when the context is nearly full. */
+  autoCompact: boolean;
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -31,6 +35,8 @@ export const DEFAULT_CONFIG: AgentConfig = {
   maxSteps: 50,
   instructions: '',
   webSearch: true,
+  contextWindow: 32768,
+  autoCompact: true,
 };
 
 export const ANTHROPIC_MODELS = [
