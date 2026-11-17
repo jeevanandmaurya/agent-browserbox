@@ -73,8 +73,8 @@ async function firstBoot(page, answers) {
 await check('first boot: kernel log, then setup in the console, then the agent window', async () => {
   await agent.waitForSelector('.boot-console', { timeout: 20000 });
   await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-console .term-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-console .term-out').textContent), null, { timeout: 20000 });
-  // model: decide later · permissions: ask · theme: default · packages: none
-  const prompts = await firstBoot(agent, ['4', 'y', '', 'none']);
+  // skip the API key, skip the local server
+  const prompts = await firstBoot(agent, ['', '']);
   await ready(agent);
   await agent.waitForSelector('.composer', { state: 'visible' });
   const log = await agent.evaluate(() => bbx.kernelLog.map((l) => `${l.src}: ${l.msg}`).join(' | '));
@@ -195,8 +195,8 @@ await check('webgpu compute inside the kernel worker', async () => {
 });
 
 await check('tool packs: pkg, git, sqlite3, zip', async () => {
-  const gated = await term('git init /tmp/nope; echo gated=$?', 'gated=');
-  if (!gated.includes('provided by the git package, which is not installed')) throw new Error(gated.slice(-300));
+  const gated = await term('pkg remove zip; zip /tmp/x.zip /tmp; echo gated=$?', 'gated=');
+  if (!gated.includes('provided by the zip package, which is not installed')) throw new Error(gated.slice(-300));
   const out = await term('pkg install git sqlite zip && mkdir -p /tmp/repo && cd /tmp/repo && git init && echo one > a.txt && git add . && git commit -m first && echo two >> a.txt && git status && git diff && git commit -a -m second && git log --oneline && sqlite3 t.db "create table t(x); insert into t values (41),(1); select sum(x) from t" && sqlite3 t.db .tables && zip -r /tmp/r.zip a.txt && unzip -l /tmp/r.zip && cd /tmp && echo packs-done', 'packs-done', 60000);
   for (const want of ['] first', '] second', 'M  a.txt', '+two', '\n42\n', '\nt\n', '1 files → /tmp/r.zip']) if (!out.includes(want)) throw new Error(`missing ${JSON.stringify(want)} in ${out.slice(-700)}`);
   return out.split('\n').filter((l) => /^[0-9a-f]{7} /.test(l)).join(' | ');

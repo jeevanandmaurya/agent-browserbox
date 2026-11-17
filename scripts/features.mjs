@@ -43,8 +43,10 @@ function respond(r) {
   const lastUser = msgs.findLast((m) => m.role === 'user')?.content ?? '';
   const system = msgs[0].content;
   if (lastUser.includes('Your context window is nearly full')) return text('SUMMARY: the user asked about skills and weather; all done.');
+  if (last.role === 'tool' && last.content.includes('installed python') && r.tools.some((t) => t.function.name === 'run_python')) return call('run_python', { code: 'print(6 * 7)' });
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
   if (lastUser.includes('use the web-page skill')) return call('use_skill', { name: 'web-page' });
+  if (lastUser.includes('compute with python')) return call('shell', { command: 'pkg install python' });
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
   if (system.includes('Your role: explorer')) return text('EXPLORER REPORT: nothing to see');
   if (lastUser.includes('weather please')) return call('mcp__weather__forecast', { city: 'Pune' });
@@ -93,8 +95,8 @@ const term = async (cmd, waitFor, timeout = 60000) => {
 
 await page.goto(base + 'agent/');
 await check('first boot: setup in the console connects to a local model server', async () => {
-  // local server · URL · first model from the server's list · context window · no prompts · theme · packages
-  const answers = ['2', 'http://localhost:11436/v1', '1', '8192', 'n', '', 'python zip'];
+  // skip the API key · local server URL (it has one model, picked automatically)
+  const answers = ['', 'http://localhost:11436/v1'];
   for (const a of answers) {
     await page.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 30000 });
     await page.locator('.boot-console .term-input').fill(a);
@@ -102,7 +104,12 @@ await check('first boot: setup in the console connects to a local model server',
   }
   await page.waitForSelector('.ag-input', { timeout: 120000 });
   const out = await page.evaluate(() => ({ cfg: bbx.settings.get('agent.config', {}), perms: bbx.perms.mode, installed: bbx.settings.get('pkg.installed', []) }));
-  if (out.cfg.openaiModel !== 'mock' || out.cfg.contextWindow !== 8192 || out.perms !== 'auto' || out.installed.join() !== 'python,zip') throw new Error(JSON.stringify(out));
+  if (out.cfg.openaiModel !== 'mock' || out.perms !== 'ask' || out.installed.join() !== 'git,sqlite,zip') throw new Error(JSON.stringify(out));
+  // The rest of this suite runs without prompts and with a small window so compaction triggers.
+  await page.evaluate(() => {
+    bbx.perms.mode = 'auto';
+    bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), contextWindow: 8192 });
+  });
   return `model ${out.cfg.openaiModel} @ ${out.cfg.openaiBaseUrl}; installed ${out.installed.join(', ')}`;
 });
 
@@ -126,6 +133,14 @@ await check('pkg: remove, install with a progress bar, list and info', async () 
   return out.split('\n').find((l) => /^size:/.test(l));
 });
 
+await check('the agent installs a missing package and uses its tool in the same task', async () => {
+  const reqs = await send('compute with python', 'Tool said: 42');
+  if (reqs[0].tools.some((t) => t.function.name === 'run_python')) throw new Error('python was already installed');
+  if (!reqs[0].messages[0].content.includes('Not installed: python')) throw new Error('the prompt does not offer python');
+  if (!reqs[1].tools.some((t) => t.function.name === 'run_python')) throw new Error('run_python was not offered after installing');
+  return `${reqs.length} model calls: pkg install python → run_python → answer`;
+});
+
 await check('environment variables reach the shell, JavaScript and Python', async () => {
   await page.evaluate(() => bbx.settings.set('env.vars', { GREETING: 'hello-env' }));
   await page.evaluate(() => bbx.openApp('terminal'));
@@ -134,7 +149,7 @@ await check('environment variables reach the shell, JavaScript and Python', asyn
   await page.locator('.wb-head [aria-label*="Close Terminal"], .wb-tab:has-text("Terminal") .wb-tab-close').first().click();
   await page.evaluate(() => bbx.openApp('terminal'));
   await page.waitForSelector('.term-input');
-  const out = await term('echo sh=$GREETING && js -e "return \'js=\' + env.GREETING" && python -c "import os; print(\'py=\' + os.environ[\'GREETING\'])" && echo env-done', '\nenv-done\n', 180000);
+  const out = await term('pkg install python >/dev/null && echo sh=$GREETING && js -e "return \'js=\' + env.GREETING" && python -c "import os; print(\'py=\' + os.environ[\'GREETING\'])" && echo env-done', '\nenv-done\n', 180000);
   for (const want of ['sh=hello-env', 'js=hello-env', 'py=hello-env']) if (!out.includes(want)) throw new Error(`${want} missing: ${out.slice(-500)}`);
   const pyCached = await page.evaluate(async () => (await (await caches.open('bbx-packs')).keys()).some((r) => r.url.endsWith('pyodide.asm.wasm')));
   if (!pyCached) throw new Error('the Python runtime was not kept in the pack cache');

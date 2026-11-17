@@ -138,10 +138,12 @@ export class Agent {
       const provider = await createProvider(this.os, cfg);
       const lite = provider.id === 'webllm';
       const allowed = this.#persona?.tools.length ? new Set(this.#persona.tools) : null;
-      const tools = [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.tools()), ...(lite ? [] : await this.os.mcp.tools())]
-        .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
-        .filter((t) => !allowed || allowed.has(t.name));
-      this.#tools = tools;
+      // Rebuilt every step: a package the agent installs mid-task adds its tools straight away.
+      const toolset = async () =>
+        [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.tools()), ...(lite ? [] : await this.os.mcp.tools())]
+          .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
+          .filter((t) => !allowed || allowed.has(t.name));
+      let tools = (this.#tools = await toolset());
       this.#window = provider.contextWindow;
       this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
       emit({ type: 'start', model: describeModel(cfg) });
@@ -155,6 +157,7 @@ export class Agent {
           reason = 'max_steps';
           break;
         }
+        if (step > 0) tools = this.#tools = await toolset();
         const result = await this.#turn(provider, tools, run.signal, emit);
         this.#push({ role: 'assistant', content: result.content, raw: result.raw });
         for (const k of ['input', 'output', 'cacheRead'] as const) this.total[k] += result.usage[k];

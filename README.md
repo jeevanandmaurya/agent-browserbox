@@ -46,11 +46,12 @@ window and kernel share an origin.
 ## Boot
 
 Every window starts with a boot console: the kernel log (`dmesg`) as the
-kernel mounts storage, loads its WebAssembly core and checks the platform. On
-first boot the console then runs `setup`, which asks in plain text which model
-to use (and its API key, read without echo and stored encrypted), whether the
-agent should ask before acting, the theme, and which packages to install. The
-GUI loads only after that. Run `setup` in any terminal to change the answers.
+kernel mounts storage, loads its WebAssembly core and checks the platform.
+First boot then runs `setup`, which asks at most two things, both skippable
+with Enter: an Anthropic API key (read without echo, stored encrypted), or
+failing that the URL of a local model server. Everything else gets a default
+(ask before acting, system theme, the small packages git, sqlite and zip).
+Change any of it in Settings, or run `setup` again.
 
 ## Packages
 
