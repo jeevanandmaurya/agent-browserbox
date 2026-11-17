@@ -65,7 +65,8 @@ const llm = createServer(async (req, res) => {
 }).listen(11436);
 
 const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+// ignoreHTTPSErrors: some CI and sandbox networks re-sign TLS through a proxy the test browser does not trust (pip reaches pypi.org).
+const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, ignoreHTTPSErrors: true });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -433,6 +434,107 @@ await check('preview: full screen and back, on desktop and phone', async () => {
   await page.evaluate(() => delete document.fullscreenEnabled);
   await page.setViewportSize({ width: 1280, height: 800 });
   return sizes.join(', ');
+});
+
+await check('pip: install from PyPI, import it, and it stays installed in a new interpreter', async () => {
+  await page.evaluate(() => bbx.openApp('terminal'));
+  await page.waitForSelector('.term-input');
+  page.on('pageerror', () => {});
+  const dump = () => page.evaluate(() => [...document.querySelectorAll('.term-out')].map((t) => t.textContent.slice(-700)).join(' ||| '));
+  try {
+    await term('echo pip-start', 'pip-start', 20000);
+  } catch (err) {
+    throw new Error(`terminal not ready: ${await dump()}`);
+  }
+  const out = await term('cd /home/agent && pip install snowballstemmer && python -c "import snowballstemmer; print(\'stem=\' + snowballstemmer.stemmer(\'english\').stemWord(\'running\'))" && python -V && echo pip-done', '\npip-done\n', 180000).catch(async (err) => {
+    throw new Error(`${err.message.split('\n')[0]}: ${await dump()}`);
+  });
+  if (!out.includes('Successfully installed snowballstemmer') || !out.includes('stem=run')) throw new Error(out.slice(-600));
+  const version = out.match(/Python 3\.\d+\.\d+ \(Pyodide [\d.]+\)/)?.[0];
+  if (!version) throw new Error(`no version: ${out.slice(-300)}`);
+  // A new interpreter (the old one killed) reinstalls what pip installed.
+  await page.evaluate(() => { const p = bbx.procs.list().find((x) => x.name === 'python'); if (p) bbx.procs.kill(p.pid); });
+  const again = await term('python -c "import snowballstemmer; print(\'again-ok\')"', 'again-ok', 180000);
+  if (!again.includes('again-ok')) throw new Error(again.slice(-300));
+  return `${version}; snowballstemmer installed and remembered`;
+});
+
+let desk;
+await check('desktop: right-click menu, new folder on the desktop, wallpaper, snapping', async () => {
+  desk = await context.newPage();
+  desk.on('pageerror', (e) => errors.push(`desktop pageerror: ${e.message}`));
+  await desk.goto(base + 'os/');
+  await desk.waitForSelector('.taskbar', { timeout: 60000 });
+  await desk.mouse.click(700, 400, { button: 'right' });
+  await desk.locator('.menu .pop-item', { hasText: 'New folder' }).click();
+  await desk.locator('.modal input').fill('Projects');
+  await desk.locator('.modal button[type="submit"]').click();
+  await desk.locator('.desk-icon', { hasText: 'Projects' }).waitFor({ timeout: 10000 });
+  if (!(await desk.evaluate(() => bbx.fs.exists('/home/user/Desktop/Projects')))) throw new Error('folder not created');
+  const before = await desk.locator('.wallpaper').evaluate((el) => el.style.background);
+  await desk.evaluate(() => bbx.settings.set('desktop.wallpaper', 'sand'));
+  await desk.waitForFunction((b) => document.querySelector('.wallpaper').style.background !== b, before);
+  if ((await desk.locator('.wallpaper').getAttribute('data-light')) !== 'true') throw new Error('light wallpaper not flagged');
+  await desk.locator('.desk-icon', { hasText: 'Files' }).dblclick();
+  await desk.waitForSelector('.win-body[data-app="files"]');
+  const bar = await desk.locator('.win-bar').first().boundingBox();
+  await desk.mouse.move(bar.x + 120, bar.y + 15);
+  await desk.mouse.down();
+  await desk.mouse.move(1278, 300, { steps: 10 });
+  await desk.mouse.up();
+  const r = await desk.locator('.win').first().evaluate((el) => ({ left: el.offsetLeft, width: el.offsetWidth, area: el.parentElement.offsetWidth }));
+  if (Math.abs(r.width - r.area / 2) > 2 || Math.abs(r.left - r.area / 2) > 2) throw new Error(`not snapped right: ${JSON.stringify(r)}`);
+  // The agent opens in a tab of its own, not a pop-up window.
+  await desk.evaluate(() => document.querySelector('.taskbar .show-desk').click());
+  const [tab] = await Promise.all([context.waitForEvent('page'), desk.locator('.desk-icon', { hasText: 'Agent' }).dblclick({ timeout: 10000 }).catch(async (err) => {
+    throw new Error(`${err.message.split('\n').slice(-4).join(' ')}`);
+  })]);
+  const popup = await tab.evaluate(() => !!window.opener && (window.outerWidth < screen.availWidth - 50 || window.menubar?.visible === false));
+  await tab.close();
+  if (popup) throw new Error('the agent opened as a pop-up window');
+  return 'folder created, wallpaper switched, window snapped right, agent opened in a tab';
+});
+
+await check('phone: home screen, apps fill the screen, the home bar goes home and shows recents', async () => {
+  let step = 'start';
+  try {
+  await desk.setViewportSize({ width: 390, height: 844 });
+  await desk.waitForSelector('.phone-home');
+  // Windows left open on the desktop now fill the phone screen: go home first.
+  const bar0 = await desk.locator('.home-bar').boundingBox();
+  await desk.mouse.click(bar0.x + bar0.width / 2, bar0.y + 8);
+  await desk.waitForFunction(() => !document.getElementById('desk').classList.contains('app-open'));
+  await desk.locator('.home-app[data-id="files"]').click();
+  await desk.waitForFunction(() => document.getElementById('desk').classList.contains('app-open'));
+  await desk.waitForTimeout(400); // the opening animation
+  const r = await desk.locator('.win:not(.min)').last().boundingBox();
+  if (r.width < 389 || r.height < 700) throw new Error(`app does not fill the screen: ${JSON.stringify(r)}`);
+  const pill = await desk.locator('.home-bar').boundingBox();
+  await desk.mouse.click(pill.x + pill.width / 2, pill.y + 8);
+  await desk.waitForFunction(() => !document.getElementById('desk').classList.contains('app-open'));
+  step = 'long press';
+  // Long press: recent apps; tapping a card reopens it.
+  await desk.mouse.move(pill.x + pill.width / 2, pill.y + 8);
+  await desk.mouse.down();
+  await desk.waitForTimeout(700);
+  await desk.mouse.up();
+  await desk.waitForSelector('.desk-area.switching');
+  step = 'tap card';
+  const cards = await desk.locator('.switching .win').count();
+  // The front card is the most recent app.
+  const card = await desk.evaluate(() => { const r = [...document.querySelectorAll('.switching .win')].find((w) => w.style.getPropertyValue('--i') === '0').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+  await desk.mouse.click(card.x + card.width / 2, card.y + card.height / 2);
+  await desk.waitForFunction(() => !document.querySelector('.desk-area.switching') && document.getElementById('desk').classList.contains('app-open'));
+  step = 'back';
+  // Android's back button goes home rather than leaving.
+  await desk.goBack().catch(() => undefined);
+  await desk.waitForFunction(() => !document.getElementById('desk').classList.contains('app-open'), null, { timeout: 5000 });
+  if (!desk.url().includes('/os/')) throw new Error(`back left the desktop: ${desk.url()}`);
+  await desk.close();
+  return `${cards} recent app${cards === 1 ? '' : 's'}; tap, long press and back all work`;
+  } catch (err) {
+    throw new Error(`${step}: ${err.message.split('\n')[0]} · ${await desk.evaluate(() => `${document.getElementById('desk').className} ${document.querySelector('.desk-area').className} wins=${[...document.querySelectorAll('.win')].map((w) => w.className).join('|')}`)}`);
+  }
 });
 
 if (errors.length) {

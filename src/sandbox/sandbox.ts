@@ -8,6 +8,9 @@ import type { WireRequest, WireResponse } from '@/kernel/dev/types';
 
 export { PYODIDE_URL };
 
+/** Settings key: packages installed with pip, reinstalled in each new interpreter. */
+export const PIP_KEY = 'python.packages';
+
 
 export interface RunOptions {
   cwd?: string;
@@ -330,7 +333,10 @@ export async function runPython(os: Kernel, code: string, opts: RunOptions & { p
   // otherwise the sandbox downloads them from the CDN (and reports progress).
   const fresh = !pythonBooted;
   const runtime = fresh ? await cachedPythonRuntime() : undefined;
-  const result = await python.run({ op: 'python', code, packages: opts.packages, files, pyodideUrl: PYODIDE_URL, env: opts.env, runtime }, { timeoutMs: 180000, ...opts, cwd });
+  // Packages installed with pip are reinstalled whenever a new interpreter starts (micropip caches the wheels).
+  const saved = fresh ? os.settings.get<string[]>(PIP_KEY, []) : [];
+  const packages = [...new Set([...saved, ...(opts.packages ?? [])])];
+  const result = await python.run({ op: 'python', code, packages: packages.length ? packages : undefined, files, pyodideUrl: PYODIDE_URL, env: opts.env, runtime }, { timeoutMs: 180000, ...opts, cwd });
   pythonBooted = python.alive && !result.timedOut;
   return result;
 }

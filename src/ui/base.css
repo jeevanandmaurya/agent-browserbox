@@ -54,12 +54,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: 2px; }
 * { scrollbar-width: thin; scrollbar-color: var(--panel-3) transparent; }
 
-#desk { height: 100%; display: grid; grid-template-rows: 1fr 44px; }
-.desk-area { position: relative; overflow: hidden; }
-.desk-icons { position: absolute; inset: 14px auto 14px 14px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(auto-fill, 84px); gap: 6px; }
-.desk-icon { width: 84px; height: 84px; display: grid; justify-items: center; align-content: center; gap: 6px; background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: default; font-size: 12px; color: var(--text); }
-:root[data-theme='light'] .desk-icon { text-shadow: none; }
-.desk-icon:hover, .desk-icon:focus-visible { background: color-mix(in srgb, var(--text) 9%, transparent); border-color: color-mix(in srgb, var(--text) 14%, transparent); }
 .tile { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); text-shadow: none; }
 
 /* Windows */
@@ -72,7 +66,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .win-bar { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; background: var(--panel-2); border-bottom: 1px solid var(--border); user-select: none; touch-action: none; }
 .win:not(.focus) .win-bar { color: var(--muted); }
 .win-icon { display: grid; color: var(--muted); }
-.task-icon { display: grid; color: var(--muted); }
 .win-ctl button { display: inline-grid; place-items: center; }
 .win-title-text { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 600; }
 .win-ctl { display: flex; gap: 2px; }
@@ -91,26 +84,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .app-error { padding: 24px; color: var(--muted); }
 .app-error pre { white-space: pre-wrap; color: var(--err); font: 12px var(--mono); }
 
-/* Taskbar */
-.taskbar { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: color-mix(in srgb, var(--panel) 82%, transparent); backdrop-filter: blur(14px); border-top: 1px solid var(--border); z-index: 1000; }
-.start { display: grid; place-items: center; width: 36px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--accent); cursor: pointer; }
-.start:hover { background: var(--hover); }
-.tasks { flex: 1; display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.task { display: flex; align-items: center; gap: 6px; max-width: 170px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: none; cursor: pointer; flex-shrink: 0; }
-.task:hover { background: var(--panel-2); }
-.task.active { background: var(--panel-3); border-color: var(--border); }
-.task-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.tray { display: flex; align-items: center; gap: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tray-btn { border: 0; background: none; color: inherit; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
-.tray-btn:hover { background: var(--panel-2); color: var(--text); }
-.tray-btn.busy { color: var(--ok); }
-.clock { padding-right: 4px; }
 
-/* Launcher */
-.launcher { position: absolute; left: 8px; bottom: 52px; width: min(380px, calc(100vw - 16px)); padding: 12px; background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(18px); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); z-index: 1100; display: grid; gap: 10px; }
-.launcher-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.launcher-item { display: grid; justify-items: center; gap: 6px; padding: 10px 4px; border: 0; background: none; border-radius: var(--radius); cursor: pointer; font-size: 12px; }
-.launcher-item:hover, .launcher-item:focus-visible { background: var(--panel-3); }
 
 /* Toasts & modals */
 .toasts { position: absolute; right: 12px; bottom: 56px; display: grid; gap: 8px; z-index: 1200; width: min(340px, calc(100vw - 24px)); pointer-events: none; }
@@ -251,3 +225,5 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 @media (prefers-reduced-motion: reduce) { .bb-loader path { animation: bb-pulse 2s ease-in-out infinite; } }
 @keyframes bb-pulse { 50% { opacity: 0.35; } }
 .app-loading { display: grid; place-items: center; height: 100%; min-height: 120px; }
+
+.menu-point { position: fixed; width: 1px; height: 1px; pointer-events: none; outline: none; }

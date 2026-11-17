@@ -3,9 +3,9 @@ import type { PackageManifest } from '../types';
 
 export default {
   id: 'python',
-  version: '3.13 (Pyodide 0.29)',
+  version: '3.13.2 (Pyodide 0.29)',
   summary: 'CPython compiled to WebAssembly, with the standard library',
-  commands: ['python', 'python3'],
+  commands: ['python', 'python3', 'pip', 'pip3'],
   tools: ['run_python'],
   // 11 MB: not installed by default, so a phone is not made to download it on first boot.
   default: false,

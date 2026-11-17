@@ -84,3 +84,12 @@ export function openMenu(anchor: HTMLElement, entries: MenuEntry[], label: strin
   }
   current = close;
 }
+
+let pointAnchor: HTMLElement | null = null;
+
+/** A context menu at a pointer position (a bottom sheet on phones). */
+export function openMenuAt(x: number, y: number, entries: MenuEntry[], label: string): void {
+  pointAnchor ??= document.body.appendChild(h('span', { class: 'menu-point', tabindex: -1, 'aria-hidden': 'true' }));
+  Object.assign(pointAnchor.style, { left: `${x}px`, top: `${y}px` });
+  openMenu(pointAnchor, entries, label);
+}

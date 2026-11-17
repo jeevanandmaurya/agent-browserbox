@@ -1,5 +1,6 @@
 import { h } from './dom';
 import { icon, type IconName } from './icons';
+import { openMenuAt } from './menu';
 
 export interface WindowOptions {
   title: string;
@@ -10,7 +11,10 @@ export interface WindowOptions {
   minHeight?: number;
 }
 
-const isCompact = () => innerWidth < 760;
+/** Phones: every window fills the screen (the phone shell sets this). */
+const isCompact = () => innerWidth < 760 || document.documentElement.dataset.shell === 'phone';
+
+type Snap = 'left' | 'right' | 'max' | null;
 
 export class WindowHandle {
   readonly el: HTMLElement;
@@ -62,29 +66,79 @@ export class WindowHandle {
     if (isCompact()) this.el.classList.add('max');
 
     this.el.addEventListener('pointerdown', () => this.focus(), true);
+    bar.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const max = this.el.classList.contains('max');
+      openMenuAt(e.clientX, e.clientY, [
+        { label: 'Minimize', icon: 'minus', onSelect: () => this.minimize() },
+        { label: max ? 'Restore' : 'Maximize', icon: 'square', onSelect: () => this.toggleMaximize() },
+        { label: 'Snap left', icon: 'panelLeft', onSelect: () => this.snap('left') },
+        { label: 'Snap right', icon: 'panelRight', onSelect: () => this.snap('right') },
+        { separator: true },
+        { label: 'Close', icon: 'close', onSelect: () => this.close() },
+      ], this.title);
+    });
     this.#dragBy(bar);
   }
 
+  /** Drag by the title bar; dropping at a screen edge snaps (left/right half, top = maximize). */
   #dragBy(bar: HTMLElement): void {
     bar.addEventListener('pointerdown', (e) => {
-      if ((e.target as HTMLElement).closest('.win-ctl') || e.button !== 0 || this.el.classList.contains('max')) return;
+      if ((e.target as HTMLElement).closest('.win-ctl') || e.button !== 0 || isCompact()) return;
+      // Dragging a maximized or snapped window restores its size under the pointer.
+      if (this.el.classList.contains('max') || this.#snapped) {
+        const ratio = (e.clientX - this.el.getBoundingClientRect().left) / this.el.offsetWidth;
+        this.el.classList.remove('max');
+        if (this.#restore) Object.assign(this.el.style, { width: this.#restore.width, height: this.#restore.height });
+        this.el.style.left = `${e.clientX - this.wm.area.getBoundingClientRect().left - ratio * this.el.offsetWidth}px`;
+        this.el.style.top = '0px';
+        this.#snapped = false;
+      }
       const startX = e.clientX - this.el.offsetLeft;
       const startY = e.clientY - this.el.offsetTop;
-      bar.setPointerCapture(e.pointerId);
+      try {
+        bar.setPointerCapture(e.pointerId);
+      } catch {
+        /* pointer already gone */
+      }
+      let snap: Snap = null;
       const move = (ev: PointerEvent) => {
         const area = this.wm.area.getBoundingClientRect();
         this.el.style.left = `${Math.max(80 - this.el.offsetWidth, Math.min(ev.clientX - startX, area.width - 80))}px`;
         this.el.style.top = `${Math.max(0, Math.min(ev.clientY - startY, area.height - 36))}px`;
+        const x = ev.clientX - area.left;
+        const y = ev.clientY - area.top;
+        snap = y < 6 ? 'max' : x < 6 ? 'left' : x > area.width - 6 ? 'right' : null;
+        this.wm.preview(snap);
       };
       const up = () => {
         bar.removeEventListener('pointermove', move);
         bar.removeEventListener('pointerup', up);
         bar.removeEventListener('pointercancel', up);
+        this.wm.preview(null);
+        if (snap) this.snap(snap);
       };
       bar.addEventListener('pointermove', move);
       bar.addEventListener('pointerup', up);
       bar.addEventListener('pointercancel', up);
     });
+  }
+
+  #snapped = false;
+
+  /** Fills the left or right half of the desktop, or all of it. */
+  snap(where: Exclude<Snap, null>): void {
+    if (isCompact()) return;
+    const s = this.el.style;
+    if (!this.el.classList.contains('max') && !this.#snapped) this.#restore = { left: s.left, top: s.top, width: s.width, height: s.height };
+    if (where === 'max') {
+      this.el.classList.add('max');
+      return;
+    }
+    this.el.classList.remove('max');
+    this.#snapped = true;
+    const area = this.wm.area.getBoundingClientRect();
+    Object.assign(s, { top: '0px', height: `${area.height}px`, width: `${area.width / 2}px`, left: where === 'left' ? '0px' : `${area.width / 2}px` });
   }
 
   #grip(edge: string, opts: WindowOptions): HTMLElement {
@@ -153,8 +207,14 @@ export class WindowHandle {
   toggleMaximize(): void {
     if (isCompact()) return;
     const s = this.el.style;
-    if (this.el.classList.toggle('max')) this.#restore = { left: s.left, top: s.top, width: s.width, height: s.height };
-    else if (this.#restore) Object.assign(s, this.#restore);
+    if (this.el.classList.contains('max') || this.#snapped) {
+      this.el.classList.remove('max');
+      this.#snapped = false;
+      if (this.#restore) Object.assign(s, this.#restore);
+    } else {
+      this.#restore = { left: s.left, top: s.top, width: s.width, height: s.height };
+      this.el.classList.add('max');
+    }
   }
 
   /** Registers cleanup that runs exactly once when the window closes. */
@@ -186,7 +246,23 @@ export class WindowManager {
   #listeners = new Set<() => void>();
   focused: WindowHandle | null = null;
 
-  constructor(readonly area: HTMLElement) {}
+  #ghost: HTMLElement;
+
+  constructor(readonly area: HTMLElement) {
+    this.#ghost = h('div', { class: 'snap-ghost', hidden: true, 'aria-hidden': 'true' });
+    area.append(this.#ghost);
+  }
+
+  /** Shows where a dragged window would snap. */
+  preview(snap: Snap): void {
+    this.#ghost.hidden = !snap;
+    if (snap) this.#ghost.dataset.snap = snap;
+  }
+
+  /** Hides every window (show the desktop / go home). */
+  minimizeAll(): void {
+    for (const w of this.#wins) if (!w.minimized) w.minimize();
+  }
 
   open(opts: WindowOptions): WindowHandle {
     const win = new WindowHandle(this, this.#nextId++, opts);

@@ -7,7 +7,7 @@ browser**, with no backend. It is split into independent parts:
 |---|---|---|
 | **Kernel** | `/kernel/` | Headless. A SharedWorker running the filesystem, process table, permissions, secrets, shells and agent sessions. No UI. |
 | **Agent** | `/agent/` | The complete app: chat, built-in workbench (preview, files, editor, terminal, processes…) and settings, in one browser window. This is the default entry point. |
-| **Desktop** | `/os/` | An optional windowed GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar). |
+| **Desktop** | `/os/` | An optional GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar): a windowed desktop on wide screens, a phone home screen on phones. |
 
 The kernel keeps running as long as any BrowserBox window is open. Close the
 agent window and its session carries on; open it again and it reattaches.
@@ -54,6 +54,28 @@ URL of a local model server. Everything else gets a default
 (ask before acting, system theme, the small packages git, sqlite and zip).
 Change any of it in Settings, or run `setup` again.
 
+## The desktop
+
+`/os/` picks its layout from the screen width and switches live, keeping
+open apps:
+
+- **Desktop** (wider than 640px): wallpaper; icons for apps and for the files
+  in `~/Desktop` (drop files from your computer onto it); right-click menus on
+  the desktop (new folder, new text file, open Terminal here, sort, show or
+  hide icons, change wallpaper), on icons (open, open in Editor, rename,
+  delete, copy path), on title bars and on taskbar buttons; windows snap to
+  the left or right half or fill the screen when dragged to an edge; the
+  taskbar has a launcher (Ctrl+K), notifications with history, a calendar on
+  the clock and a show-desktop corner.
+- **Phone**: a status bar (tap for quick settings and notifications), a home
+  screen with a clock, app grid, search and dock; apps fill the screen. The
+  home bar goes home on a tap or swipe up, and shows recent apps on a long
+  press or a long swipe (tap a card to switch, swipe it up to close). The
+  browser's back button goes home instead of leaving.
+- **Wallpapers**: presets or your own picture, in Settings → Appearance.
+
+The agent and other external apps open in their own browser tab.
+
 ## Building web apps: the dev server
 
 Nothing in a browser can listen on a port, so BrowserBox has a virtual dev
@@ -93,7 +115,16 @@ Not supported: Node.js APIs in the backend (it runs on web APIs: `Request`,
 
 ## Packages
 
-Optional software is installed with `pkg`, like any package manager:
+Optional software is installed with `pkg`, like any package manager. Python
+(the `python` package) is CPython 3.13.2 compiled to WebAssembly by Pyodide
+0.29; inside it, `pip install` uses micropip: pure-Python wheels from PyPI and
+the packages Pyodide builds for WebAssembly (numpy, pandas, scipy,
+matplotlib, scikit-learn…). Packages with other C extensions cannot install.
+What you install is remembered and reinstalled in each new interpreter.
+`python -m pip …`, `pip install -r requirements.txt`, `pip list` and
+`pip uninstall` work.
+
+
 
 ```
 pkg list            # i = installed, with sizes

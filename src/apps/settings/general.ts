@@ -1,6 +1,7 @@
 import type { Kernel } from '@/kernel/api';
 import type { AppContext } from '@/ui/apps';
 import { h } from '@/ui/dom';
+import { wallpaperPicker } from '@/ui/wallpaper';
 import { heading, nextId } from './nav';
 import { radioGroup } from './permissions';
 
@@ -30,5 +31,5 @@ export function appearanceSection(ctx: AppContext, saved: () => void): HTMLEleme
     os.settings.set('user.name', name.value.trim());
     saved();
   });
-  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el, h('div', { class: 'field' }, h('label', { for: name.id }, 'Your name, for the greeting'), name));
+  return h('div', { class: 'st-section' }, heading('Appearance'), theme.el, h('div', { class: 'field' }, h('label', { for: name.id }, 'Your name, for the greeting'), name), h('h3', null, 'Wallpaper'), wallpaperPicker(os, ctx.on));
 }

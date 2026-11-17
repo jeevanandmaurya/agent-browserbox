@@ -63,8 +63,8 @@ export class AppHost {
     const app = APPS.find((a) => a.id === id);
     if (!app) return this.os.notify({ title: `No such app: ${id}`, level: 'error' });
     if (app.external || !app.load) {
-      // A real, separate browser window — not a window inside this page.
-      if (!open(app.external, `bbx-${id}`, `popup,width=${app.width},height=${app.height}`)) this.os.notify({ title: `Allow pop-ups to open ${app.name}`, body: 'The browser blocked the new window.', level: 'warn' });
+      // Its own browser tab (named, so a second launch returns to the same tab), not a window inside this page.
+      if (!open(app.external, `bbx-${id}`)) this.os.notify({ title: `Allow pop-ups to open ${app.name}`, body: 'The browser blocked the new window.', level: 'warn' });
       return;
     }
     const existing = this.#singletons.get(id);
