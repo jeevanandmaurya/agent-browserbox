@@ -50,6 +50,9 @@ function respond(r) {
   if (last.role === 'tool' && last.content.startsWith('Serving ')) return call('preview_logs', { wait_ms: 1500, all: true });
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
   if (lastUser.includes('serve the todo app')) return call('dev_server', { action: 'start', path: 'todo' });
+  if (lastUser.includes('Plan mode')) return text('1. Read notes.txt\n2. Change the second line\n3. Check the result');
+  if (lastUser.includes('change the notes')) return call('write_file', { path: 'notes.txt', content: 'first\nSECOND\nthird\n' });
+  if (lastUser.includes('Go ahead with the plan')) return text('Plan done.');
   if (lastUser.includes('use the web-page skill')) return call('use_skill', { name: 'web-page' });
   if (lastUser.includes('compute with python')) return call('shell', { command: 'pkg install python' });
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
@@ -64,6 +67,9 @@ const llm = createServer(async (req, res) => {
   const r = JSON.parse(b);
   requests.push(r);
   promptTokens = Math.ceil(JSON.stringify(r.messages).length / 4);
+  const lastText = r.messages.findLast((m) => m.role === 'user')?.content ?? '';
+  // "slow" messages take a while, so the tests can act while the agent works.
+  if (/\bslow\b/.test(lastText) && r.messages.at(-1).role === 'user') await new Promise((ok) => setTimeout(ok, 3000));
   res.writeHead(200, { ...cors, 'content-type': 'text/event-stream' }).end(sse(respond(r)));
 }).listen(11436);
 
@@ -83,6 +89,8 @@ const check = async (name, fn) => {
     console.log(`FAIL ${name}: ${JSON.stringify(err.message.slice(0, 500))}`);
   }
 };
+/** What the agent window looks like, for failure messages. */
+const dump = () => page.evaluate(() => `queued=${document.querySelectorAll('.cp-queued').length} stop=${!!document.querySelector('.cp-send.stop:not([hidden])')} live=${document.querySelectorAll('.sb-live').length} input=${JSON.stringify(document.querySelector('.ag-input')?.value)} log=…${document.querySelector('.ag-log')?.textContent.slice(-250)}`);
 const send = async (msg, until) => {
   const before = requests.length;
   await page.locator('.ag-input').fill(msg);
@@ -403,8 +411,8 @@ await check('agent: dev_server starts the app and preview_logs reads its console
   await page.locator('.bb-more').click();
   await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
   const before = requests.length;
-  const reqs = await send('serve the todo app', 'Tool said').catch((err) => {
-    throw new Error(`${err.message.split('\n')[0]} · model saw: ${JSON.stringify(requests.slice(before).map((r) => r.messages.at(-1)?.content?.slice?.(0, 300)))}`);
+  const reqs = await send('serve the todo app', 'Tool said').catch(async (err) => {
+    throw new Error(`${err.message.split('\n')[0]} · model saw: ${JSON.stringify(requests.slice(before).map((r) => r.messages.at(-1)?.content?.slice?.(0, 300)))} · ${await page.evaluate(() => `queued=${document.querySelectorAll('.cp-queued').length} stop=${!!document.querySelector('.cp-send.stop:not([hidden])')} log=${document.querySelector('.ag-log')?.textContent.slice(-300)} notes=${[...document.querySelectorAll('.toast')].map((t) => t.textContent).join('|')}`)}`);
   });
   const results = reqs.flatMap((r) => r.messages.filter((m) => m.role === 'tool').map((m) => m.content));
   const started = results.find((c) => c.startsWith('Serving'));
@@ -615,10 +623,125 @@ await check('in-browser models: download, use, delete, and import from a folder'
   const custom = await page.evaluate(() => bbx.settings.get('webllm.custom', []));
   const cached = await page.evaluate(async () => (await (await caches.open('webllm/model')).keys()).map((k) => k.url).filter((u) => u.includes('tiny-model')));
   if (custom[0]?.model_id !== 'tiny-model' || !cached.some((u) => u.endsWith('/tensor-cache.json'))) throw new Error(JSON.stringify({ custom, cached }));
-  await page.keyboard.press('Escape');
+  await page.locator('.sm-head [aria-label="Close settings"]').click();
   await page.evaluate(() => bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), provider: 'local' }));
   await page.unroute(`https://huggingface.co/mlc-ai/${ID}/resolve/main/**`);
   return `downloaded, used and deleted ${ID}; imported tiny-model (${cached.length} files cached)`;
+});
+
+await check('diffs, the Changes panel, and editing a message rewinds chat and files', async () => {
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  await page.evaluate(() => bbx.fs.writeFile('/home/agent/notes.txt', 'first\nsecond\nthird\n'));
+  await page.evaluate(() => (bbx.perms.mode = 'auto'));
+  await send('please change the notes', 'Tool said');
+  // The tool card shows the diff.
+  await page.waitForSelector('.ag-tool.has-diff .df-line.add');
+  const stat = await page.locator('.ag-tool.has-diff .df-stat').first().textContent();
+  if (!stat.includes('+1') || !stat.includes('−1')) throw new Error(`stat ${stat}`);
+  // The chip and the panel list the file; undo there puts it back.
+  await page.locator('.bb-changes:not([hidden])').waitFor();
+  await page.locator('.bb-changes').click();
+  await page.locator('.ch-file', { hasText: 'notes.txt' }).waitFor();
+  await page.locator('.ch-file button', { hasText: 'Undo' }).click();
+  await page.waitForFunction(async () => (await bbx.fs.readText('/home/agent/notes.txt').catch(() => '')) === 'first\nsecond\nthird\n');
+  await page.locator('.ch-empty').waitFor();
+  await page.keyboard.press('Escape');
+  // Redo the change, then edit the message: the chat and the file go back.
+  await send('please change the notes again', 'Tool said');
+  await page.waitForFunction(async () => (await bbx.fs.readText('/home/agent/notes.txt').catch(() => '')).includes('SECOND'));
+  const userMsgs = page.locator('.ag-msg.user');
+  await userMsgs.last().hover();
+  await userMsgs.last().locator('[aria-label="Edit message"]').click();
+  await page.locator('.modal button', { hasText: 'Undo file changes' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.ag-msg.user').length === 1);
+  const file = await page.evaluate(() => bbx.fs.readText('/home/agent/notes.txt'));
+  const box = await page.locator('.ag-input').inputValue();
+  if (file !== 'first\nsecond\nthird\n') throw new Error(`file not restored: ${JSON.stringify(file)}`);
+  if (box !== 'please change the notes again') throw new Error(`composer: ${box}`);
+  await page.locator('.ag-input').fill('');
+  return `diff ${stat.trim()}, undone from the panel, rewound by editing`;
+});
+
+await check('plan mode: Shift+Tab, read-only tools, then Run the plan', async () => {
+  await page.evaluate(() => (bbx.perms.mode = 'ask'));
+  await page.locator('.ag-input').focus();
+  for (let i = 0; i < 3 && (await page.locator('.cp-mode').getAttribute('data-mode')) !== 'plan'; i++) await page.keyboard.press('Shift+Tab');
+  if ((await page.locator('.cp-mode').getAttribute('data-mode')) !== 'plan') throw new Error('Shift+Tab did not reach plan mode');
+  const reqs = await send('plan a change to the notes', 'Check the result');
+  const tools = reqs[0].tools.map((t) => t.function.name);
+  if (tools.includes('write_file') || tools.includes('shell')) throw new Error(`plan mode offered ${tools.join(',')}`);
+  if (!(await page.locator('.ag-msg.user .ag-mode-tag').count())) throw new Error('the message is not marked as a plan');
+  await page.locator('.ag-choices button', { hasText: 'Run the plan' }).click();
+  await page.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('Plan done.'), null, { timeout: 15000 });
+  const mode = await page.locator('.cp-mode').getAttribute('data-mode');
+  if (mode === 'plan') throw new Error('still in plan mode after running the plan');
+  return `offered only ${tools.length} read-only tools; ran the plan in "${mode}" mode`;
+});
+
+await check('@mentions attach files; messages queue while the agent works', async () => {
+  try {
+  await page.evaluate(() => bbx.fs.writeFile('/home/agent/reference.md', '# Reference\nThe answer is 42.\n'));
+  const input = page.locator('.ag-input');
+  await input.fill('');
+  await input.pressSequentially('read @refer');
+  await page.locator('.mn-menu:not([hidden]) .sc-item', { hasText: 'reference.md' }).waitFor();
+  await input.press('Enter');
+  if (!(await input.inputValue()).includes('@reference.md')) throw new Error(`not inserted: ${await input.inputValue()}`);
+  const before = requests.length;
+  await input.press('Enter');
+  await page.waitForFunction((n) => true, before);
+  await page.waitForFunction(() => !document.querySelector('.cp-send.stop:not([hidden])'), null, { timeout: 20000 });
+  const sentText = requests.slice(before).map((r) => r.messages.findLast((m) => m.role === 'user')?.content ?? '').join('\n');
+  if (!sentText.includes('<file path="/home/agent/reference.md">') || !sentText.includes('The answer is 42.')) throw new Error(`file not attached: ${sentText.slice(0, 300)}`);
+  if (!(await page.locator('.ag-file-chip', { hasText: 'reference.md' }).count())) throw new Error('no attachment chip');
+  const titles = await page.evaluate(() => [...document.querySelectorAll('.sb-chat-title')].map((t) => t.textContent).join(' | '));
+  if (titles.includes('<file')) throw new Error(`file contents leaked into a title: ${titles}`);
+
+  // Queue: write while the agent works; it is sent when the agent finishes.
+  const n0 = requests.length;
+  await input.fill('a slow task');
+  await input.press('Enter');
+  await page.waitForSelector('.cp-send.stop:not([hidden])');
+  await input.fill('and then this');
+  await input.press('Enter');
+  await page.locator('.cp-queued', { hasText: 'and then this' }).waitFor();
+  await page.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('echo: and then this'), null, { timeout: 20000 });
+  if (await page.locator('.cp-queued').count()) throw new Error('queue not emptied');
+  return `file inlined with its chip; queued message sent after ${requests.length - n0} model calls`;
+  } catch (err) {
+    throw new Error(`${err.message.split('\n')[0]} · ${await dump()} · last requests: ${JSON.stringify(requests.slice(-3).map((r) => (r.messages.findLast((m) => m.role === 'user')?.content ?? '').slice(0, 80)))}`);
+  }
+});
+
+await check('chats keep working in the background, shown in the sidebar', async () => {
+  try {
+  const input = page.locator('.ag-input');
+  await input.fill('another slow task');
+  await input.press('Enter');
+  await page.waitForSelector('.cp-send.stop:not([hidden])');
+  // Switch to a new chat while the first is still working.
+  await page.locator('.bb-more').click();
+  await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+  await page.waitForSelector('.bb.is-empty');
+  // The sidebar marks the working chat (opened as a drawer on narrow screens; here it is visible).
+  await page.waitForSelector('.sb-live.running', { timeout: 10000 });
+  await send('quick question meanwhile', 'echo: quick question meanwhile');
+  // The background chat finishes on its own and is saved.
+  await page.waitForFunction(() => !document.querySelector('.sb-live'), null, { timeout: 20000 });
+  const saved = await page.evaluate(async () => {
+    const files = await bbx.fs.readdir('/home/agent/.sessions');
+    for (const f of files) {
+      const s = JSON.parse(await bbx.fs.readText(f.path));
+      if (JSON.stringify(s.transcript).includes('echo: another slow task')) return true;
+    }
+    return false;
+  });
+  if (!saved) throw new Error('the background chat did not finish and save');
+  return 'background chat finished and saved while another chat was used';
+  } catch (err) {
+    throw new Error(`${err.message.split('\n')[0]} · ${await dump()} · last requests: ${JSON.stringify(requests.slice(-3).map((r) => (r.messages.findLast((m) => m.role === 'user')?.content ?? '').slice(0, 80)))}`);
+  }
 });
 
 if (errors.length) {

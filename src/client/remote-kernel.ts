@@ -288,7 +288,9 @@ export class RemoteKernel implements Kernel {
     return {
       sid,
       pid,
-      send: (text) => this.call('agent.send', sid, text),
+      send: (text, opts) => this.call('agent.send', sid, text, opts),
+      rewind: (index, files) => this.call('agent.rewind', sid, index, files),
+      changes: () => this.call('agent.changes', sid),
       stop: () => void this.call('agent.stop', sid),
       snapshot: () => this.call('agent.snapshot', sid),
       context: () => this.call('agent.context', sid),

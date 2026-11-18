@@ -42,7 +42,15 @@ export class HandleFs implements FsBackend {
     try {
       const dir = await this.#dir(dirname(path));
       const fh = await dir.getFileHandle(basename(path));
-      return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+      // A file being written at this moment can fail to read (NotReadableError); it is readable a moment later.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return new Uint8Array(await (await fh.getFile()).arrayBuffer());
+        } catch (err) {
+          if (attempt >= 4 || (err as DOMException)?.name !== 'NotReadableError') throw err;
+          await new Promise((r) => setTimeout(r, 20 * (attempt + 1)));
+        }
+      }
     } catch (err) {
       if (err instanceof FsError) throw err;
       const e = this.#wrap(err, path);

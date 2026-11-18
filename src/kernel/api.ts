@@ -3,6 +3,7 @@ import type { TodoItem } from '@/agent/tools/types';
 import type { ContextReport, Msg, Usage } from '@/agent/types';
 import type { Bus } from './bus';
 import type { DevApi } from './dev/types';
+import type { FileDiff } from '@/agent/diff';
 import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
 import type { Permissions, Prompter } from './perms';
@@ -103,6 +104,16 @@ export interface AgentSnapshot {
   todos: TodoItem[];
   total: Usage;
   context: ContextReport;
+  /** What each file tool call changed, by tool call id. */
+  diffs: Record<string, FileDiff>;
+}
+
+/** The files one turn changed, with their content before (null: created by the agent, or binary/too large). */
+export interface TurnChanges {
+  /** Transcript index of the user message that started the turn. */
+  turn: number;
+  at: number;
+  files: Array<{ path: string; before: string | null; existed: boolean; binary: boolean; skipped: boolean }>;
 }
 
 export interface AgentInfo {
@@ -116,8 +127,12 @@ export interface AgentInfo {
 export interface AgentHandle {
   readonly sid: string;
   readonly pid: number;
-  /** Resolves when the agent has finished responding. */
-  send(text: string): Promise<void>;
+  /** Resolves when the agent has finished responding. `plan`: look, change nothing, answer with a plan. */
+  send(text: string, opts?: { plan?: boolean }): Promise<void>;
+  /** Back to just before the user message at transcript index `index`; with `files`, undoing the agent's file changes since. */
+  rewind(index: number, files: boolean): Promise<{ restored: string[]; skipped: string[] }>;
+  /** The files each turn changed (file tools only). */
+  changes(): Promise<TurnChanges[]>;
   stop(): void;
   snapshot(): Promise<AgentSnapshot>;
   /** Where the context window is going. */

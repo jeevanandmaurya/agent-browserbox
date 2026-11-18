@@ -311,3 +311,80 @@ describe('in-browser model store', () => {
     expect(first?.model).toContain('models.browserbox.local');
   });
 });
+
+describe('changes, undo and plan mode', () => {
+  const call = (name: string, args: Record<string, unknown>) => `<tool_call>${JSON.stringify({ name, arguments: args })}</tool_call>`;
+
+  it('shows what a file tool changed, and rewinds the chat and the files', async () => {
+    const { agent, os, events } = await setup();
+    await os.fs.writeFile('/home/agent/notes.txt', 'one\ntwo\nthree\n');
+    replies = [call('write_file', { path: 'notes.txt', content: 'one\n2\nthree\nfour\n' }), 'Updated.', call('write_file', { path: 'new.txt', content: 'hello\n' }), 'Created.'];
+    await agent.send('Change notes');
+    await agent.send('Add a new file');
+    const diffs = events.filter((e) => e.type === 'file_change').map((e) => e.diff as { path: string; added: number; removed: number; before: string | null });
+    expect(diffs.map((d) => [d.path, d.added, d.removed, d.before])).toEqual([
+      ['/home/agent/notes.txt', 2, 1, 'file'],
+      ['/home/agent/new.txt', 1, 0, null],
+    ]);
+    expect(Object.keys(agent.diffs)).toHaveLength(2);
+
+    // Rewind to the second message, undoing its file changes: new.txt goes away, notes.txt stays edited.
+    const second = agent.transcript.findIndex((m) => m.role === 'user' && JSON.stringify(m.content).includes('Add a new file'));
+    const r = await agent.rewind(second, true);
+    expect(r.restored).toEqual(['/home/agent/new.txt']);
+    expect(await os.fs.exists('/home/agent/new.txt')).toBe(false);
+    expect(await os.fs.readText('/home/agent/notes.txt')).toBe('one\n2\nthree\nfour\n');
+    expect(agent.transcript).toHaveLength(second);
+    expect(Object.keys(agent.diffs)).toHaveLength(1);
+
+    // Rewind to the first, keeping files: the chat goes back, the edit stays.
+    await agent.rewind(0, false);
+    expect(agent.transcript).toHaveLength(0);
+    expect(await os.fs.readText('/home/agent/notes.txt')).toBe('one\n2\nthree\nfour\n');
+    // The model's view went back too: the next message starts afresh.
+    replies = ['Hi.'];
+    await agent.send('Start over');
+    expect(userTexts(sent.at(-1)!)).not.toContain('Change notes');
+  });
+
+  it('undoes deletes and moves, including folders', async () => {
+    const { os } = await setup();
+    const { Checkpoints } = await import('../src/agent/checkpoints');
+    await os.fs.writeFile('/home/agent/dir/a.txt', 'a\n');
+    await os.fs.writeFile('/home/agent/dir/b.bin', new Uint8Array([0, 1, 2, 255]));
+    await os.fs.writeFile('/home/agent/keep.txt', 'precious\n');
+    const cps = new Checkpoints(os);
+    cps.begin(4);
+    // As the agent does: capture what a tool will touch, then run it.
+    await cps.capture(['/home/agent/dir']);
+    await os.fs.rm('/home/agent/dir', { recursive: true });
+    await cps.capture(['/home/agent/keep.txt', '/home/agent/moved.txt']);
+    await os.fs.mv('/home/agent/keep.txt', '/home/agent/moved.txt');
+    const r = await cps.restore(0);
+    expect(r.skipped).toEqual([]);
+    expect(await os.fs.readText('/home/agent/dir/a.txt')).toBe('a\n');
+    expect([...(await os.fs.readFile('/home/agent/dir/b.bin'))]).toEqual([0, 1, 2, 255]);
+    expect(await os.fs.readText('/home/agent/keep.txt')).toBe('precious\n');
+    expect(await os.fs.exists('/home/agent/moved.txt')).toBe(false);
+  });
+
+  it('plan mode looks but does not change anything', async () => {
+    const { agent, os, events } = await setup();
+    replies = [call('write_file', { path: 'x.txt', content: 'no' }), '1. Create x.txt'];
+    await agent.send('Make x.txt', { plan: true });
+    expect(await os.fs.exists('/home/agent/x.txt')).toBe(false);
+    const result = events.find((e) => e.type === 'tool_end') as { result: string; isError: boolean } | undefined;
+    expect(result?.isError).toBe(true);
+    // The model was told it is planning, and was not offered tools that change things.
+    expect(sent[0]!.at(-1)!.content).toContain('Plan mode');
+    expect(sent[0]![0]!.content).not.toContain('write_file(');
+  });
+});
+
+describe('chat titles', () => {
+  it('use only what the person typed', async () => {
+    const { titleFrom } = await import('../src/agent/session');
+    const msg = { role: 'user' as const, content: [{ type: 'text' as const, text: 'Fix the bug in @app.js\n\n<file path="/home/agent/app.js">\nconst a = 1;\n</file>\n\n<mode>Plan mode: …</mode>' }] };
+    expect(titleFrom([msg])).toBe('Fix the bug in @app.js');
+  });
+});

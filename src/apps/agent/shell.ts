@@ -145,7 +145,8 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
       privateBtn.setAttribute('aria-pressed', String(on));
       privateNote.hidden = !on;
       greet.textContent = on ? 'Private chat' : greeting(actions.name());
-      composer.input.placeholder = on ? 'Private message' : 'Message BrowserBox';
+      composer.input.dataset.base = on ? 'Private message' : 'Message BrowserBox';
+      composer.syncMode();
     },
     closeDrawer,
     syncWorkbench() {

@@ -42,7 +42,8 @@ export class AgentManager implements AgentsApi {
       {
         onEvent: (e) => {
           for (const fn of [...session.listeners]) fn(e);
-          if (e.type === 'done') void this.#save(session);
+          // Saved after every model call too, so a running chat is listed and survives a reload.
+          if (e.type === 'done' || e.type === 'usage') void this.#save(session);
         },
         ask: (q, options) => (session.asker ? session.asker(q, options) : new Promise((resolve) => session.waiting.push({ q, options, resolve }))),
         get prompter() {
@@ -56,6 +57,8 @@ export class AgentManager implements AgentsApi {
       agent.messages = saved.messages;
       agent.transcript = saved.transcript ?? saved.messages;
       agent.todos = saved.todos ?? [];
+      agent.checkpoints.list = saved.checkpoints ?? [];
+      agent.diffs = saved.diffs ?? {};
     }
     this.#sessions.set(agent.id, session);
     return this.#handle(agent.id, session);
@@ -84,7 +87,7 @@ export class AgentManager implements AgentsApi {
 
   async #save(s: Session): Promise<void> {
     if (s.private || !s.agent.transcript.length) return;
-    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos }).catch((err: Error) =>
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
   }
@@ -101,12 +104,18 @@ export class AgentManager implements AgentsApi {
     return {
       sid,
       pid: s.agent.proc.pid,
-      send: (text) => s.agent.send(text),
+      send: (text, opts) => s.agent.send(text, opts),
+      rewind: async (index, files) => {
+        const r = await s.agent.rewind(index, files);
+        await this.#save(s);
+        return r;
+      },
+      changes: async () => s.agent.checkpoints.list.map((c) => ({ turn: c.turn, at: c.at, files: c.files.map((f) => ({ path: f.path, before: f.binary ? null : f.before, existed: f.before !== null || !!f.skipped, binary: !!f.binary, skipped: !!f.skipped })) })),
       stop: () => s.agent.stop(),
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context() };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs };
       },
       onEvent(fn) {
         mine.add(fn);

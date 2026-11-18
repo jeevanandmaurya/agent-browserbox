@@ -7,7 +7,13 @@ import type { TodoItem } from '@/agent/tools/types';
 import type { AppModule } from '@/ui/apps';
 import { loadConfig } from '@/agent/config';
 import { openMenu } from '@/ui/menu';
-import { createComposer } from './composer';
+import { AGENT_HOME } from '@/kernel/paths';
+import { choiceDialog } from '@/ui/dialog';
+import { h } from '@/ui/dom';
+import { icon } from './icons';
+import { collectChanges, openChanges } from './changes';
+import { createComposer, type AgentMode } from './composer';
+import { attachMentions } from './mention';
 import { modelLabel, modelMenuEntries } from './model-picker';
 import { contextMeter } from './context-meter';
 import type { SlashCommand } from './slash';
@@ -45,6 +51,16 @@ const app: AppModule = {
     let todos: TodoItem[] = [];
     let wake: WakeLockSentinel | null = null;
     let callCount = 0;
+    /** Plan mode is per window; Ask and Auto are the system's permission setting. */
+    let planMode = false;
+    /** The last message was sent in plan mode (offer to run the plan when it is done). */
+    let lastPlan = false;
+    /** Settles when a chat switch (new, open, private) has finished; messages wait for it. */
+    let switching: Promise<void> = Promise.resolve();
+    /** Runs a chat switch so that nothing is sent to a chat that is being left. */
+    const switchTo = (fn: () => Promise<void>) => (switching = switching.then(fn, fn).catch((err: Error) => os.notify({ title: 'Could not switch chats', body: err.message, level: 'error' })));
+    /** Messages written while the agent works; sent together when it finishes. */
+    const queue: string[] = [];
 
     // --- routing: everything opens inside this window ------------------------
     // Shown inside the desktop (a window there), rather than in a tab of its own.
@@ -75,10 +91,31 @@ const app: AppModule = {
       { name: 'agents', description: 'Manage custom agents', kind: 'built-in', run: () => settings.open('agents') },
       { name: 'connectors', description: 'Manage MCP connectors', kind: 'built-in', run: () => settings.open('connectors') },
       { name: 'model', description: 'Model settings', kind: 'built-in', run: () => settings.open('model') },
+      { name: 'plan', description: 'Plan first: look around and propose, change nothing', kind: 'built-in', run: (args) => (setMode('plan'), args ? submit(args) : composer.focus()) },
+      { name: 'changes', description: 'Review and undo what the agent changed in this chat', kind: 'built-in', run: () => showChanges() },
+      { name: 'init', description: 'Write AGENTS.md: how this project is built, tested and laid out', kind: 'built-in', run: () => submit('Look at the project in your working directory and write AGENTS.md there: what it is, how to build, run and test it, how the code is laid out, and the conventions to follow. Keep it short and specific; it is read at the start of every chat.') },
       { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
     ];
     const openModel = (anchor: HTMLElement) => openMenu(anchor, modelMenuEntries(os, () => settings.open('model'), refreshModel), 'Model');
-    const composer = createComposer(os, { onSubmit: submit, onStop: () => agent.stop(), openModelMenu: openModel, commands });
+    const getMode = (): AgentMode => (planMode ? 'plan' : os.perms.mode);
+    const setMode = (m: AgentMode) => {
+      planMode = m === 'plan';
+      if (m !== 'plan') os.perms.mode = m;
+      composer.syncMode();
+    };
+    const composer = createComposer(os, {
+      onSubmit: submit,
+      onStop: () => agent.stop(),
+      openModelMenu: openModel,
+      commands,
+      mode: { get: getMode, set: setMode },
+      cwd: () => AGENT_HOME,
+      queue: {
+        remove: (i) => (queue.splice(i, 1), composer.setQueue(queue)),
+        // Stop now; the queue is sent as soon as the agent has stopped.
+        sendNow: () => agent.stop(),
+      },
+    });
     const meter = contextMeter({ load: () => (agent ? agent.context() : Promise.resolve(null)), compact: () => void compactNow() });
     const sidebar = createSidebar(os, {
       newChat: () => void newSession(),
@@ -101,6 +138,7 @@ const app: AppModule = {
           { label: 'Browser', icon: 'globe', onSelect: () => route('browser') },
           { label: 'Processes', icon: 'activity', onSelect: () => route('taskmgr') },
           { separator: true },
+          { label: 'Changes', icon: 'edit', hint: 'Review and undo file changes', onSelect: () => showChanges() },
           { label: 'Context', icon: 'info', hint: 'What fills the context window', onSelect: () => meter.open() },
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
           { separator: true },
@@ -149,8 +187,10 @@ const app: AppModule = {
           meter.refresh();
         }
         else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => settings.open('model') } : undefined);
+        else if (e.type === 'file_change') void syncChanges();
         else if (e.type === 'done') {
           setBusy(false);
+          afterReply(e.reason);
           meter.refresh();
           void sidebar.refresh(agent.sid);
           void agent.snapshot().then((s) => {
@@ -174,48 +214,61 @@ const app: AppModule = {
       shell.setEmpty(!has);
       shell.setTitle(has ? snap.title : '');
       win.setTitle(has ? snap.title : '');
-      if (has) log.restore(snap.messages);
+      if (has) log.restore(snap.messages, snap.diffs);
       else log.clear();
+      void syncChanges();
       showTodos();
       meter.refresh();
       setBusy(snap.busy);
       void sidebar.refresh(agent.sid);
     }
 
-    /** Leaves the current session: idle ones are already saved, so their process can go. */
-    const leave = () => agent.dispose();
+    /**
+     * Leaves the current session. A running one keeps working in the kernel (the sidebar
+     * shows it, and opening it again rejoins it); idle ones are saved, so their process can go.
+     */
+    const leave = () => {
+      queue.length = 0;
+      composer.setQueue(queue);
+      if (busy) agent.detach();
+      else agent.dispose();
+    };
 
-    async function newSession(): Promise<void> {
+    function newSession(): Promise<void> {
       shell.closeDrawer();
-      if (busy) return os.notify('Stop the running task first.');
-      leave();
-      adopt(await os.agents.create());
-      await showState();
-      composer.focus();
+      return switchTo(async () => {
+        leave();
+        adopt(await os.agents.create());
+        await showState();
+        composer.focus();
+      });
     }
 
     /** Switches the empty chat between saved and private (a private chat with messages ends instead). */
-    async function togglePrivate(): Promise<void> {
-      if (busy) return os.notify('Stop the running task first.');
-      const snap = await agent.snapshot();
-      leave();
-      adopt(await os.agents.create({ private: !snap.private }));
-      await showState();
-      composer.focus();
+    function togglePrivate(): Promise<void> {
+      if (busy) return Promise.resolve(os.notify('A private chat starts empty: open a new chat first.'));
+      return switchTo(async () => {
+        const snap = await agent.snapshot();
+        leave();
+        adopt(await os.agents.create({ private: !snap.private }));
+        await showState();
+        composer.focus();
+      });
     }
 
-    async function openSession(id: string): Promise<void> {
-      if (busy) return os.notify('Stop the running task first.');
-      if (id === agent.sid) return shell.closeDrawer();
-      try {
-        const next = await os.agents.create({ resume: id });
-        leave();
-        adopt(next);
-        await showState();
-        shell.closeDrawer();
-      } catch (err) {
-        os.notify({ title: 'Could not open that chat', body: (err as Error).message, level: 'error' });
-      }
+    function openSession(id: string): Promise<void> {
+      if (id === agent.sid) return Promise.resolve(shell.closeDrawer());
+      return switchTo(async () => {
+        try {
+          const next = await os.agents.create({ resume: id });
+          leave();
+          adopt(next);
+          await showState();
+          shell.closeDrawer();
+        } catch (err) {
+          os.notify({ title: 'Could not open that chat', body: (err as Error).message, level: 'error' });
+        }
+      });
     }
 
     async function compactNow(): Promise<void> {
@@ -231,17 +284,90 @@ const app: AppModule = {
 
     function submit(text: string): boolean {
       text = text.trim();
-      if (!text || busy) return false;
+      if (!text) return false;
+      // While the agent works, messages wait their turn (Send now stops it and sends them).
+      if (busy) {
+        queue.push(text);
+        composer.setQueue(queue);
+        return true;
+      }
+      void send(text);
+      return true;
+    }
+
+    async function send(text: string): Promise<void> {
+      // Never into a chat that is being left: wait for a switch in progress.
+      await switching;
+      const plan = planMode;
+      lastPlan = plan;
       shell.setEmpty(false);
-      log.addUser(text);
       setBusy(true);
       composer.focus();
-      void agent.send(text).catch((err: Error) => {
+      // @mentioned files go with the message.
+      const full = await attachMentions(os, text, AGENT_HOME).catch(() => text);
+      log.addUser(plan ? `${full}\n\n<mode>plan</mode>` : full);
+      void agent.send(full, { plan }).catch((err: Error) => {
         log.addNote(`Lost the agent session: ${err.message}`, 'error');
         setBusy(false);
       });
-      return true;
     }
+
+    /** After a reply: offer to run a plan, then send whatever was queued. */
+    function afterReply(reason: string): void {
+      if (lastPlan && reason === 'end' && !queue.length) {
+        log.addChoices('Go ahead with this plan?', [
+          { label: 'Run the plan', primary: true, run: () => (setMode(os.perms.mode), void send('Go ahead with the plan.')) },
+          { label: 'Keep planning', run: () => composer.focus() },
+        ]);
+      }
+      lastPlan = false;
+      if (queue.length) {
+        const next = queue.splice(0).join('\n\n');
+        composer.setQueue(queue);
+        void send(next);
+      }
+    }
+
+    // ---- changes and rewinding ------------------------------------------------
+    const changesChip = h('button', { class: 'bb-changes', type: 'button', hidden: true, onclick: () => showChanges() });
+    async function syncChanges(): Promise<void> {
+      const list = await collectChanges(os, await agent.changes().catch(() => [])).catch(() => []);
+      changesChip.hidden = !list.length;
+      const added = list.reduce((n, c) => n + (c.diff?.added ?? 0), 0);
+      const removed = list.reduce((n, c) => n + (c.diff?.removed ?? 0), 0);
+      changesChip.replaceChildren(icon('edit', 14), h('span', null, `${list.length} file${list.length === 1 ? '' : 's'} changed`), h('span', { class: 'df-add' }, `+${added}`), h('span', { class: 'df-del' }, `−${removed}`), h('span', { class: 'bb-changes-go' }, 'Review'));
+    }
+    function showChanges(): void {
+      openChanges(os, agent, { openFile: (path) => route('editor', { path }), onChanged: () => void syncChanges() });
+    }
+    shell.todoSlot.after(changesChip);
+
+    // Edit an earlier message: the chat goes back to just before it (and, if you choose, so do the files).
+    log.onEdit = async (ordinal, text) => {
+      if (busy) return os.notify('Stop the agent first (Esc), then edit.');
+      const snap = await agent.snapshot();
+      const userIdx = snap.messages.flatMap((m, i) => (m.role === 'user' && m.content.some((b) => b.type === 'text') ? [i] : []));
+      const index = userIdx[ordinal];
+      if (index === undefined) return;
+      const since = new Set((await agent.changes()).filter((c) => c.turn >= index).flatMap((c) => c.files.map((f) => f.path)));
+      let undo = false;
+      if (since.size) {
+        const choice = await choiceDialog('Edit from here?', `The chat goes back to this message. The agent changed ${since.size} file${since.size === 1 ? '' : 's'} after it: undo those changes too, or keep the files as they are now?`, [
+          { id: 'keep', label: 'Keep files' },
+          { id: 'undo', label: 'Undo file changes', primary: true },
+        ]);
+        if (!choice) return;
+        undo = choice === 'undo';
+      }
+      try {
+        const r = await agent.rewind(index, undo);
+        await showState();
+        composer.setText(text);
+        if (r.skipped.length) os.notify({ title: `${r.skipped.length} file${r.skipped.length === 1 ? '' : 's'} could not be restored`, body: 'Binary or too large to keep: ' + r.skipped.join(', '), level: 'warn' });
+      } catch (err) {
+        os.notify({ title: 'Could not go back', body: (err as Error).message, level: 'error' });
+      }
+    };
 
     ctx.on('settings:change', ({ key }) => {
       if (key === 'agent.config') refreshModel();

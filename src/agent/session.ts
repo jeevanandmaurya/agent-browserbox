@@ -1,6 +1,8 @@
 import type { Kernel } from '@/kernel/api';
 import { AGENT_HOME } from '@/kernel/paths';
 import type { TodoItem } from './tools/index';
+import type { Checkpoint } from './checkpoints';
+import type { FileDiff } from './diff';
 import type { Msg } from './types';
 
 const DIR = `${AGENT_HOME}/.sessions`;
@@ -14,6 +16,10 @@ export interface SessionFile {
   /** The full conversation for display; absent in files saved before compaction existed. */
   transcript?: Msg[];
   todos: TodoItem[];
+  /** Files as they were before each turn changed them (for undo). */
+  checkpoints?: Checkpoint[];
+  /** What each file tool call changed, by tool call id. */
+  diffs?: Record<string, FileDiff>;
 }
 
 export interface SessionInfo {
@@ -55,6 +61,8 @@ export async function listSessions(os: Kernel): Promise<SessionInfo[]> {
 
 export function titleFrom(messages: Msg[]): string {
   const first = messages.find((m) => m.role === 'user')?.content.find((b) => b.type === 'text');
-  const text = first?.type === 'text' ? first.text.trim().replace(/\s+/g, ' ') : '';
+  // Only what the person typed: not attached file contents or hidden mode instructions.
+  const raw = first?.type === 'text' ? first.text.replace(/<file path="[^"]*"[^>]*?(?:\/>|>[\s\S]*?<\/file>)/g, '').replace(/<mode>[\s\S]*?<\/mode>/g, '') : '';
+  const text = raw.trim().replace(/\s+/g, ' ');
   return text.length > 60 ? text.slice(0, 57) + '…' : text || 'New session';
 }

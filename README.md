@@ -173,6 +173,28 @@ says which package provides it.
 - **Settings**: a modal with Model, Permissions, Appearance, Connectors,
   Skills, Agents, Commands, Environment and Data.
 
+- **Modes** (the chip next to +, or Shift+Tab): **Ask first** approves each
+  change, command and network use; **Plan** lets the agent look around with
+  read-only tools and answer with a plan, then offers **Run the plan**;
+  **Auto** acts without asking (everything still runs in the sandbox).
+- **Diffs and undo**: every file the agent writes or edits shows its diff in
+  the chat. "N files changed · Review" opens the Changes panel: each file
+  against how it was before this chat, with Open, Undo and Undo all.
+  **Edit** on one of your messages goes back to it (and, if you choose, puts
+  the files back too) and lets you resend. Only the file tools' changes are
+  tracked; changes made by shell commands or scripts are not.
+- **Queue and steer**: keep typing while the agent works; messages queue above
+  the box and are sent when it finishes (**Send now** stops it and sends
+  them). Esc stops the agent.
+- **@files**: type @ to pick a file from the workspace; its contents go with
+  the message.
+- **Several chats at once**: switching chats leaves a running one working in
+  the background; the sidebar marks chats that are working, or waiting for
+  you.
+- **Project instructions**: `AGENTS.md` (or `CLAUDE.md`) in the agent's
+  folder is read at the start of every chat; `/init` has the agent write it.
+  Other commands: `/plan`, `/changes`, `/compact`, `/context`, `/clear`.
+
 The session lives in the kernel: closing the window detaches without stopping
 it, and reopening returns to the same chat.
 

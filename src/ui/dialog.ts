@@ -42,6 +42,31 @@ export function confirmDialog(title: string, message: string, okLabel = 'OK', da
   });
 }
 
+/** A question with several answers; resolves the chosen id, or null when dismissed. */
+export function choiceDialog(title: string, message: string, choices: Array<{ id: string; label: string; primary?: boolean; danger?: boolean }>): Promise<string | null> {
+  return new Promise((resolve) => {
+    const done = (v: string | null) => {
+      close();
+      resolve(v);
+    };
+    const close = modal(
+      h(
+        'div',
+        { class: 'modal', role: 'alertdialog', 'aria-label': title },
+        h('h3', null, title),
+        h('p', null, message),
+        h(
+          'div',
+          { class: 'modal-actions' },
+          h('button', { class: 'btn', type: 'button', onclick: () => done(null) }, 'Cancel'),
+          choices.map((c) => h('button', { class: `btn ${c.danger ? 'danger' : c.primary ? 'primary' : ''}`, type: 'button', autofocus: c.primary || undefined, onclick: () => done(c.id) }, c.label)),
+        ),
+      ),
+      () => done(null),
+    );
+  });
+}
+
 export function promptDialog(title: string, label: string, initial = ''): Promise<string | null> {
   return new Promise((resolve) => {
     const input = h('input', { class: 'input', value: initial, autofocus: true, 'aria-label': label });

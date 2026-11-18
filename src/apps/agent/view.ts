@@ -1,4 +1,5 @@
-import type { AgentEvent } from '@/agent/agent';
+import { MODE_TAG, type AgentEvent } from '@/agent/agent';
+import type { FileDiff } from '@/agent/diff';
 import type { Msg } from '@/agent/types';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import { fmtDuration, h } from '@/ui/dom';
@@ -6,7 +7,18 @@ import { loader } from '@/ui/icons';
 import { renderMarkdown } from '@/ui/markdown';
 import { approvalCard, askCard } from './cards';
 import { fmtSpeed, fmtTokens } from './context-meter';
+import { diffStat, diffView } from './diffview';
 import { icon } from './icons';
+
+/** Files attached with @mentions travel inside the message; the chat shows them as chips. */
+const FILE_BLOCK = /\n*<file path="([^"]+)"[^>]*?(?:\/>|>[\s\S]*?<\/file>)/g;
+
+/** What a user message looks like in the chat: without hidden instructions and attached file contents. */
+export function forDisplay(text: string): { text: string; files: string[]; plan: boolean } {
+  const files = [...text.matchAll(FILE_BLOCK)].map((m) => m[1]!);
+  const plan = MODE_TAG.test(text);
+  return { text: text.replace(MODE_TAG, '').replace(FILE_BLOCK, '').trim(), files, plan };
+}
 
 export { renderTodos } from './cards';
 
@@ -34,12 +46,16 @@ export class Transcript {
   #tools = new Map<string, ToolCard>();
   #dirty = false;
   #cost = 0;
+  #diffs = new Map<string, FileDiff>();
+  /** Called with the message's position among your messages (0 = first) and its text, to edit and resend it. */
+  onEdit: ((ordinal: number, text: string) => void) | null = null;
 
   clear(): void {
     this.el.replaceChildren();
     this.#turn = this.#textEl = this.#thinkEl = this.#statusEl = null;
     this.#turnText = [];
     this.#tools.clear();
+    this.#diffs.clear();
   }
 
   #scroll(force = false): void {
@@ -130,9 +146,36 @@ export class Transcript {
     this.#scroll(true);
   };
 
+  #userMsg(raw: string): HTMLElement {
+    const { text, files, plan } = forDisplay(raw);
+    const el = h(
+      'div',
+      { class: 'ag-msg user' },
+      plan ? h('span', { class: 'ag-mode-tag' }, icon('fileText', 13), 'Plan') : null,
+      h('div', { class: 'ag-bubble' }, text),
+      files.length ? h('div', { class: 'ag-attach' }, files.map((f) => h('span', { class: 'ag-file-chip', title: f }, icon('file', 13), f.split('/').pop()))) : null,
+    );
+    const copyBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Copy', 'aria-label': 'Copy message', onclick: () => void navigator.clipboard?.writeText(text) }, icon('copy', 15));
+    const editBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Edit and resend from here', 'aria-label': 'Edit message', onclick: () => this.onEdit?.([...this.el.querySelectorAll('.ag-msg.user')].indexOf(el), text) }, icon('edit', 15));
+    el.append(h('div', { class: 'ag-user-actions' }, editBtn, copyBtn));
+    return el;
+  }
+
+  /** A note with buttons, e.g. after a plan: run it, or keep planning. */
+  addChoices(text: string, actions: Array<{ label: string; primary?: boolean; run: () => void }>): void {
+    this.#finishTurn();
+    const box = h('div', { class: 'ag-choices' }, h('span', null, text));
+    const row = h('div', { class: 'ag-choice-row' });
+    for (const a of actions) row.append(h('button', { class: `btn small${a.primary ? ' primary' : ''}`, type: 'button', onclick: () => (box.remove(), a.run()) }, a.label));
+    box.append(row);
+    this.el.append(box);
+    this.#scroll(true);
+  }
+
   addUser(text: string): void {
     this.#finishTurn();
-    this.el.append(h('div', { class: 'ag-msg user' }, h('div', { class: 'ag-bubble' }, text)));
+    this.el.querySelectorAll('.ag-choices').forEach((c) => c.remove());
+    this.el.append(this.#userMsg(text));
     this.#setStatus('Thinking…');
     this.#scroll(true);
   }
@@ -168,6 +211,7 @@ export class Transcript {
       ),
       h('div', { class: 'ag-tool-body' }, h('div', { class: 'ag-tool-label' }, 'Input'), h('pre', { class: 'ag-tool-in' }, typeof input === 'string' ? input : JSON.stringify(input, null, 2)), h('div', { class: 'ag-tool-label' }, 'Output'), output),
     );
+    el.dataset.id = id;
     const card = { el, status, output, text: '' };
     this.#tools.set(id, card);
     this.#ensureTurn().append(el);
@@ -178,6 +222,14 @@ export class Transcript {
     card.output.textContent = result.length > 20000 ? result.slice(0, 20000) + '\n… (truncated in view)' : result;
     card.status.replaceChildren(icon(isError ? 'close' : 'check', 13));
     card.el.classList.add(isError ? 'err' : 'ok');
+    const diff = this.#diffs.get(card.el.dataset.id ?? '');
+    if (diff && !isError && !card.el.querySelector('.df')) {
+      card.el.querySelector('.ag-tool-sum')!.after(diffStat(diff));
+      card.el.querySelector('.ag-tool-body')!.prepend(diffView(diff));
+      card.el.classList.add('has-diff');
+      // Small edits are shown straight away, as a reviewer would want.
+      if (diff.hunks.reduce((n, hk) => n + hk.lines.length, 0) <= 40) card.el.open = true;
+    }
     if (ms !== undefined) card.el.querySelector('.ag-tool-chev')!.before(h('span', { class: 'ag-tool-ms' }, fmtDuration(ms)));
   }
 
@@ -244,6 +296,9 @@ export class Transcript {
       case 'note':
         this.addNote(e.text);
         break;
+      case 'file_change':
+        this.#diffs.set(e.id, e.diff);
+        break;
       case 'usage': {
         const st = (this.#stats ??= { calls: 0, context: 0, output: 0, timedOutput: 0, ms: 0, genMs: 0, ttft: 0 });
         if (!st.calls) st.ttft = e.stats.ttft;
@@ -267,14 +322,15 @@ export class Transcript {
   }
 
   /** Rebuilds the view from a saved conversation. */
-  restore(messages: Msg[]): void {
+  restore(messages: Msg[], diffs: Record<string, FileDiff> = {}): void {
     this.clear();
+    for (const [id, d] of Object.entries(diffs)) this.#diffs.set(id, d);
     for (const m of messages) {
       if (m.role === 'user') {
         for (const b of m.content) {
           if (b.type === 'text') {
             this.#finishTurn();
-            this.el.append(h('div', { class: 'ag-msg user' }, h('div', { class: 'ag-bubble' }, b.text)));
+            this.el.append(this.#userMsg(b.text));
           } else if (b.type === 'tool_result') {
             const card = this.#tools.get(b.tool_use_id);
             if (card) this.#finishTool(card, b.content, b.is_error ?? false);

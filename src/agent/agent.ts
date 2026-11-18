@@ -1,3 +1,5 @@
+import { Checkpoints } from './checkpoints';
+import { diffFiles, type FileDiff } from './diff';
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { AGENT_HOME } from '@/kernel/paths';
 import type { Prompter } from '@/kernel/perms';
@@ -35,6 +37,8 @@ export type AgentEvent =
   | { type: 'todos'; items: TodoItem[] }
   | { type: 'usage'; usage: Usage; total: Usage; model: string; context: { used: number; window: number }; stats: TurnStats }
   | { type: 'compact'; before: number; after: number; auto: boolean }
+  /** A file tool changed a file: what changed. */
+  | { type: 'file_change'; id: string; diff: FileDiff }
   | { type: 'error'; message: string }
   | { type: 'done'; reason: 'end' | 'stopped' | 'error' | 'max_steps' };
 
@@ -44,6 +48,33 @@ export interface AgentHost {
   ask(question: string, options?: string[]): Promise<string>;
   /** Overrides the OS permission dialog, e.g. with a y/n prompt in the terminal. */
   prompter?: Prompter;
+}
+
+/** Tools that only look: what plan mode allows. */
+const PLAN_TOOLS = new Set(['read_file', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
+const PLAN_NOTE =
+  'Plan mode: investigate with read-only tools only, then reply with a short, numbered plan of what you would change and how you would check it (files, commands, tests). Do not make any changes yet: the user will review the plan and tell you to go ahead.';
+/** Hidden instructions travel with a message in this tag; the chat view does not show it. */
+export const MODE_TAG = /\n*<mode>[\s\S]*?<\/mode>\s*$/;
+
+/** Files a tool call will change, resolved to absolute paths. */
+function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string): string[] {
+  const i = call.input;
+  if (call.name === 'write_file' || call.name === 'edit_file' || call.name === 'delete_path') return typeof i.path === 'string' ? [path(i.path)] : [];
+  if (call.name === 'move_path') return [i.copy ? null : i.from, i.to].filter((p): p is string => typeof p === 'string').map(path);
+  return [];
+}
+
+/** Keeps a diff small enough to send and save. */
+function capDiff(d: FileDiff, maxLines = 600): FileDiff {
+  let n = 0;
+  const hunks = [];
+  for (const h of d.hunks) {
+    if (n + h.lines.length > maxLines) return { ...d, hunks, note: `Showing the first ${n} lines of the change.` };
+    hunks.push(h);
+    n += h.lines.length;
+  }
+  return d;
 }
 
 type ToolUse = Extract<Block, { type: 'tool_use' }>;
@@ -100,6 +131,10 @@ export class Agent {
   /** Context size after the last model call, as reported by the model (0 = unknown). */
   #lastContext = 0;
   #compactions = 0;
+  /** Files as they were before each turn changed them, for undo. */
+  readonly checkpoints: Checkpoints;
+  /** What each file tool call changed, by tool call id (shown in the chat, kept with the session). */
+  diffs: Record<string, FileDiff> = {};
 
   constructor(
     private os: Kernel,
@@ -112,6 +147,7 @@ export class Agent {
     this.proc = os.procs.spawn({ name: this.#persona ? `agent:${this.#persona.name}` : this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
     os.procs.update(this.proc.pid, { state: 'idle' });
     this.shell = registerCommands(new Shell(os, { cwd: AGENT_HOME, ppid: this.proc.pid }));
+    this.checkpoints = new Checkpoints(os);
   }
 
   get busy(): boolean {
@@ -133,8 +169,11 @@ export class Agent {
     return last?.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n') ?? '';
   }
 
-  /** Sends a user message and runs the agent until it stops. Never rejects. */
-  async send(text: string): Promise<void> {
+  /**
+   * Sends a user message and runs the agent until it stops. Never rejects.
+   * `plan`: look but do not change anything, and answer with a plan.
+   */
+  async send(text: string, opts: { plan?: boolean } = {}): Promise<void> {
     if (this.busy) return;
     const run = (this.#run = new AbortController());
     const emit = (e: AgentEvent) => this.host.onEvent(e);
@@ -152,7 +191,8 @@ export class Agent {
       const toolset = async () =>
         [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.tools()), ...(lite ? [] : await this.os.mcp.tools())]
           .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
-          .filter((t) => !allowed || allowed.has(t.name));
+          .filter((t) => !allowed || allowed.has(t.name))
+          .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));
       let tools = (this.#tools = await toolset());
       this.#window = provider.contextWindow;
       this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
@@ -161,7 +201,8 @@ export class Agent {
       // Tiny in-browser models summarise badly; for them the oldest turns simply drop out of view (see the provider).
       const autoCompact = cfg.autoCompact && !lite;
       if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
-      this.#push({ role: 'user', content: [{ type: 'text', text }] });
+      this.checkpoints.begin(this.transcript.length);
+      this.#push({ role: 'user', content: [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }] });
 
       for (let step = 0; ; step++) {
         if (step >= cfg.maxSteps) {
@@ -210,6 +251,32 @@ export class Agent {
       this.os.procs.update(this.proc.pid, { state: 'idle', detail: `${this.transcript.length} messages` });
       emit({ type: 'done', reason });
     }
+  }
+
+  /**
+   * Goes back to just before the user message at transcript index `index`:
+   * the conversation from there on is removed, and with `files`, the files the
+   * agent changed since then are put back as they were.
+   */
+  async rewind(index: number, files: boolean): Promise<{ restored: string[]; skipped: string[] }> {
+    if (this.busy) throw new Error('Stop the agent first.');
+    const msg = this.transcript[index];
+    if (!msg || msg.role !== 'user' || !msg.content.some((b) => b.type === 'text')) throw new Error('That is not one of your messages.');
+    // The model's view: the same message, unless the conversation was summarised after it.
+    let mi = this.messages.indexOf(msg);
+    if (mi < 0 && this.messages.length === this.transcript.length) mi = index;
+    if (mi < 0) {
+      const key = JSON.stringify(msg.content);
+      mi = this.messages.findIndex((m) => m.role === 'user' && JSON.stringify(m.content) === key);
+    }
+    if (mi < 0) throw new Error('The conversation was summarised after this message, so it cannot be rewound to here. Pick a later message.');
+    const result = files ? await this.checkpoints.restore(index) : (this.checkpoints.drop(index), { restored: [], skipped: [] });
+    this.messages = this.messages.slice(0, mi);
+    this.transcript = this.transcript.slice(0, index);
+    const ids = new Set(this.transcript.flatMap((m) => m.content.flatMap((b) => (b.type === 'tool_use' ? [b.id] : []))));
+    for (const id of Object.keys(this.diffs)) if (!ids.has(id)) delete this.diffs[id];
+    this.#lastContext = 0;
+    return result;
   }
 
   #push(msg: Msg): void {
@@ -385,7 +452,22 @@ export class Agent {
               this.os.procs.update(this.proc.pid, { state: 'running' });
             }
             signal.throwIfAborted();
-            out = allowed ? { type: 'tool_result', tool_use_id: call.id, content: await def.run(call.input, ctx) } : fail('The user denied permission for this action.');
+            if (!allowed) out = fail('The user denied permission for this action.');
+            else {
+              // Keep what the files were, for undo, and show what changed.
+              const paths = changedPaths(call, ctx.path);
+              const before = paths.length ? await this.checkpoints.capture(paths) : null;
+              out = { type: 'tool_result', tool_use_id: call.id, content: await def.run(call.input, ctx) };
+              if (before && call.name !== 'move_path' && paths.length === 1) {
+                const p = paths[0]!;
+                if (before.has(p)) {
+                  const after = await this.os.fs.readText(p).catch(() => null);
+                  const diff = capDiff(diffFiles(p, before.get(p) ?? null, after));
+                  this.diffs[call.id] = diff;
+                  emit({ type: 'file_change', id: call.id, diff });
+                }
+              }
+            }
           } catch (err) {
             if (signal.aborted) throw err;
             out = fail((err as Error)?.message || String(err));

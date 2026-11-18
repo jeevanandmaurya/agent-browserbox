@@ -33,6 +33,8 @@ function bucket(ts: number): string {
 export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
   let all: SessionInfo[] = [];
   let active = '';
+  /** Chats running in the kernel right now: working, or waiting for you (an approval or a question). */
+  let live = new Map<string, 'running' | 'waiting'>();
   const search = h('input', { class: 'sb-search', type: 'search', placeholder: 'Search chats', 'aria-label': 'Search chats' });
   const list = h('nav', { class: 'sb-list', 'aria-label': 'Recent chats' });
   const kernelLabel = h('span', { class: 'sb-kernel-text' }, 'Kernel');
@@ -74,7 +76,12 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
         h(
           'div',
           { class: `sb-chat ${s.id === active ? 'active' : ''}` },
-          h('button', { class: 'sb-chat-open', type: 'button', title: `${s.title}\n${fmtTime(s.updated)}`, 'aria-current': s.id === active ? 'page' : 'false', onclick: () => act.openChat(s.id) }, s.title || 'Untitled'),
+          h(
+            'button',
+            { class: 'sb-chat-open', type: 'button', title: `${s.title}\n${fmtTime(s.updated)}`, 'aria-current': s.id === active ? 'page' : 'false', onclick: () => act.openChat(s.id) },
+            live.has(s.id) ? h('span', { class: `sb-live ${live.get(s.id)}`, title: live.get(s.id) === 'waiting' ? 'Waiting for you' : 'Working', 'aria-label': live.get(s.id) === 'waiting' ? 'Waiting for you' : 'Working' }) : null,
+            h('span', { class: 'sb-chat-title' }, s.title || 'Untitled'),
+          ),
           h(
             'button',
             {
@@ -98,6 +105,26 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
     all = await listSessions(os).catch(() => []);
     render();
   }
+
+  // Which chats are working in the background (sessions keep running when you switch away).
+  let pending = 0;
+  const updateLive = () => {
+    clearTimeout(pending);
+    pending = window.setTimeout(async () => {
+      const sessions = await os.agents.live().catch(() => []);
+      const next = new Map<string, 'running' | 'waiting'>();
+      for (const s of sessions) {
+        const state = os.procs.get(s.pid)?.state;
+        if (s.busy) next.set(s.sid, state === 'blocked' ? 'waiting' : 'running');
+      }
+      const changed = next.size !== live.size || [...next].some(([k, v]) => live.get(k) !== v);
+      live = next;
+      if (changed) void refresh(active);
+    }, 250);
+  };
+  os.bus.on('proc:update', (p) => p.kind === 'agent' && updateLive());
+  os.bus.on('proc:exit', ({ proc }) => proc.kind === 'agent' && updateLive());
+  updateLive();
 
   const updateKernel = () => {
     const procs = os.procs.list();

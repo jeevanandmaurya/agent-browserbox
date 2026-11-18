@@ -2,7 +2,17 @@ import type { Kernel } from '@/kernel/api';
 import { fmtBytes, h } from '@/ui/dom';
 import { openMenu } from '@/ui/menu';
 import { icon } from './icons';
+import { mentionMenu } from './mention';
 import { expandCommand, slashMenu, type SlashCommand } from './slash';
+
+/** How the agent works on the next message: ask before acting, act without asking, or plan first. */
+export type AgentMode = 'ask' | 'auto' | 'plan';
+export const MODES: Array<{ id: AgentMode; label: string; hint: string; icon: 'shield' | 'spark' | 'fileText' }> = [
+  { id: 'ask', label: 'Ask first', hint: 'Approve each change, command and network use', icon: 'shield' },
+  // Plan comes before Auto, so Shift+Tab from Ask to Plan never passes through (and turns on) Auto.
+  { id: 'plan', label: 'Plan', hint: 'Look around and propose a plan; change nothing', icon: 'fileText' },
+  { id: 'auto', label: 'Auto', hint: 'Act without asking (everything stays in the sandbox)', icon: 'spark' },
+];
 
 export const UPLOAD_DIR = '/home/agent/uploads';
 
@@ -16,6 +26,10 @@ export interface Composer {
   setModel(label: string): void;
   /** Holds the context gauge, next to the model picker. */
   meterSlot: HTMLElement;
+  /** Messages waiting for the agent to finish, shown above the box. */
+  setQueue(items: string[]): void;
+  /** Redraws the mode chip after the mode changed elsewhere. */
+  syncMode(): void;
 }
 
 /** Picks a name in the uploads folder that does not overwrite an earlier upload. */
@@ -36,7 +50,20 @@ const SpeechRecognition = (globalThis as unknown as { SpeechRecognition?: new ()
  * The message box: a single rounded bar with + (attach, model, commands),
  * an auto-growing text field, dictation and a round send/stop button.
  */
-export function createComposer(os: Kernel, opts: { onSubmit(text: string): boolean; onStop(): void; openModelMenu(anchor: HTMLElement): void; commands: SlashCommand[] }): Composer {
+export function createComposer(
+  os: Kernel,
+  opts: {
+    onSubmit(text: string): boolean;
+    onStop(): void;
+    openModelMenu(anchor: HTMLElement): void;
+    commands: SlashCommand[];
+    mode: { get(): AgentMode; set(m: AgentMode): void };
+    /** The agent's working folder, for @file mentions. */
+    cwd(): string;
+    /** Queued messages: remove one, or stop the agent and send them now. */
+    queue: { remove(i: number): void; sendNow(): void };
+  },
+): Composer {
   const attached: Array<{ path: string; size: number }> = [];
   let busy = false;
 
@@ -48,6 +75,25 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   const modelLabel = h('span', { class: 'cp-model-name' });
   const modelBtn = h('button', { class: 'cp-model', type: 'button', title: 'Model', 'aria-label': 'Change model', 'aria-haspopup': 'menu', onclick: () => opts.openModelMenu(modelBtn) }, modelLabel, icon('chevron', 14));
   const meterSlot = h('span', { class: 'cp-meter' });
+  const modeLabel = h('span', { class: 'cp-mode-name' });
+  const modeBtn = h('button', { class: 'cp-mode', type: 'button', 'aria-haspopup': 'menu', title: 'Mode (Shift+Tab to switch)', onclick: () => modeMenu() });
+  const queueBox = h('div', { class: 'cp-queue', hidden: true, 'aria-live': 'polite' });
+  function syncMode(): void {
+    const m = MODES.find((x) => x.id === opts.mode.get())!;
+    modeBtn.replaceChildren(icon(m.icon, 15), modeLabel);
+    modeLabel.textContent = m.label;
+    modeBtn.dataset.mode = m.id;
+    modeBtn.setAttribute('aria-label', `Mode: ${m.label}. ${m.hint}`);
+    input.placeholder = m.id === 'plan' ? 'Describe what to plan' : el.classList.contains('busy') ? 'Queue a message' : input.dataset.base || 'Message BrowserBox';
+  }
+  function modeMenu(): void {
+    openMenu(modeBtn, MODES.map((m) => ({ label: m.label, hint: m.hint, icon: m.icon, checked: opts.mode.get() === m.id, onSelect: () => (opts.mode.set(m.id), syncMode()) })), 'Mode');
+  }
+  function cycleMode(): void {
+    const i = MODES.findIndex((m) => m.id === opts.mode.get());
+    opts.mode.set(MODES[(i + 1) % MODES.length]!.id);
+    syncMode();
+  }
   const sendBtn = h('button', { class: 'cp-send', type: 'submit', title: 'Send (Enter)', 'aria-label': 'Send message', disabled: true }, icon('send', 20));
   const stopBtn = h('button', { class: 'cp-send stop', type: 'button', title: 'Stop', 'aria-label': 'Stop the agent', hidden: true, onclick: () => opts.onStop() }, icon('stop', 16));
 
@@ -60,13 +106,17 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
         submit();
       },
     },
+    queueBox,
     chips,
     input,
-    h('div', { class: 'cp-bar' }, plusBtn, h('span', { class: 'cp-space' }), meterSlot, modelBtn, micBtn, sendBtn, stopBtn),
+    h('div', { class: 'cp-bar' }, plusBtn, modeBtn, h('span', { class: 'cp-space' }), meterSlot, modelBtn, micBtn, sendBtn, stopBtn),
     file,
   );
+  syncMode();
+  os.bus.on('settings:change', ({ key }) => key === 'perms.mode' && syncMode());
   const slash = slashMenu(os, input, opts.commands);
-  el.prepend(slash.el);
+  const mention = mentionMenu(os, input, opts.cwd);
+  el.prepend(slash.el, mention.el);
   el.addEventListener('click', (e) => {
     if (e.target === el || (e.target as HTMLElement).classList.contains('cp-bar') || (e.target as HTMLElement).classList.contains('cp-space')) input.focus();
   });
@@ -76,7 +126,11 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
     input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
     // A scrollbar only once the text is taller than the box can grow.
     input.style.overflowY = input.scrollHeight > 200 ? 'auto' : 'hidden';
-    sendBtn.disabled = busy || (!input.value.trim() && !attached.length);
+    const has = !!input.value.trim() || attached.length > 0;
+    sendBtn.disabled = !has;
+    // While the agent works, a message can still be written and queued.
+    sendBtn.hidden = busy && !has;
+    sendBtn.title = busy ? 'Queue (Enter): sent when the agent finishes' : 'Send (Enter)';
   };
 
   function plusMenu(): void {
@@ -166,7 +220,6 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   });
 
   function submit(): void {
-    if (busy) return;
     rec?.stop();
     let text = input.value.trim();
     if (!text && !attached.length) return;
@@ -191,7 +244,15 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
   }
 
   input.addEventListener('keydown', (e) => {
-    if (slash.key(e)) return e.preventDefault();
+    if (slash.key(e) || mention.key(e)) return e.preventDefault();
+    if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault();
+      return cycleMode();
+    }
+    if (e.key === 'Escape' && busy) {
+      e.preventDefault();
+      return opts.onStop();
+    }
     // On touch keyboards Enter inserts a line; the send button sends.
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !matchMedia('(pointer: coarse)').matches) {
       e.preventDefault();
@@ -211,14 +272,30 @@ export function createComposer(os: Kernel, opts: { onSubmit(text: string): boole
     input,
     setBusy(b) {
       busy = b;
-      sendBtn.hidden = b;
       stopBtn.hidden = !b;
       el.classList.toggle('busy', b);
+      syncMode();
       grow();
     },
     focus: () => input.focus({ preventScroll: true }),
     setText,
     meterSlot,
+    syncMode,
+    setQueue(items) {
+      queueBox.hidden = !items.length;
+      queueBox.replaceChildren(
+        ...items.map((t, i) =>
+          h(
+            'div',
+            { class: 'cp-queued' },
+            h('span', { class: 'cp-queued-label' }, 'Queued'),
+            h('span', { class: 'cp-queued-text', title: t }, t),
+            i === 0 ? h('button', { class: 'btn small ghost', type: 'button', title: 'Stop the agent and send now', onclick: () => opts.queue.sendNow() }, 'Send now') : null,
+            h('button', { class: 'cp-chip-x', type: 'button', 'aria-label': 'Remove from queue', onclick: () => opts.queue.remove(i) }, icon('close', 12)),
+          ),
+        ),
+      );
+    },
     setModel(label) {
       modelLabel.textContent = label;
       modelBtn.title = `Model: ${label}`;
