@@ -13,6 +13,7 @@ export const TOOLS: Array<{ id: string; label: string; icon: IconName; defaults?
   { id: 'browser', label: 'Browser', icon: 'globe' },
   { id: 'gpulab', label: 'GPU Lab', icon: 'cube' },
   { id: 'sysinfo', label: 'System', icon: 'info' },
+  { id: 'help', label: 'Help', icon: 'question' },
 ];
 
 interface Tab {

@@ -8,6 +8,7 @@ browser**, with no backend. It is split into independent parts:
 | **Kernel** | `/kernel/` | Headless. A SharedWorker running the filesystem, process table, permissions, secrets, shells and agent sessions. No UI. |
 | **Agent** | `/agent/` | The complete app: chat, built-in workbench (preview, files, editor, terminal, processes…) and settings, in one browser window. This is the default entry point. |
 | **Desktop** | `/os/` | An optional GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar): a windowed desktop on wide screens, a phone home screen on phones. |
+| **Docs** | `/docs/` | The user guide, a page of its own (no kernel; deep links like `/docs/#shipping`). The same docs open inside the app from ⋮ → **Help & docs**, the Help workbench tab, `/docs [topic]`, or the Help app on the desktop. Sources: `src/apps/help/docs/*.md`. |
 
 The kernel keeps running as long as any BrowserBox window is open. Close the
 agent window and its session carries on; open it again and it reattaches.

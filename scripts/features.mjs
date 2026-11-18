@@ -841,6 +841,31 @@ await check('real Node.js and npm (WebContainers), with cross-origin isolation',
   }
 });
 
+await check('help: docs open from the menu, links between topics work, search finds text; /docs/ page deep-links', async () => {
+  await page.locator('.bb-more').first().click();
+  await page.getByRole('menuitem', { name: 'Help & docs' }).click();
+  const pane = page.locator('.wb-pane[data-app="help"]:not([hidden])');
+  // A narrow panel lists the topics first, like a phone.
+  await pane.locator('.dc-link').first().waitFor();
+  const topics = await pane.locator('.dc-link').count();
+  if (!(await pane.locator('.dc-article h1').isVisible())) await pane.locator('.dc-link', { hasText: 'About BrowserBox' }).click();
+  await pane.locator('.dc-article h1').waitFor();
+  await pane.locator('.dc-article a', { hasText: /deploy|shipping/i }).first().click();
+  await pane.locator('.dc-article h1', { hasText: /ship/i }).waitFor({ timeout: 5000 });
+  if (await pane.locator('.dc-back').isVisible()) await pane.locator('.dc-back').click();
+  await pane.locator('.dc-search').fill('netlify');
+  const hits = await pane.locator('.dc-hit').count();
+  if (!hits) throw new Error('search found nothing for netlify');
+  const p = await context.newPage();
+  await p.goto(base + 'docs/#models');
+  const title = await p.locator('.dc-article h1').textContent();
+  if (!/model/i.test(title)) throw new Error(`deep link opened ${title}`);
+  await p.locator('.dc-link', { hasText: 'Terminal' }).first().click();
+  const hash = await p.evaluate(() => location.hash);
+  await p.close();
+  return `${topics} topics; topic links work; ${hits} search hit(s); /docs/#models deep-links, hash follows (${hash})`;
+});
+
 if (errors.length) {
   failed++;
   console.log('page errors:\n  ' + errors.join('\n  '));

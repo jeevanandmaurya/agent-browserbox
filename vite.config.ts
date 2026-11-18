@@ -70,7 +70,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     // One entry per part: redirect, agent window, desktop GUI, kernel bridge.
-    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', bridge: 'kernel/bridge.html' } },
+    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html' } },
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 7000,
   },

@@ -18,6 +18,8 @@ const here = (rel: string) => new URL(rel, globalThis.location?.href ?? 'http://
 export const KERNEL_URL: string = env.VITE_KERNEL_URL || here('../kernel/');
 /** The agent window. */
 export const AGENT_URL: string = env.VITE_AGENT_URL || here('../agent/');
+/** The documentation, a page of its own (no kernel needed). */
+export const DOCS_URL: string = env.VITE_DOCS_URL || here('../docs/');
 /** The optional desktop GUI. */
 export const OS_URL: string = env.VITE_OS_URL || here('../os/');
 

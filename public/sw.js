@@ -15,7 +15,7 @@ const FLAGS = 'bbx-flags';
 const COI_KEY = 'https://flags.browserbox.local/coi';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html', './preview/frame.html'])).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './docs/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html', './preview/frame.html'])).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

@@ -94,6 +94,7 @@ const app: AppModule = {
       { name: 'plan', description: 'Plan first: look around and propose, change nothing', kind: 'built-in', run: (args) => (setMode('plan'), args ? submit(args) : composer.focus()) },
       { name: 'changes', description: 'Review and undo what the agent changed in this chat', kind: 'built-in', run: () => showChanges() },
       { name: 'init', description: 'Write AGENTS.md: how this project is built, tested and laid out', kind: 'built-in', run: () => submit('Look at the project in your working directory and write AGENTS.md there: what it is, how to build, run and test it, how the code is laid out, and the conventions to follow. Keep it short and specific; it is read at the start of every chat.') },
+      { name: 'docs', description: 'Open the documentation', kind: 'built-in', run: (args) => route('help', args ? { topic: args.trim() } : {}) },
       { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
     ];
     const openModel = (anchor: HTMLElement) => openMenu(anchor, modelMenuEntries(os, () => settings.open('model'), refreshModel), 'Model');
@@ -143,6 +144,7 @@ const app: AppModule = {
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
           { separator: true },
           { label: 'Settings', icon: 'gear', onSelect: () => settings.open() },
+          { label: 'Help & docs', icon: 'question', onSelect: () => route('help') },
           embedded ? { label: 'Open in new tab', icon: 'external', onSelect: openTab } : { label: 'Open desktop', icon: 'external', onSelect: openDesktop },
         ],
         'More',

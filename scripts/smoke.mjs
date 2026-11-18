@@ -74,7 +74,8 @@ async function firstBoot(page, answers) {
 // ---- Startup stays lean: what loads before you can type ---------------------
 await check('startup bundles stay within budget, with nothing loaded early that is not needed', async () => {
   const assets = readdirSync('dist/assets');
-  const read = (prefix) => readFileSync(`dist/assets/${assets.find((f) => f.startsWith(prefix) && f.endsWith('.js'))}`, 'utf8');
+  // All the files with that name: Rollup may split an entry into a stub and its body.
+  const read = (prefix) => assets.filter((f) => f.startsWith(prefix) && f.endsWith('.js')).map((f) => readFileSync(`dist/assets/${f}`, 'utf8')).join('\n');
   const kernel = read('main-');
   const agent = read('agent-');
   const kb = (t) => gzipSync(t).length / 1024;
