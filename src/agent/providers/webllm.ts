@@ -49,16 +49,16 @@ async function getEngine(os: Kernel, model: string, onStatus: (s: string) => voi
  */
 function toolPrompt(req: TurnRequest): string {
   if (!req.tools.length) return req.system;
-  const tools = req.tools.map((t) => `- ${t.name}: ${t.description.split('\n')[0]} Arguments: ${JSON.stringify(t.input_schema.properties)}`).join('\n');
+  const tools = req.tools.map((t) => `- ${t.name}(${Object.keys(t.input_schema.properties ?? {}).join(', ')}): ${t.description.split(/(?<=\.)\s/)[0]}`).join('\n');
   return `${req.system}
 
-# Tools
-You can call these tools:
+# Tools (only when needed)
+Most messages need no tool: just answer them. Never ask the user which tool to use. Only when the request needs files, shell commands or running JavaScript, call one of these:
 ${tools}
 
-To call a tool, reply with exactly this and nothing after it:
+To call a tool, reply with only this line:
 <tool_call>{"name": "tool_name", "arguments": {"key": "value"}}</tool_call>
-You will then receive the result in a <tool_result> block. Call one tool at a time. When the task is done, answer normally without a tool call.`;
+The result comes back in a <tool_result> block; then continue, and answer normally when done.`;
 }
 
 type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -181,11 +181,12 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
       let shownThink = 0;
       let shown = 0;
       const usage = { input: 0, output: 0, cacheRead: 0 };
+      const chat = toChat(req, window);
       // Qwen3 thinks out loud by default, which is slow on a phone and eats the small context.
       const noThink = /^qwen3/i.test(cfg.webllmModel);
       try {
         const stream = await engine.chat.completions.create({
-          messages: toChat(req, window),
+          messages: chat,
           stream: true,
           stream_options: { include_usage: true },
           temperature: 0.2,
@@ -217,6 +218,11 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
       }
       req.signal.throwIfAborted();
 
+      // WebLLM keeps the conversation in GPU memory between messages and, when the history
+      // matches, only processes the new part: its prompt_tokens then counts just that part.
+      // Report the whole prompt, the rest as reused ("cache read"), so the context shown is real.
+      const promptTokens = Math.round(chat.reduce((n, m) => n + m.content.length, 0) / 3.6);
+      usage.cacheRead = Math.max(0, promptTokens - usage.input);
       const reply = parseReply(full, req.tools.map((t) => t.name));
       const { answer } = splitThinking(full);
       // Show whatever was held back: up to the call, or the rest of the answer.

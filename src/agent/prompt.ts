@@ -15,7 +15,7 @@ function packageLine(os: Kernel): string {
 
 export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null }): Promise<string> {
   if (opts.lite) {
-    return `You are the assistant inside BrowserBox, an operating system running in a browser tab. You can read and write files in a virtual filesystem (your working directory is ${AGENT_HOME}) and run shell commands and JavaScript. Be concise. Use a tool when the task needs one; otherwise just answer.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
+    return `You are BrowserBox's assistant, a small model running on the user's own device. Reply to the user's latest message directly and helpfully, using everything said earlier in this conversation. Be concise. If you are unsure what they want, ask one short question. You can also work with files in ${AGENT_HOME}, run shell commands and run JavaScript when a request needs it.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
   }
   const memory = await os.fs.readText(`${AGENT_HOME}/MEMORY.md`).catch(() => '');
   const [skills, agents] = await Promise.all([loadExtensions(os, 'skill'), opts.subagent ? [] : loadExtensions(os, 'agent')]);

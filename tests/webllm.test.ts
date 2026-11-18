@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 type ChatMsg = { role: string; content: string };
 const sent: ChatMsg[][] = [];
 const options: Array<Record<string, unknown>> = [];
+/** The conversation the fake engine holds after its last reply (WebLLM's KV cache). */
+let memory: ChatMsg[] | null = null;
 let replies: string[] = [];
 /** Rough token count, as a real tokenizer would report (about 4 characters per token). */
 const tokens = (msgs: ChatMsg[]) => Math.ceil(msgs.reduce((n, m) => n + m.content.length, 0) / 4);
@@ -21,13 +23,19 @@ vi.mock('@mlc-ai/web-llm', () => ({
     chat: {
       completions: {
         create: async (req: { messages: ChatMsg[] } & Record<string, unknown>) => {
+          // Like WebLLM: when the history matches what is already in GPU memory, only the
+          // new message is processed, and prompt_tokens counts only that.
+          const prior = req.messages.slice(0, -1);
+          const reused = memory !== null && JSON.stringify(prior) === JSON.stringify(memory);
+          const promptTokens = reused ? tokens(req.messages.slice(-1)) : tokens(req.messages);
           sent.push(structuredClone(req.messages));
           options.push({ ...req, messages: undefined });
           const text = replies.shift() ?? 'OK.';
           return (async function* () {
             // Streamed in small pieces, like a real engine.
             for (let i = 0; i < text.length; i += 7) yield { choices: [{ delta: { content: text.slice(i, i + 7) } }] };
-            yield { choices: [{ delta: {} }], usage: { prompt_tokens: tokens(req.messages), completion_tokens: Math.ceil(text.length / 4) } };
+            memory = [...req.messages, { role: 'assistant', content: text }];
+            yield { choices: [{ delta: {} }], usage: { prompt_tokens: promptTokens, completion_tokens: Math.ceil(text.length / 4) } };
           })();
         },
       },
@@ -56,6 +64,7 @@ async function setup(model = 'tiny') {
 const userTexts = (msgs: ChatMsg[]) => msgs.filter((m) => m.role === 'user').map((m) => m.content).join('\n');
 
 beforeEach(() => {
+  memory = null;
   sent.length = 0;
   options.length = 0;
   replies = [];
@@ -70,6 +79,21 @@ describe('in-browser model: memory across messages', () => {
     expect(sent).toHaveLength(2);
     expect(userTexts(sent[1]!)).toContain('My name is Ada');
     expect(sent[1]!.some((m) => m.role === 'assistant' && m.content.includes('Hello Ada'))).toBe(true);
+  });
+
+  it('reports the whole conversation as context, even when the engine reuses its memory', async () => {
+    const { agent, events } = await setup();
+    replies = ['I can help with that. What would you like to do?', 'Sure, here is how to run Python.', 'You asked for help, then about Python.'];
+    await agent.send('Help');
+    await agent.send('Run python');
+    await agent.send('What did I ask first?');
+    // The engine processed only the new message each time…
+    expect(sent.at(-1)!.some((m) => m.content === 'Help')).toBe(true);
+    // …but the context shown grows with the conversation instead of resetting.
+    const used = events.filter((e) => e.type === 'usage').map((e) => (e.context as { used: number }).used);
+    expect(used).toHaveLength(3);
+    expect(used[1]!).toBeGreaterThan(used[0]!);
+    expect(used[2]!).toBeGreaterThan(used[1]!);
   });
 
   it('remembers the start of a longer chat instead of summarising it away', async () => {
