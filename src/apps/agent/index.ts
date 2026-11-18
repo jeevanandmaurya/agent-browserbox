@@ -49,7 +49,9 @@ const app: AppModule = {
     // --- routing: everything opens inside this window ------------------------
     // Shown inside the desktop (a window there), rather than in a tab of its own.
     const embedded = window.top !== window;
-    const openTab = () => void window.open(location.href, 'bbx-agent');
+    const openTab = () => {
+      if (!window.open(location.href, 'bbx-agent')) os.notify({ title: 'Allow pop-ups to open the agent in a new tab', level: 'warn' });
+    };
     const openDesktop = () => {
       if (!open(OS_URL, 'bbx-os')) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
     };
@@ -107,7 +109,7 @@ const app: AppModule = {
         ],
         'More',
       );
-    const shell = createShell({ sidebar, workbench, composer, log, actions: { more, model: openModel, name: () => os.settings.get<string>('user.name', ''), togglePrivate: () => void togglePrivate() } });
+    const shell = createShell({ sidebar, workbench, composer, log, actions: { more, name: () => os.settings.get<string>('user.name', ''), togglePrivate: () => void togglePrivate() } });
     const refreshModel = () => shell.setSubtitle(modelLabel(loadConfig(os)));
     shell.meterSlot.append(meter.el);
     refreshModel();
@@ -164,6 +166,9 @@ const app: AppModule = {
     async function showState(): Promise<void> {
       const snap = await agent.snapshot();
       const has = snap.messages.length > 0;
+      // The panel's numbers belong to this chat: start from its saved totals.
+      callCount = 0;
+      meter.usage({ ...snap.total, calls: 0, tps: 0, ttft: 0, model: '' });
       todos = snap.todos;
       shell.setPrivate(snap.private);
       shell.setEmpty(!has);

@@ -5,6 +5,7 @@ import { fmtDuration, h } from '@/ui/dom';
 import { loader } from '@/ui/icons';
 import { renderMarkdown } from '@/ui/markdown';
 import { approvalCard, askCard } from './cards';
+import { fmtSpeed, fmtTokens } from './context-meter';
 import { icon } from './icons';
 
 export { renderTodos } from './cards';
@@ -80,15 +81,20 @@ export class Transcript {
     }
     // Tokens and speed for the reply, next to its actions.
     const st = this.#stats;
-    if (turn && st) {
-      let row = turn.querySelector<HTMLElement>(':scope > .ag-actions');
-      if (!row) turn.append((row = h('div', { class: 'ag-actions' })));
+    if (st) {
+      // A reply that ended after a tool card has no open turn: the stats go on a row of their own.
+      let row = turn?.querySelector<HTMLElement>(':scope > .ag-actions') ?? null;
+      if (!row) {
+        row = h('div', { class: 'ag-actions' });
+        if (turn) turn.append(row);
+        else this.el.append(h('div', { class: 'ag-msg assistant' }, row));
+      }
       const tps = st.genMs > 0 && st.timedOutput ? st.timedOutput / (st.genMs / 1000) : 0;
       row.append(
         h(
           'span',
           { class: 'ag-stats', title: `${st.calls} model call${st.calls === 1 ? '' : 's'} · first token after ${fmtDuration(st.ttft)} · ${st.output.toLocaleString()} tokens written · ${st.context.toLocaleString()} tokens in context at the end` },
-          `${fmtDuration(st.ms)}${tps ? ` · ${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s` : ''} · ${kTokens(st.output)} out · ${kTokens(st.context)} context`,
+          `${fmtDuration(st.ms)}${tps ? ` · ${fmtSpeed(tps)}` : ''} · ${fmtTokens(st.output)} out · ${fmtTokens(st.context)} context`,
         ),
       );
     }
@@ -290,11 +296,6 @@ export class Transcript {
     this.#finishTurn();
     this.#scroll(true);
   }
-}
-
-/** 1234 → 1.2k */
-function kTokens(n: number): string {
-  return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
 function thinkBlock(body: HTMLElement): HTMLElement {

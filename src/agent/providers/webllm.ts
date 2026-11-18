@@ -63,15 +63,23 @@ The result comes back in a <tool_result> block; then continue, and answer normal
 
 type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
-/** Rough token count; errs high so the prompt never overflows the window. */
-const approxTokens = (text: string) => Math.ceil(text.length / 3.2);
+/**
+ * Tokens a message takes, erring high so the prompt never overflows: about
+ * 3.4 characters per token for Latin text, one or more per character for
+ * Chinese, Japanese, emoji and the like, plus the chat template's own tokens.
+ */
+export function estimateTokens(text: string): number {
+  let ascii = 0;
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) < 128) ascii++;
+  return Math.ceil(ascii / 3.4 + (text.length - ascii) * 1.2) + 6;
+}
 
 /**
  * The conversation in the model's chat format. Only what was said goes back:
  * reasoning (<think>) is dropped, and the oldest turns are left out when the
  * whole thing would not fit the model's small context window.
  */
-export function toChat(req: TurnRequest, window = 4096, reserve = 768): ChatMsg[] {
+export function toChat(req: TurnRequest, window = 4096, reserve = 768, fill = 1): ChatMsg[] {
   const system: ChatMsg = { role: 'system', content: toolPrompt(req) };
   const turns: ChatMsg[] = [];
   const push = (role: 'user' | 'assistant', content: string) => {
@@ -86,16 +94,19 @@ export function toChat(req: TurnRequest, window = 4096, reserve = 768): ChatMsg[
       else if (b.type === 'tool_result') push('user', `<tool_result>${b.is_error ? 'ERROR: ' : ''}${b.content.slice(0, 2000)}</tool_result>`);
     }
   }
-  const budget = window - reserve - approxTokens(system.content);
-  let used = turns.reduce((n, t) => n + approxTokens(t.content), 0);
+  const budget = Math.floor((window - reserve) * fill) - estimateTokens(system.content);
+  let used = turns.reduce((n, t) => n + estimateTokens(t.content), 0);
   // Drop whole exchanges from the front; the newest message always stays.
   while (used > budget && turns.length > 1) {
     const gone = turns.shift()!;
-    used -= approxTokens(gone.content);
-    if (turns[0]?.role === 'assistant') used -= approxTokens(turns.shift()!.content);
+    used -= estimateTokens(gone.content);
+    if (turns[0]?.role === 'assistant') used -= estimateTokens(turns.shift()!.content);
   }
-  // A single message larger than the window is cut from its start.
-  if (used > budget && turns[0]) turns[0].content = turns[0].content.slice(-Math.max(200, budget * 3));
+  // A single message larger than the window keeps its end.
+  while (used > budget && turns[0] && turns[0].content.length > 200) {
+    turns[0].content = turns[0].content.slice(Math.ceil(turns[0].content.length / 4));
+    used = estimateTokens(turns[0].content);
+  }
   return [system, ...turns];
 }
 
@@ -161,8 +172,11 @@ function holdFrom(answer: string): number {
 }
 
 /** A model running entirely inside this tab on WebGPU. Nothing leaves the device. */
-export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
-  const window = 4096;
+export async function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Promise<Provider> {
+  // Each model has its own window (some 2k, most 4k); the catalogue says which.
+  const record = (await appConfig(os.settings)).model_list.find((m) => m.model_id === cfg.webllmModel);
+  const window = record?.overrides?.context_window_size ?? 4096;
+  const reserve = Math.min(768, Math.floor(window / 4));
   return {
     id: 'webllm',
     // 0: this provider fits the conversation itself (toChat), leaving reasoning out of the count.
@@ -180,32 +194,52 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
       let full = '';
       let shownThink = 0;
       let shown = 0;
+      let finish = '';
+      let speed: TurnResult['speed'];
       const usage = { input: 0, output: 0, cacheRead: 0 };
-      const chat = toChat(req, window);
+      let chat = toChat(req, window, reserve);
       // Qwen3 thinks out loud by default, which is slow on a phone and eats the small context.
       const noThink = /^qwen3/i.test(cfg.webllmModel);
       try {
-        const stream = await engine.chat.completions.create({
-          messages: chat,
-          stream: true,
-          stream_options: { include_usage: true },
-          temperature: 0.2,
-          max_tokens: 768,
-          ...(noThink ? { extra_body: { enable_thinking: false } } : {}),
-        });
-        for await (const chunk of stream) {
-          full += chunk.choices[0]?.delta?.content ?? '';
-          if (chunk.usage) Object.assign(usage, { input: chunk.usage.prompt_tokens, output: chunk.usage.completion_tokens });
-          const { thinking, answer } = splitThinking(full);
-          if (thinking.length > shownThink) {
-            req.onThinking(thinking.slice(shownThink));
-            shownThink = thinking.length;
-          }
-          // Stream prose, but hold back anything that may be the start of a tool call.
-          const safe = holdFrom(answer);
-          if (safe > shown) {
-            req.onText(answer.slice(shown, safe));
-            shown = safe;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const stream = await engine.chat.completions.create({
+              messages: chat,
+              stream: true,
+              stream_options: { include_usage: true },
+              temperature: 0.2,
+              max_tokens: reserve,
+              ...(noThink ? { extra_body: { enable_thinking: false } } : {}),
+            });
+            for await (const chunk of stream) {
+              const choice = chunk.choices[0];
+              full += choice?.delta?.content ?? '';
+              if (choice?.finish_reason) finish = choice.finish_reason;
+              if (chunk.usage) {
+                Object.assign(usage, { input: chunk.usage.prompt_tokens, output: chunk.usage.completion_tokens });
+                const x = (chunk.usage as { extra?: { decode_tokens_per_s?: number; time_to_first_token_s?: number } }).extra;
+                if (x?.decode_tokens_per_s !== undefined) speed = { tps: x.decode_tokens_per_s, ttft: (x.time_to_first_token_s ?? 0) * 1000 };
+              }
+              const { thinking, answer } = splitThinking(full);
+              if (thinking.length > shownThink) {
+                req.onThinking(thinking.slice(shownThink));
+                shownThink = thinking.length;
+              }
+              // Stream prose, but hold back anything that may be the start of a tool call.
+              const safe = holdFrom(answer);
+              if (safe > shown) {
+                req.onText(answer.slice(shown, safe));
+                shown = safe;
+              }
+            }
+            break;
+          } catch (err) {
+            // The estimate was still too small for this text: try once more with much less history.
+            if (attempt === 0 && !full && !req.signal.aborted && /context|exceed|too long|kv/i.test((err as Error).message)) {
+              chat = toChat(req, window, reserve, 0.6);
+              continue;
+            }
+            throw err;
           }
         }
       } catch (err) {
@@ -220,9 +254,10 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
 
       // WebLLM keeps the conversation in GPU memory between messages and, when the history
       // matches, only processes the new part: its prompt_tokens then counts just that part.
-      // Report the whole prompt, the rest as reused ("cache read"), so the context shown is real.
-      const promptTokens = Math.round(chat.reduce((n, m) => n + m.content.length, 0) / 3.6);
-      usage.cacheRead = Math.max(0, promptTokens - usage.input);
+      // Report the whole prompt, the reused part as "cache read", so the context shown is real.
+      // (When nothing was reused, prompt_tokens is the exact total and is used as is.)
+      const prompt = chat.reduce((n, m) => n + estimateTokens(m.content), 0);
+      usage.cacheRead = usage.input < prompt * 0.8 ? prompt - usage.input : 0;
       const reply = parseReply(full, req.tools.map((t) => t.name));
       const { answer } = splitThinking(full);
       // Show whatever was held back: up to the call, or the rest of the answer.
@@ -232,7 +267,9 @@ export function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Provider {
       if (reply.thinking.trim()) content.push({ type: 'thinking', text: reply.thinking.trim() });
       if (reply.text) content.push({ type: 'text', text: reply.text });
       if (reply.call) content.push({ type: 'tool_use', id: `local_${Date.now()}`, name: reply.call.name, input: reply.call.input, invalid: reply.call.invalid });
-      return { content, stop: reply.call ? 'tool_use' : 'end', usage, model: cfg.webllmModel };
+      // Cut off at the output limit: the agent says so (and does not run a half-written tool call).
+      const stop = finish === 'length' ? 'max_tokens' : reply.call ? 'tool_use' : 'end';
+      return { content, stop, usage, model: cfg.webllmModel, speed };
     },
   };
 }

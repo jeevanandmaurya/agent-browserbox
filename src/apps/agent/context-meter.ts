@@ -22,14 +22,19 @@ export interface SessionUsage {
   model: string;
 }
 
-const k = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(Math.round(n)));
+/** 1234 → 1.2k, 2_500_000 → 2.5M */
+export const fmtTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(Math.round(n)));
 const NS = 'http://www.w3.org/2000/svg';
 
 /**
  * How full the model's context window is, and what is taking the space.
  * The ring shows the total; the panel breaks it down and offers to compact.
  */
-export function contextMeter(opts: { load(): Promise<ContextReport | null>; compact(): void }): { el: HTMLElement; refresh(): void; open(): void; usage(u: SessionUsage): void } {
+/** Tokens per second, with sensible precision. */
+export const fmtSpeed = (tps: number) => `${tps >= 100 ? Math.round(tps) : tps.toFixed(1)} tok/s`;
+const k = fmtTokens;
+
+export function contextMeter(opts: { load(): Promise<ContextReport | null>; compact(): void }): { el: HTMLElement; refresh(): void; open(): void; usage(u: SessionUsage | null): void } {
   let session: SessionUsage | null = null;
   const ring = document.createElementNS(NS, 'svg');
   ring.setAttribute('viewBox', '0 0 20 20');
@@ -99,26 +104,30 @@ export function contextMeter(opts: { load(): Promise<ContextReport | null>; comp
         'p',
         { class: 'cm-note' },
         r.reported ? 'Total as reported by the model on its last reply; the split is estimated.' : 'Estimated; the model reports exact figures after its next reply.',
-        r.autoCompactAt ? ` The conversation is summarised automatically at ${Math.round(r.autoCompactAt * 100)}%.` : ' Automatic compaction is off (Settings → Model).',
+        r.rolling
+          ? ' This in-browser model has a small window: when it is full, the oldest messages drop out of what the model sees (the chat keeps them).'
+          : r.autoCompactAt
+            ? ` The conversation is summarised automatically at ${Math.round(r.autoCompactAt * 100)}%.`
+            : ' Automatic compaction is off (Settings → Model).',
         r.compactions ? ` Compacted ${r.compactions} time${r.compactions === 1 ? '' : 's'} so far.` : '',
       ),
       session
         ? h(
             'div',
             { class: 'cm-session' },
-            h('strong', null, 'This session'),
+            h('strong', null, 'This chat'),
             h(
               'table',
               { class: 'cm-table' },
               h(
                 'tbody',
                 null,
-                h('tr', null, h('td', null, 'Model calls'), h('td', null, String(session.calls))),
+                session.calls ? h('tr', null, h('td', null, 'Model calls'), h('td', null, String(session.calls))) : null,
                 h('tr', null, h('td', null, 'Input tokens'), h('td', null, k(session.input))),
                 session.cacheRead ? h('tr', null, h('td', null, 'Read from cache'), h('td', null, k(session.cacheRead))) : null,
                 h('tr', null, h('td', null, 'Output tokens'), h('td', null, k(session.output))),
-                session.tps ? h('tr', null, h('td', null, 'Last reply speed'), h('td', null, `${session.tps >= 100 ? Math.round(session.tps) : session.tps.toFixed(1)} tok/s`)) : null,
-                h('tr', null, h('td', null, 'First token after'), h('td', null, `${(session.ttft / 1000).toFixed(1)} s`)),
+                session.tps ? h('tr', null, h('td', null, 'Last reply speed'), h('td', null, fmtSpeed(session.tps))) : null,
+                session.ttft ? h('tr', null, h('td', null, 'First token after'), h('td', null, `${(session.ttft / 1000).toFixed(1)} s`)) : null,
               ),
             ),
           )
@@ -163,7 +172,7 @@ export function contextMeter(opts: { load(): Promise<ContextReport | null>; comp
   return {
     el,
     usage(u) {
-      session = u;
+      session = u && (u.input || u.output) ? u : null;
       if (!panel.hidden && last) renderPanel(last);
     },
     refresh: () => void opts.load().then(paint, () => paint(null)),

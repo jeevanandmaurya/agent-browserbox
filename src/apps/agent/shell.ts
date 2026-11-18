@@ -29,8 +29,6 @@ export interface Shell {
 export interface ShellActions {
   /** The ⋮ menu. */
   more(anchor: HTMLElement): void;
-  /** Tapping the model name. */
-  model(anchor: HTMLElement): void;
   /** Name for the greeting, if the user gave one. */
   name(): string;
   /** The private-chat toggle (shown on an empty or private chat). */

@@ -45,7 +45,9 @@ const RECOMMENDED = /^(Qwen3-(0\.6|1\.7|4|8)B|Qwen2\.5-Coder-(1\.5|3|7)B-Instruc
 export async function appConfig(settings: Settings): Promise<AppConfig> {
   const { prebuiltAppConfig } = await import('@mlc-ai/web-llm');
   const custom = settings.get<CustomModel[]>(CUSTOM_KEY, []);
-  return { ...prebuiltAppConfig, model_list: [...prebuiltAppConfig.model_list, ...(custom as ModelRecord[])] };
+  // Imported models first: WebLLM uses the first record with a matching id.
+  const ids = new Set(custom.map((m) => m.model_id));
+  return { ...prebuiltAppConfig, model_list: [...(custom as ModelRecord[]), ...prebuiltAppConfig.model_list.filter((m) => !ids.has(m.model_id))] };
 }
 
 export async function catalogue(settings: Settings): Promise<ModelEntry[]> {
@@ -120,11 +122,13 @@ export async function download(settings: Settings, id: string, progress: (loaded
       const res = await fetch(url, { signal });
       if (!res.ok || !res.body) throw new Error(`${url}: HTTP ${res.status}`);
       const chunks: Uint8Array[] = [];
+      let got = 0;
       for (const reader = res.body.getReader(); ; ) {
         const { value, done } = await reader.read();
         if (done) break;
         chunks.push(value);
-        progress(loaded + chunks.reduce((n, c) => n + c.length, 0), total);
+        got += value.length;
+        progress(loaded + got, total);
       }
       await model.put(url, new Response(new Blob(chunks as BlobPart[]), { headers: { 'content-type': 'application/octet-stream' } }));
     }
@@ -142,7 +146,10 @@ export async function remove(settings: Settings, id: string): Promise<void> {
   const [model, config, wasm] = await Promise.all([caches.open(CACHE.model), caches.open(CACHE.config), caches.open(CACHE.wasm)]);
   for (const k of await model.keys()) if (k.url.startsWith(base)) await model.delete(k);
   for (const k of await config.keys()) if (k.url.startsWith(base)) await config.delete(k);
-  await wasm.delete(r.model_lib);
+  // Several models share one GPU library: keep it while another downloaded model needs it.
+  const others = (await appConfig(settings)).model_list.filter((m) => m.model_id !== id && m.model_lib === r.model_lib);
+  const shared = await Promise.all(others.map((m) => model.match(new URL('tensor-cache.json', baseUrl(m.model)).href)));
+  if (!shared.some(Boolean)) await wasm.delete(r.model_lib);
   const custom = settings.get<CustomModel[]>(CUSTOM_KEY, []);
   if (custom.some((m) => m.model_id === id)) settings.set(CUSTOM_KEY, custom.filter((m) => m.model_id !== id));
 }
@@ -162,7 +169,10 @@ export async function importFolder(settings: Settings, files: File[], progress?:
   if (missing.length) throw new Error(`This folder is not an MLC model for the browser: it has no ${missing.join(', ')}. Compile one with mlc_llm (see llm.mlc.ai/docs/deploy/webllm).`);
   const folder = (files[0]!.webkitRelativePath || '').split('/')[0] || lib!.name.replace(/\.wasm$/, '');
   const cfg = JSON.parse(await config!.text()) as { model_id?: string; context_window_size?: number };
-  const id = (cfg.model_id || folder).replace(/[^\w.-]+/g, '-');
+  let id = (cfg.model_id || folder).replace(/[^\w.-]+/g, '-');
+  // Never shadow a catalogue model: the imported files would be ignored for the download.
+  const { prebuiltAppConfig } = await import('@mlc-ai/web-llm');
+  if (prebuiltAppConfig.model_list.some((m) => m.model_id === id)) id = `${id}-local`;
   const model = `${LOCAL_HOST}/${encodeURIComponent(id)}`;
   const base = baseUrl(model);
   const model_lib = `${LOCAL_HOST}/${encodeURIComponent(id)}/${encodeURIComponent(lib!.name)}`;

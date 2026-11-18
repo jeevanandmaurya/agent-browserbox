@@ -20,6 +20,8 @@ export interface ContextReport {
   compactions: number;
   /** Fraction of the window at which the conversation is compacted automatically (0 = off). */
   autoCompactAt: number;
+  /** The oldest messages drop out of the model's view instead (small in-browser models). */
+  rolling?: boolean;
 }
 
 export interface Msg {
@@ -68,6 +70,8 @@ export interface TurnResult {
   stop: 'end' | 'tool_use' | 'max_tokens' | 'refusal' | 'pause';
   usage: Usage;
   model: string;
+  /** Speed measured by the engine itself, when it reports one (time to first token in ms). */
+  speed?: { tps: number; ttft: number };
 }
 
 export interface Provider {

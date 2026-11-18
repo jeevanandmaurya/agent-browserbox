@@ -11,13 +11,28 @@ const sent: ChatMsg[][] = [];
 const options: Array<Record<string, unknown>> = [];
 /** The conversation the fake engine holds after its last reply (WebLLM's KV cache). */
 let memory: ChatMsg[] | null = null;
-let replies: string[] = [];
-/** Rough token count, as a real tokenizer would report (about 4 characters per token). */
-const tokens = (msgs: ChatMsg[]) => Math.ceil(msgs.reduce((n, m) => n + m.content.length, 0) / 4);
+/** The loaded model's context window, as WebLLM enforces it. */
+let window = 4096;
+/** Scripted replies: text, or text plus how generation ended and the engine's own speed figures. */
+let replies: Array<string | { text: string; finish?: string; extra?: Record<string, number> }> = [];
+/** Token count as a real tokenizer reports it: about 4 Latin characters per token, but about one per CJK character. */
+const tokens = (msgs: ChatMsg[]) => {
+  const text = msgs.map((m) => m.content).join('');
+  const ascii = [...text].filter((c) => c.charCodeAt(0) < 128).length;
+  return Math.ceil(ascii / 4 + (text.length - ascii));
+};
 
 vi.mock('@mlc-ai/web-llm', () => ({
-  prebuiltAppConfig: { model_list: [{ model_id: 'tiny', model: 'https://example/tiny', model_lib: 'https://example/tiny.wasm', vram_required_MB: 500, overrides: { context_window_size: 4096 } }] },
-  CreateMLCEngine: async () => ({
+  prebuiltAppConfig: {
+    model_list: [
+      { model_id: 'tiny', model: 'https://example/tiny', model_lib: 'https://example/tiny.wasm', vram_required_MB: 500, overrides: { context_window_size: 4096 } },
+      { model_id: 'tiny-2k', model: 'https://example/tiny-2k', model_lib: 'https://example/tiny-2k.wasm', vram_required_MB: 500, overrides: { context_window_size: 2048 } },
+      // Two models sharing one GPU library, as some catalogue models do.
+      { model_id: 'pair-a', model: 'https://example/pair-a', model_lib: 'https://example/shared.wasm', vram_required_MB: 900 },
+      { model_id: 'pair-b', model: 'https://example/pair-b', model_lib: 'https://example/shared.wasm', vram_required_MB: 900 },
+    ],
+  },
+  CreateMLCEngine: async (id: string) => ((window = id === 'tiny-2k' ? 2048 : 4096), {
     unload: async () => undefined,
     interruptGenerate: () => undefined,
     chat: {
@@ -30,12 +45,15 @@ vi.mock('@mlc-ai/web-llm', () => ({
           const promptTokens = reused ? tokens(req.messages.slice(-1)) : tokens(req.messages);
           sent.push(structuredClone(req.messages));
           options.push({ ...req, messages: undefined });
-          const text = replies.shift() ?? 'OK.';
+          // Like WebLLM, a prompt longer than the window is an error.
+          if (tokens(req.messages) > window) throw new Error(`Prompt tokens exceed context window size: ${tokens(req.messages)} > ${window}`);
+          const next = replies.shift() ?? 'OK.';
+          const { text, finish = 'stop', extra } = typeof next === 'string' ? { text: next } : next;
           return (async function* () {
             // Streamed in small pieces, like a real engine.
             for (let i = 0; i < text.length; i += 7) yield { choices: [{ delta: { content: text.slice(i, i + 7) } }] };
             memory = [...req.messages, { role: 'assistant', content: text }];
-            yield { choices: [{ delta: {} }], usage: { prompt_tokens: promptTokens, completion_tokens: Math.ceil(text.length / 4) } };
+            yield { choices: [{ delta: {}, finish_reason: finish }], usage: { prompt_tokens: promptTokens, completion_tokens: Math.ceil(text.length / 4), extra } };
           })();
         },
       },
@@ -65,6 +83,7 @@ const userTexts = (msgs: ChatMsg[]) => msgs.filter((m) => m.role === 'user').map
 
 beforeEach(() => {
   memory = null;
+  window = 4096;
   sent.length = 0;
   options.length = 0;
   replies = [];
@@ -192,5 +211,103 @@ describe('in-browser model: parsing replies', () => {
     replies = ['Fine.'];
     await agent.send('again');
     expect(sent.at(-1)!.some((m) => m.content.includes('<think>'))).toBe(false);
+  });
+});
+
+describe('in-browser model: limits', () => {
+  it("uses each model's own window (2k models too)", async () => {
+    const { agent, os } = await setup('tiny-2k');
+    for (let i = 0; i < 10; i++) {
+      replies.push(`Reply ${i}: ${'words '.repeat(80)}`);
+      await agent.send(`Message ${i}: ${'text '.repeat(80)}`);
+    }
+    expect(userTexts(sent.at(-1)!)).toContain('Message 9');
+    const report = await agent.context();
+    expect(report.window).toBe(2048);
+    expect(report.rolling).toBe(true);
+    expect(report.autoCompactAt).toBe(0);
+    void os;
+  });
+
+  it('keeps fitting when the text is Chinese, Japanese or emoji', async () => {
+    const { agent, events } = await setup();
+    // ~1 token per character: far more tokens than a characters ÷ 4 guess.
+    const cjk = (n: number) => '我们今天讨论一下这个问题的解决方案。'.repeat(n);
+    for (let i = 0; i < 8; i++) {
+      replies.push(cjk(30));
+      await agent.send(`${i}: ${cjk(30)}`);
+    }
+    expect(events.filter((e) => e.type === 'error')).toEqual([]);
+    expect(sent.length).toBe(8);
+  });
+
+  it('says when a reply was cut off at the output limit, and does not run a half-written call', async () => {
+    const { agent, events } = await setup();
+    replies = [{ text: '<tool_call>{"name": "write_file", "arguments": {"path": "a.txt", "content": "lots of text', finish: 'length' }];
+    await agent.send('write a long file');
+    expect(events.some((e) => e.type === 'tool_start')).toBe(false);
+    expect(events.some((e) => e.type === 'note' && /output limit|cut off/i.test(String(e.text)))).toBe(true);
+  });
+
+  it("uses the engine's own speed figures", async () => {
+    const { agent, events } = await setup();
+    replies = [{ text: 'Hello.', extra: { decode_tokens_per_s: 12.5, time_to_first_token_s: 1.5 } }];
+    await agent.send('hi');
+    const usage = events.find((e) => e.type === 'usage') as unknown as { stats: { tps: number; ttft: number } };
+    expect(usage.stats.tps).toBe(12.5);
+    expect(usage.stats.ttft).toBe(1500);
+  });
+});
+
+describe('in-browser model store', () => {
+  // A small Cache Storage, as browsers have (Node does not).
+  const stores = new Map<string, Map<string, Response>>();
+  const cacheFor = (name: string) => {
+    if (!stores.has(name)) stores.set(name, new Map());
+    const m = stores.get(name)!;
+    const key = (r: string | Request) => (typeof r === 'string' ? r : r.url);
+    return {
+      match: async (r: string | Request) => m.get(key(r))?.clone(),
+      put: async (r: string | Request, res: Response) => void m.set(key(r), res.clone()),
+      delete: async (r: string | Request) => m.delete(key(r)),
+      keys: async () => [...m.keys()].map((url) => ({ url })),
+    };
+  };
+  beforeEach(() => {
+    stores.clear();
+    vi.stubGlobal('caches', { open: async (name: string) => cacheFor(name) });
+  });
+  const settingsStore = () => {
+    const data = new Map<string, unknown>();
+    return { get: <T,>(k: string, f: T) => (data.has(k) ? (data.get(k) as T) : f), set: (k: string, v: unknown) => void data.set(k, v) };
+  };
+  const fakeDownload = async (model: string) => {
+    const base = `${model}/resolve/main/`;
+    await (await caches.open('webllm/model')).put(`${base}tensor-cache.json`, new Response(JSON.stringify({ records: [{ dataPath: 'p.bin', nbytes: 1 }] })));
+    await (await caches.open('webllm/model')).put(`${base}p.bin`, new Response('x'));
+    await (await caches.open('webllm/config')).put(`${base}mlc-chat-config.json`, new Response('{}'));
+    await (await caches.open('webllm/wasm')).put('https://example/shared.wasm', new Response('w'));
+  };
+
+  it('deleting one model keeps a GPU library another downloaded model shares', async () => {
+    const { remove, isDownloaded } = await import('../src/agent/providers/webllm-store');
+    const settings = settingsStore();
+    await fakeDownload('https://example/pair-a');
+    await fakeDownload('https://example/pair-b');
+    await remove(settings, 'pair-a');
+    expect(await isDownloaded(settings, 'pair-a')).toBe(false);
+    expect(await isDownloaded(settings, 'pair-b')).toBe(true);
+    await remove(settings, 'pair-b');
+    expect(await (await caches.open('webllm/wasm')).match('https://example/shared.wasm')).toBeUndefined();
+  });
+
+  it('an imported model never hides behind a catalogue model of the same name', async () => {
+    const { importFolder, appConfig } = await import('../src/agent/providers/webllm-store');
+    const settings = settingsStore();
+    const file = (name: string, body: string) => new File([body], name);
+    const id = await importFolder(settings, [file('mlc-chat-config.json', JSON.stringify({ model_id: 'tiny' })), file('ndarray-cache.json', '{"records":[]}'), file('lib.wasm', 'w')]);
+    expect(id).toBe('tiny-local');
+    const first = (await appConfig(settings)).model_list.find((m) => m.model_id === id);
+    expect(first?.model).toContain('models.browserbox.local');
   });
 });

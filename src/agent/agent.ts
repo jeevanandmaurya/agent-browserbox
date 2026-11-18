@@ -187,6 +187,7 @@ export class Agent {
           break;
         }
         // A truncated turn can leave a tool input half-written; never run it.
+        if (result.stop === 'max_tokens') emit({ type: 'note', text: 'The reply hit the output limit and was cut off, so its unfinished tool call was not run. The agent was asked to retry in smaller steps.' });
         const results =
           result.stop === 'max_tokens'
             ? calls.map((c): ToolResult => ({ type: 'tool_result', tool_use_id: c.id, is_error: true, content: 'Your output was cut off before this tool call was complete, so it was not run. Retry with a smaller input (for example, write large files in several parts).' }))
@@ -248,7 +249,8 @@ export class Agent {
   /** Where the context window is going right now. */
   context(): ContextReport {
     const cfg = loadConfig(this.os);
-    return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact ? AUTO_COMPACT_AT : 0 };
+    const rolling = cfg.provider === 'webllm';
+    return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact && !rolling ? AUTO_COMPACT_AT : 0, rolling };
   }
 
   /** Summarises the conversation on request. Resolves false when there was nothing to do or it failed. */
@@ -309,7 +311,8 @@ export class Agent {
 
   /** One model call, timed: time to first token, and output speed over the time spent generating. */
   async #turn(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
-    const t0 = performance.now();
+    // A status message (e.g. "Loading model…") means the model has not started yet: time from the last one.
+    let t0 = performance.now();
     let first = 0;
     const result = await provider.turn({
       system: this.#system!,
@@ -318,12 +321,18 @@ export class Agent {
       signal,
       onText: (delta) => ((first ||= performance.now()), emit({ type: 'text', delta })),
       onThinking: (delta) => ((first ||= performance.now()), emit({ type: 'thinking', delta })),
-      onStatus: (text) => emit({ type: 'status', text }),
+      onStatus: (text) => {
+        if (!first) t0 = performance.now();
+        emit({ type: 'status', text });
+      },
     });
     const end = performance.now();
     const generating = Math.max(1, end - (first || t0));
     // Too short a burst to measure (a cached or very short answer) gives no speed rather than a silly one.
-    const stats: TurnStats = { ms: end - t0, ttft: (first || end) - t0, tps: result.usage.output > 1 && generating >= 150 ? result.usage.output / (generating / 1000) : 0 };
+    const stats: TurnStats = result.speed
+      ? { ms: end - t0, ttft: result.speed.ttft, tps: result.speed.tps }
+      : // Without streamed text (a reply that is only a tool call) there is no first token to time from.
+        { ms: end - t0, ttft: (first || end) - t0, tps: first && result.usage.output > 1 && generating >= 150 ? result.usage.output / (generating / 1000) : 0 };
     return { ...result, stats };
   }
 
