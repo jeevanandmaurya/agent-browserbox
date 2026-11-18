@@ -42,6 +42,8 @@ export interface BundleInput {
   entry: string | { contents: string; dir: string; name: string };
   /** browser: the page's code · server: the backend, as a script that sets `__bbxServer`. */
   target: 'browser' | 'server';
+  /** A production build: minified, production builds of npm packages, NODE_ENV=production. */
+  production?: boolean;
   /** `import.meta.env` (browser) — VITE_ variables and the like. */
   env?: Record<string, string>;
   pkg?: PackageJson | null;
@@ -87,7 +89,7 @@ const fmt = (m: Esbuild.Message) => {
 
 export async function bundle(input: BundleInput): Promise<BundleOutput> {
   const { fs, root } = input;
-  const npm = new Npm(input.pkg ?? null, input.target === 'browser');
+  const npm = new Npm(input.pkg ?? null, input.target === 'browser' && !input.production);
   const fetcher = input.fetcher ?? fetch;
   const inputs = new Set<string>();
   const paths = input.tsconfig?.compilerOptions?.paths ?? {};
@@ -154,7 +156,7 @@ export async function bundle(input: BundleInput): Promise<BundleOutput> {
     },
   };
 
-  const env = { MODE: 'development', DEV: true, PROD: false, SSR: input.target === 'server', BASE_URL: '/', ...input.env };
+  const env = { MODE: input.production ? 'production' : 'development', DEV: !input.production, PROD: !!input.production, SSR: input.target === 'server', BASE_URL: '/', ...input.env };
   const entry = input.entry;
   try {
     const b = await esbuild();
@@ -169,7 +171,9 @@ export async function bundle(input: BundleInput): Promise<BundleOutput> {
       target: 'es2022',
       jsx: 'automatic',
       jsxImportSource,
-      define: { 'process.env.NODE_ENV': '"development"', 'import.meta.env': JSON.stringify(env) },
+      // Each key on its own too, so `if (import.meta.env.DEV)` folds and dev-only code drops out of production builds.
+      define: { 'process.env.NODE_ENV': input.production ? '"production"' : '"development"', 'import.meta.env': JSON.stringify(env), ...Object.fromEntries(Object.entries(env).map(([k, v]) => [`import.meta.env.${k}`, JSON.stringify(v)])) },
+      minify: !!input.production,
       logLevel: 'silent',
       charset: 'utf8',
       plugins: [plugin],

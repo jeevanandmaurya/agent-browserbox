@@ -74,7 +74,7 @@ export class KernelServer {
     os.perms.setPrompter((req, signal) => this.#ask<PermDecision>({ kind: 'perm', payload: req }, signal).catch(() => 'deny'));
     // Clipboard and speech happen in exactly one window.
     os.ui = { call: (method, ...args) => this.#ask({ kind: 'ui', payload: { method, args } }, undefined, [...this.#clients.values()].find((c) => c.role === 'ui')) as Promise<never> };
-    setSandboxHost({ run: (kind, payload, opts) => this.#hostRun(kind, payload, opts), backend: (op, id, payload, opts) => this.#hostBackend(op, id, payload, opts) });
+    setSandboxHost({ run: (kind, payload, opts) => this.#hostRun(kind, payload, opts), backend: (op, id, payload, opts) => this.#hostBackend(op, id, payload, opts), node: (job, opts) => this.#hostNode(job, opts) });
   }
 
   #broadcast(name: string, payload: unknown, except: number | null = null): void {
@@ -115,6 +115,21 @@ export class KernelServer {
       return await host.peer.call<RunResult>('host.run', runId, kind, payload, { cwd: opts.cwd, timeoutMs: opts.timeoutMs });
     } catch (err) {
       return { ok: false, stdout: '', stderr: '', ms: 0, error: `sandbox host failed: ${(err as Error).message}` };
+    } finally {
+      opts.signal?.removeEventListener('abort', abort);
+      this.#runs.delete(runId);
+    }
+  }
+
+  async #hostNode(job: import('@/kernel-host/node-host').NodeJob, opts: RunOptions): Promise<{ code: number }> {
+    const host = [...this.#clients.values()].find((c) => c.role === 'host');
+    if (!host) throw new Error('Node.js runs in a window: open the agent window or the desktop.');
+    const runId = this.#nextRun++;
+    this.#runs.set(runId, opts);
+    const abort = () => host.peer.emit('host:abort', runId);
+    opts.signal?.addEventListener('abort', abort);
+    try {
+      return await host.peer.call<{ code: number }>('host.node', runId, job);
     } finally {
       opts.signal?.removeEventListener('abort', abort);
       this.#runs.delete(runId);
@@ -250,7 +265,8 @@ export class KernelServer {
       'bus.emit': (type: 'notify' | 'app:open', payload: never) => {
         if (type !== 'notify' && type !== 'app:open') throw new Error(`windows may not emit ${String(type)}`);
         // Mark app requests from windows, so the agent window only follows the kernel's own (the agent's tools, the shell).
-        as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: true } as never) : payload));
+        // Apps a GUI window opens for itself are its own business; the hidden bridge (a Node.js dev server starting) speaks for the kernel.
+        as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: client.role === 'ui' } as never) : payload));
       },
 
       // Agents

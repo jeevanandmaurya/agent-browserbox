@@ -1,5 +1,6 @@
 import type { AppModule } from '@/ui/apps';
 import { h } from '@/ui/dom';
+import { accountsSection } from './accounts';
 import { connectorsSection } from './connectors';
 import { dataSection } from './data';
 import { environmentSection } from './environment';
@@ -29,6 +30,7 @@ const app: AppModule = {
       { id: 'model', label: 'Model', build: () => modelSection(ctx, saved) },
       { id: 'permissions', label: 'Permissions', build: () => permissionsSection(ctx, saved) },
       { id: 'appearance', label: 'Appearance', build: () => appearanceSection(ctx, saved) },
+      { id: 'accounts', label: 'Accounts', build: () => accountsSection(ctx, saved) },
       { id: 'connectors', label: 'Connectors', build: () => connectorsSection(ctx, saved) },
       { id: 'skills', label: 'Skills', build: () => extensionSection(ctx, 'skill', saved) },
       { id: 'agents', label: 'Agents', build: () => extensionSection(ctx, 'agent', saved) },

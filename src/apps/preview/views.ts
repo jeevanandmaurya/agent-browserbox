@@ -1,6 +1,7 @@
 /** Per-type preview renderers. Each returns the element to show. */
 import { PREVIEW_FRAME_URL } from '@/config/origins';
 import { h } from '@/ui/dom';
+import { embeddable } from '@/ui/isolation';
 
 const MAX_TEXT = 2 * 1024 * 1024;
 const HEX_BYTES = 64 * 1024;
@@ -14,7 +15,7 @@ const SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downl
  * BrowserBox window's script restrictions. `onMessage` gets the page's other messages.
  */
 export function htmlFrame(html: string, title: string, onMessage?: (data: { type?: string } & Record<string, unknown>, reply: (msg: unknown, transfer?: Transferable[]) => void) => void): HTMLIFrameElement {
-  const frame = h('iframe', { class: 'pv-frame', title, referrerPolicy: 'no-referrer' });
+  const frame = embeddable(h('iframe', { class: 'pv-frame', title, referrerPolicy: 'no-referrer' }));
   frame.setAttribute('sandbox', SANDBOX);
   frame.setAttribute('allow', 'fullscreen; clipboard-write; autoplay');
   const reply = (msg: unknown, transfer: Transferable[] = []) => frame.contentWindow?.postMessage(msg, '*', transfer);

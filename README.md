@@ -113,6 +113,49 @@ Not supported: Node.js APIs in the backend (it runs on web APIs: `Request`,
 `Response`, `fetch`, `crypto`), native modules, and tools that need Node
 (the real Vite, Next.js, webpack).
 
+## Shipping: GitHub and deploys
+
+git's own HTTP protocol is not open to web pages, but GitHub's REST API is,
+and so are Netlify's and Vercel's. BrowserBox uses them directly, with tokens
+you add in **Settings → Accounts** (stored encrypted; only the kernel reads
+them):
+
+- `gh auth login | status | logout`
+- `gh push [dir] [--repo owner/name] [--branch b] [-m msg]`: the folder's
+  current files become one commit on the branch (only changed files are
+  uploaded; `.gitignore` is respected; the repository is created, private,
+  if it does not exist). The folder remembers where it was pushed.
+- `gh repo create | clone`, `gh pr create --head b --title t`
+- `build [dir]`: a production build — pages bundled, minified and inlined
+  with their npm packages, dev-only code (`import.meta.env.DEV`) removed,
+  other files copied — into `dist/`.
+- `deploy [dir] --to netlify | vercel | github-pages`: builds, uploads only
+  what the host lacks, waits until it is live and prints the URL. Later
+  deploys of the folder update the same site. A `server.ts` backend is not
+  deployed (these are static hosts).
+
+The agent has the same through its `github` and `deploy` tools.
+
+## Real Node.js: cross-origin isolation and WebContainers
+
+**Settings → Environment → Isolate BrowserBox** turns on cross-origin
+isolation, so `SharedArrayBuffer` and WebAssembly threads work. GitHub Pages
+cannot send the COOP/COEP headers this needs, so the service worker adds them
+(COEP `credentialless`, so CDNs and model downloads keep working). Sandboxes,
+previews and pages in the Browser app are then embedded as `credentialless`
+frames (Chrome and Edge; other browsers do not embed them while isolated).
+
+With isolation on, `pkg install node` adds **real Node.js and npm** through
+[WebContainers](https://webcontainers.io): `node`, `npm install`,
+`npm run …` and `npx` run in the browser for the current project (the folder
+with `package.json`). Files are copied into the container before a command,
+edits follow it live while it runs (dev servers reload), and what it changed
+comes back afterwards; `node_modules` stays inside. A server that starts
+listening opens in the Browser app; ^C stops it. The WebContainer runtime is
+loaded from StackBlitz when Node first starts; its client library is MIT, and
+StackBlitz's terms apply to the runtime (commercial production use needs
+their licence).
+
 ## Packages
 
 Optional software is installed with `pkg`, like any package manager. Python

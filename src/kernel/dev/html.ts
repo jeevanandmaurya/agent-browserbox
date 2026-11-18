@@ -60,6 +60,8 @@ export interface RenderOptions {
   /** The address the page believes it is at (for client-side routers). */
   path: string;
   port: number;
+  /** Leave out the dev runtime (request forwarding, console capture): for a production build. */
+  runtime?: boolean;
   bundle(entry: BundleInput['entry']): Promise<BundleOutput>;
 }
 
@@ -148,7 +150,8 @@ export async function renderHtml(fs: BuildFs, o: RenderOptions): Promise<DevPage
   for (const [from, to] of await Promise.all(jobs)) html = html.replace(from, () => to);
 
   const config = { port: o.port, path: o.path, errors };
-  const head = `<script>window.__bbxDev=${inline(JSON.stringify(config), 'script')};\n${shimSrc}</script>${css.length ? `\n<style>\n${inline(css.join('\n'), 'style')}\n</style>` : ''}`;
+  const style = css.length ? `\n<style>\n${inline(css.join('\n'), 'style')}\n</style>` : '';
+  const head = o.runtime === false ? style : `<script>window.__bbxDev=${inline(JSON.stringify(config), 'script')};\n${shimSrc}</script>${style}`;
   // The runtime must run before any of the page's own scripts.
   if (/<head\b[^>]*>/i.test(html)) html = html.replace(/<head\b[^>]*>/i, (h) => `${h}\n${head}`);
   else if (/<html\b[^>]*>/i.test(html)) html = html.replace(/<html\b[^>]*>/i, (h) => `${h}<head>${head}</head>`);

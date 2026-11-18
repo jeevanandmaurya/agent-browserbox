@@ -63,5 +63,41 @@ export function environmentSection(ctx: AppContext, saved: () => void): HTMLElem
     rows,
     error,
     h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => rows.append(row()) }, 'Add variable')),
+    isolationBlock(),
+  );
+}
+
+/**
+ * Cross-origin isolation: SharedArrayBuffer, WebAssembly threads and Node.js
+ * in the browser (the node package) need it. The service worker adds the
+ * headers, so it applies from the next load.
+ */
+/** Read by the service worker (public/sw.js): the same absolute key everywhere. */
+const COI_KEY = 'https://flags.browserbox.local/coi';
+
+function isolationBlock(): HTMLElement {
+  const on = globalThis.crossOriginIsolated === true;
+  const status = h('span', { class: `badge ${on ? 'ok' : ''}` }, on ? 'On' : 'Off');
+  const box = h('input', { type: 'checkbox', id: 'st-coi' }) as HTMLInputElement;
+  const note = h('p', { class: 'st-note', hidden: true });
+  const reload = h('button', { class: 'btn primary', type: 'button', hidden: true, onclick: () => (window.top ?? window).location.reload() }, 'Reload to apply');
+  void caches?.open('bbx-flags').then((c) => c.match(COI_KEY)).then((r) => (box.checked = !!r), () => undefined);
+  box.addEventListener('change', async () => {
+    const c = await caches.open('bbx-flags');
+    if (box.checked) await c.put(COI_KEY, new Response('1'));
+    else await c.delete(COI_KEY);
+    const pending = box.checked !== on;
+    reload.hidden = !pending;
+    note.hidden = !pending;
+    note.textContent = pending ? 'Reload every BrowserBox window (agent and desktop) for this to take effect.' : '';
+  });
+  return h(
+    'div',
+    { class: 'st-panel' },
+    h('h3', null, 'Cross-origin isolation ', status),
+    h('p', { class: 'muted st-note' }, 'Turns on SharedArrayBuffer and WebAssembly threads, which the node package (real Node.js and npm in the browser) needs. With it on, websites that do not allow it can no longer be shown inside the Browser app, and pop-up windows lose their link to this one.'),
+    h('label', { class: 'row', for: 'st-coi' }, box, h('span', null, 'Isolate BrowserBox (SharedArrayBuffer)')),
+    note,
+    reload,
   );
 }

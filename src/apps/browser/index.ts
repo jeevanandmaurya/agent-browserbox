@@ -1,3 +1,4 @@
+import { embeddable } from '@/ui/isolation';
 import './style.css';
 import type { AppModule } from '@/ui/apps';
 import { h } from '@/ui/dom';
@@ -189,7 +190,7 @@ const app: AppModule = {
         setBusy(false);
         return;
       }
-      const frame = h('iframe', { class: 'br-frame', title: `Web page: ${hostOf(url)}` });
+      const frame = embeddable(h('iframe', { class: 'br-frame', title: `Web page: ${hostOf(url)}` }), url);
       // Sandbox must be set before src. allow-same-origin keeps the remote site's own
       // origin (cross-origin to us); same-origin URLs are refused in navigate().
       frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-same-origin');

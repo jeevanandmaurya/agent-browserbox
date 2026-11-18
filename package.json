@@ -24,6 +24,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
     "@mlc-ai/web-llm": "^0.2.88",
+    "@webcontainer/api": "^1.6.4",
     "buffer": "^6.0.3",
     "fflate": "^0.8.3",
     "isomorphic-git": "^1.44.15",
