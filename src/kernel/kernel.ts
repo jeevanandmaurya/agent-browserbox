@@ -2,9 +2,9 @@ import { McpHub } from '@/agent/ext/mcp';
 import { Bus } from './bus';
 import { detectCaps, type PlatformCap } from './caps';
 import { KCore } from './kcore';
-import { setEsbuildLoader } from './dev/bundle';
+import { setEsbuildLoader } from './dev/esbuild';
 import { loadEsbuild } from './dev/esbuild-loader';
-import { DevServers } from './dev/server';
+import { LazyDev } from './dev/lazy';
 import { PackageManager } from './packages';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
@@ -68,7 +68,7 @@ export class KernelCore implements Kernel {
   /** Connections to remote MCP servers (connectors). */
   readonly mcp = new McpHub(this);
   readonly packages = new PackageManager(this);
-  readonly dev = new DevServers(this);
+  readonly dev = new LazyDev(this);
 
   constructor() {
     setEsbuildLoader(() => loadEsbuild(this.packages, (msg) => this.log('dev', msg)));

@@ -1,5 +1,5 @@
 import { PACKAGE_CACHE } from '@/sandbox/python-runtime';
-import type { EsbuildApi } from './bundle';
+import type { EsbuildApi } from './esbuild';
 
 /** esbuild compiled to WebAssembly, installed as the `esbuild` package. */
 export const ESBUILD_VERSION = '0.25.5';

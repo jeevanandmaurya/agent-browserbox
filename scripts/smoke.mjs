@@ -3,7 +3,8 @@
 // Usage: npm run build && npm run smoke
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { preview } from 'vite';
 // Resolve Playwright from the project or a global install (NODE_PATH).
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -70,6 +71,24 @@ async function firstBoot(page, answers) {
   }
   return prompts;
 }
+// ---- Startup stays lean: what loads before you can type ---------------------
+await check('startup bundles stay within budget, with nothing loaded early that is not needed', async () => {
+  const assets = readdirSync('dist/assets');
+  const read = (prefix) => readFileSync(`dist/assets/${assets.find((f) => f.startsWith(prefix) && f.endsWith('.js'))}`, 'utf8');
+  const kernel = read('main-');
+  const agent = read('agent-');
+  const kb = (t) => gzipSync(t).length / 1024;
+  const problems = [];
+  // Budgets, compressed (they were 54 and 20 KB when set).
+  if (kb(kernel) > 60) problems.push(`kernel worker ${kb(kernel).toFixed(1)} KB > 60 KB`);
+  if (kb(agent) > 24) problems.push(`agent window ${kb(agent).toFixed(1)} KB > 24 KB`);
+  // Kernel-only code in the window, or on-demand code in the kernel's startup file.
+  if (agent.includes('Your context window is nearly full')) problems.push('the agent loop is bundled into the agent window');
+  if (kernel.includes('BrowserBox dev runtime')) problems.push('the dev server loads at kernel startup');
+  if (problems.length) throw new Error(problems.join('; '));
+  return `kernel ${kb(kernel).toFixed(1)} KB, agent window ${kb(agent).toFixed(1)} KB (gzip)`;
+});
+
 await check('first boot: kernel log, then setup in the console, then the agent window', async () => {
   await agent.waitForSelector('.boot-console', { timeout: 20000 });
   await agent.waitForFunction(() => /vfs: mounted (opfs|memfs) on \//.test(document.querySelector('.boot-console .term-out')?.textContent ?? '') && /first boot/.test(document.querySelector('.boot-console .term-out').textContent), null, { timeout: 20000 });

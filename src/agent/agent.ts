@@ -54,8 +54,7 @@ export interface AgentHost {
 const PLAN_TOOLS = new Set(['read_file', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
 const PLAN_NOTE =
   'Plan mode: investigate with read-only tools only, then reply with a short, numbered plan of what you would change and how you would check it (files, commands, tests). Do not make any changes yet: the user will review the plan and tell you to go ahead.';
-/** Hidden instructions travel with a message in this tag; the chat view does not show it. */
-export const MODE_TAG = /\n*<mode>[\s\S]*?<\/mode>\s*$/;
+export { MODE_TAG } from './mode';
 
 /** Files a tool call will change, resolved to absolute paths. */
 function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string): string[] {

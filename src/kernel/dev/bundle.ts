@@ -8,25 +8,9 @@ import { fetchModule, Npm, type PackageJson } from './npm';
  * folder; npm packages from esm.sh. One bundle per entry, no files written.
  */
 
-export type EsbuildApi = Pick<typeof Esbuild, 'build'>;
+import { esbuild, type EsbuildApi } from './esbuild';
 
-let loader: (() => Promise<EsbuildApi>) | null = null;
-let api: Promise<EsbuildApi> | null = null;
-
-/** The kernel installs a loader that reads esbuild from the package cache; tests pass the npm build. */
-export function setEsbuildLoader(fn: () => Promise<EsbuildApi>): void {
-  loader = fn;
-  api = null;
-}
-
-export function esbuild(): Promise<EsbuildApi> {
-  if (!loader) return Promise.reject(new Error('esbuild is not available here'));
-  api ??= loader().catch((err: unknown) => {
-    api = null;
-    throw err;
-  });
-  return api;
-}
+export { setEsbuildLoader, esbuild, type EsbuildApi } from './esbuild';
 
 /** The bit of the filesystem a build reads. */
 export interface BuildFs {

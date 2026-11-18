@@ -1,4 +1,5 @@
-import { MODE_TAG, type AgentEvent } from '@/agent/agent';
+import type { AgentEvent } from '@/agent/agent';
+import { MODE_TAG } from '@/agent/mode';
 import type { FileDiff } from '@/agent/diff';
 import type { Msg } from '@/agent/types';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
