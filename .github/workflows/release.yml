@@ -1,12 +1,21 @@
 name: Release to npm
 
-# Tags pick what is released:
-#   v1.2.3      the app, @jeevanand/browserbox (root package.json)
-#   sdk-v1.2.3  the SDK and its runtime, @jeevanand/agent-browserbox and
-#               @jeevanand/agent-browserbox-runtime (always the same version)
+# What is released:
+#   app  @jeevanand/browserbox (root package.json); tag v1.2.3
+#   sdk  @jeevanand/agent-browserbox and @jeevanand/agent-browserbox-runtime
+#        (always the same version, packages/*/package.json); tag sdk-v1.2.3
+# Start it by pushing such a tag, or from the Actions tab (Run workflow), which
+# releases the version in package.json and creates the tag.
 on:
   push:
     tags: ['v*', 'sdk-v*']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: What to release
+        type: choice
+        options: [sdk, app]
+        default: sdk
 
 permissions:
   contents: write
@@ -33,15 +42,25 @@ jobs:
             exit 1
           fi
 
-      - name: Check that the tag matches the package versions
+      - name: Work out what to release
+        id: what
+        env:
+          INPUT: ${{ inputs.release }}
         run: |
-          tag="$GITHUB_REF_NAME"
-          if [[ "$tag" == sdk-v* ]]; then
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            kind="$INPUT"
+            if [ "$kind" = sdk ]; then tag="sdk-v$(node -p "require('./packages/sdk/package.json').version")"
+            else tag="v$(node -p "require('./package.json').version")"; fi
+          else
+            tag="$GITHUB_REF_NAME"
+            if [[ "$tag" == sdk-v* ]]; then kind=sdk; else kind=app; fi
+          fi
+          if [ "$kind" = sdk ]; then
             want="${tag#sdk-v}"
             for p in packages/sdk packages/runtime; do
               have=$(node -p "require('./$p/package.json').version")
               if [ "$have" != "$want" ]; then
-                echo "::error::$tag does not match $p/package.json version $have"
+                echo "::error::$tag does not match $p/package.json version $have (the SDK and the runtime share a version)"
                 exit 1
               fi
             done
@@ -52,25 +71,28 @@ jobs:
               exit 1
             fi
           fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $kind as $tag"
 
       - run: npm ci
       - run: npm test
 
       - name: Publish the app
-        if: ${{ !startsWith(github.ref_name, 'sdk-v') }}
+        if: steps.what.outputs.kind == 'app'
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Test the SDK against the runtime
-        if: ${{ startsWith(github.ref_name, 'sdk-v') }}
+        if: steps.what.outputs.kind == 'sdk'
         run: |
           npm install --no-save playwright
           npx playwright install --with-deps chromium
           npm run build:sdk && npm run build:runtime && node scripts/sdk-e2e.mjs
 
       - name: Publish the SDK and the runtime
-        if: ${{ startsWith(github.ref_name, 'sdk-v') }}
+        if: steps.what.outputs.kind == 'sdk'
         run: |
           npm publish --provenance --access public -w @jeevanand/agent-browserbox-runtime
           npm publish --provenance --access public -w @jeevanand/agent-browserbox
@@ -80,6 +102,7 @@ jobs:
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.what.outputs.tag }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --target "$GITHUB_SHA" --generate-notes --title "$TAG"
