@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 const SRC = resolve(__dirname, '../src');
 const RANK: Record<string, number> = { kernel: 0, 'kernel-worker': 0, sandbox: 0, rpc: 0, config: 0, shell: 1, agent: 2, packages: 3 };
 const APP = 9;
-const ROOTS = new Set(['kernel-worker/main.ts']);
+const ROOTS = new Set(['kernel-worker/main.ts', 'kernel-worker/app-services.ts']);
 
 const rankOf = (top: string) => RANK[top] ?? APP;
 const topOf = (file: string) => relative(SRC, file).split(sep)[0]!;

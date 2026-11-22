@@ -1,3 +1,4 @@
+import { buildCommand } from './commands/build';
 import { npmCommand, npxCommand, serveCommand } from './commands/dev';
 import { execCommands } from './commands/exec';
 import { fsCommands } from './commands/fs';
@@ -19,7 +20,7 @@ export function contributeCommands(...cmds: Command[]): void {
 
 /** Installs the standard command set plus contributed ones. Add a command by adding it to one of these lists. */
 export function registerCommands(shell: Shell): Shell {
-  return shell.register(...fsCommands, ...textCommands, ...sysCommands, ...execCommands, pkgCommand, dmesgCommand, serveCommand, npmCommand, npxCommand, ...contributed);
+  return shell.register(...fsCommands, ...textCommands, ...sysCommands, ...execCommands, pkgCommand, dmesgCommand, serveCommand, npmCommand, npxCommand, buildCommand, ...contributed);
 }
 
 export { Shell } from './shell';

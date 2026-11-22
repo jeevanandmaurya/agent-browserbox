@@ -91,27 +91,3 @@ export const deployCommand: Command = {
   },
 };
 
-export const buildCommand: Command = {
-  name: 'build',
-  summary: 'production build of a project: bundled, minified, ready for any static host',
-  usage: 'build [dir] [--out dist]',
-  async run(ctx) {
-    const { buildSite } = await import('@/kernel/dev/build');
-    const { opt, rest } = args(ctx.args);
-    const dir = ctx.path(rest[0] ?? '.');
-    const out = ctx.path(str(opt.get('out')) ?? join(dir, 'dist'));
-    const started = performance.now();
-    const r = await buildSite(ctx.os.fs, dir);
-    if (r.errors.length) {
-      for (const e of r.errors) ctx.err(`error: ${e}\n`);
-      return 1;
-    }
-    await ctx.os.fs.rm(out, { recursive: true }).catch(() => undefined);
-    let bytes = 0;
-    for (const [p, data] of r.files) {
-      await ctx.os.fs.writeFile(join(out, p), data);
-      bytes += data.length;
-    }
-    ctx.out(`built ${r.files.size} files (${(bytes / 1024).toFixed(1)} KB) into ${out} in ${Math.round(performance.now() - started)} ms\n${r.backend ? `${C.yellow}${r.backend} is a backend: static hosts do not run it.${C.reset}\n` : ''}`);
-  },
-};

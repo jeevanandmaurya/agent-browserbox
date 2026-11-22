@@ -81,7 +81,7 @@ const RUNTIME_VERSION: string = JSON.parse(readFileSync(new URL('./packages/runt
 
 export default defineConfig({
   plugins: [kernelChain()],
-  define: { __BBX_RUNTIME_VERSION__: JSON.stringify(RUNTIME_VERSION) },
+  define: { __BBX_RUNTIME_VERSION__: JSON.stringify(RUNTIME_VERSION), __BBX_APP_BUILD__: JSON.stringify(!runtimeOnly) },
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {
