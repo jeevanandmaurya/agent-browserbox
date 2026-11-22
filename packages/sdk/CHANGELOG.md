@@ -1,6 +1,6 @@
 # Changelog
 
-Covers both `@jeevanand/agent-browserbox` (the SDK) and
+Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 `@jeevanand/agent-browserbox-runtime` (the runtime), which are always released
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.

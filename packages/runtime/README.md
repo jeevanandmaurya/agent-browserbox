@@ -1,6 +1,6 @@
 # @jeevanand/agent-browserbox-runtime
 
-The runtime that [`@jeevanand/agent-browserbox`](../sdk) drives: BrowserBox's
+The runtime that [`@jeevanand/agent-browserbox-sdk`](../sdk) drives: BrowserBox's
 kernel, filesystem, shell and sandboxes, as static files. Install it when you
 want to serve the runtime yourself instead of using the hosted one.
 

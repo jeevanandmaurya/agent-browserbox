@@ -40,7 +40,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:sdk": "npm run build -w @jeevanand/agent-browserbox",
+    "build:sdk": "npm run build -w @jeevanand/agent-browserbox-sdk",
     "build:runtime": "BBX_TARGET=runtime vite build",
     "build:pages": "npm run build && BBX_TARGET=runtime BBX_OUT=dist/runtime vite build",
     "build:wasm": "node scripts/build-wasm.mjs",

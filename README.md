@@ -24,12 +24,13 @@ running on the user's device.
 
 | Package | What it is |
 |---|---|
-| [`@jeevanand/agent-browserbox`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
+| [`@jeevanand/agent-browserbox-sdk`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
 | [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
+| `@jeevanand/agent-browserbox` | Coming next: our agent (models, tools, sessions), working on a BrowserBox. |
 | `@jeevanand/browserbox` | This app. Not on npm at the moment; use the hosted app or run it from source (below). |
 
 ```ts
-import { BrowserBox } from '@jeevanand/agent-browserbox';
+import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
 const box = await BrowserBox.boot();
 const { stdout } = await box.exec('echo hello from the box');
 ```

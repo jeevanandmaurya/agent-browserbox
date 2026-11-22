@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Serves the BrowserBox runtime locally, for @jeevanand/agent-browserbox's `runtimeUrl`.
+// Serves the BrowserBox runtime locally, for @jeevanand/agent-browserbox-sdk's `runtimeUrl`.
 //
 //   npx @jeevanand/agent-browserbox-runtime [--port 4180] [--host 127.0.0.1] [--dir]
 import { createServer } from 'node:http';
@@ -13,7 +13,7 @@ const opt = (name, def) => {
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : def;
 };
 if (args.includes('-h') || args.includes('--help')) {
-  console.log(`Serves the BrowserBox runtime for the @jeevanand/agent-browserbox SDK.
+  console.log(`Serves the BrowserBox runtime for the @jeevanand/agent-browserbox-sdk SDK.
 
 Usage: agent-browserbox-runtime [options]
   --port <n>     port to listen on (default 4180, or the next free one)

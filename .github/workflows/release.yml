@@ -2,7 +2,7 @@ name: Release to npm
 
 # What is released:
 #   app  @jeevanand/browserbox (root package.json); tag v1.2.3
-#   sdk  @jeevanand/agent-browserbox and @jeevanand/agent-browserbox-runtime
+#   sdk  @jeevanand/agent-browserbox-sdk and @jeevanand/agent-browserbox-runtime
 #        (always the same version, packages/*/package.json); tag sdk-v1.2.3
 # Start it by pushing such a tag, or from the Actions tab (Run workflow), which
 # releases the version in package.json and creates the tag.
@@ -114,7 +114,7 @@ jobs:
           VERSION: ${{ steps.what.outputs.version }}
         run: |
           # The runtime first: an SDK must never be on npm without its runtime.
-          for p in @jeevanand/agent-browserbox-runtime @jeevanand/agent-browserbox; do
+          for p in @jeevanand/agent-browserbox-runtime @jeevanand/agent-browserbox-sdk; do
             if [ "$(npm view "$p@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
               echo "$p@$VERSION is already on npm; not publishing it again"
             else
@@ -138,11 +138,11 @@ jobs:
             echo
             echo "| Package | What it is |"
             echo "|---|---|"
-            echo "| [\`@jeevanand/agent-browserbox@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox/v/$VERSION) | The SDK your app imports. 3 kB, no dependencies. |"
+            echo "| [\`@jeevanand/agent-browserbox-sdk@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-sdk/v/$VERSION) | The SDK your app imports. 3 kB, no dependencies. |"
             echo "| [\`@jeevanand/agent-browserbox-runtime@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-runtime/v/$VERSION) | The runtime the SDK drives, for self-hosting. |"
             echo
             echo '```bash'
-            echo "npm install @jeevanand/agent-browserbox@$VERSION"
+            echo "npm install @jeevanand/agent-browserbox-sdk@$VERSION"
             echo '```'
             echo
             echo "The SDK uses the hosted runtime by default. To host it yourself, run \`npx @jeevanand/agent-browserbox-runtime@$VERSION\`, or unzip **agent-browserbox-runtime-$VERSION.zip** below onto any static host and pass its URL as \`runtimeUrl\`. Use the same version of the SDK and the runtime."

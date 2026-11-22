@@ -1,7 +1,7 @@
 {
   "name": "@jeevanand/agent-browserbox-runtime",
   "version": "0.1.0",
-  "description": "The self-hostable runtime for @jeevanand/agent-browserbox: static files (kernel, filesystem, shell, sandboxes) to serve from your own origin.",
+  "description": "The self-hostable runtime for @jeevanand/agent-browserbox-sdk: static files (kernel, filesystem, shell, sandboxes) to serve from your own origin.",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",

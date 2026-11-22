@@ -1,4 +1,4 @@
-# @jeevanand/agent-browserbox
+# @jeevanand/agent-browserbox-sdk
 
 A sandboxed computer in the browser, for AI agents and anything else that
 must run untrusted code: a filesystem, a shell, and JavaScript, Python and
@@ -10,11 +10,11 @@ in a hidden frame from another origin, so your page needs no special headers
 and nothing in the box can touch your page.
 
 ```sh
-npm install @jeevanand/agent-browserbox
+npm install @jeevanand/agent-browserbox-sdk
 ```
 
 ```ts
-import { BrowserBox } from '@jeevanand/agent-browserbox';
+import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
 
 const box = await BrowserBox.boot();
 
