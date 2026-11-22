@@ -8,6 +8,22 @@ export type Block =
   /** Something the provider did on its side (e.g. a web search). Display only. */
   | { type: 'server_note'; text: string };
 
+/** Where the context window is going. Counts are estimates except `used` when `reported` is true. */
+export interface ContextReport {
+  window: number;
+  /** Tokens in the context as of the last model call. */
+  used: number;
+  /** True when `used` was reported by the model rather than estimated. */
+  reported: boolean;
+  parts: { system: number; tools: number; user: number; assistant: number; toolCalls: number; toolResults: number };
+  messages: number;
+  compactions: number;
+  /** Fraction of the window at which the conversation is compacted automatically (0 = off). */
+  autoCompactAt: number;
+  /** The oldest messages drop out of the model's view instead (small in-browser models). */
+  rolling?: boolean;
+}
+
 export interface Msg {
   role: 'user' | 'assistant';
   content: Block[];
@@ -18,17 +34,17 @@ export interface Msg {
   raw?: { provider: string; content: unknown };
 }
 
+export interface ToolSpec {
+  name: string;
+  description: string;
+  input_schema: JsonSchema;
+}
+
 export interface JsonSchema {
   type: 'object';
   properties: Record<string, Record<string, unknown>>;
   required?: string[];
   additionalProperties?: boolean;
-}
-
-export interface ToolSpec {
-  name: string;
-  description: string;
-  input_schema: JsonSchema;
 }
 
 export interface Usage {
@@ -54,11 +70,14 @@ export interface TurnResult {
   stop: 'end' | 'tool_use' | 'max_tokens' | 'refusal' | 'pause';
   usage: Usage;
   model: string;
+  /** Speed measured by the engine itself, when it reports one (time to first token in ms). */
+  speed?: { tps: number; ttft: number };
 }
 
-/** A model the agent talks to. `anthropic()` and `openai()` make one; you can write your own. */
 export interface Provider {
   readonly id: string;
+  /** Rough context budget in tokens; the loop elides old tool output beyond it. 0 = provider manages it. */
+  readonly contextBudget: number;
   /** Size of the model's context window in tokens. */
   readonly contextWindow: number;
   turn(req: TurnRequest): Promise<TurnResult>;

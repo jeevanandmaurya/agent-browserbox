@@ -1,49 +1,101 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
-import { Agent, type AgentEvent, type Block, type Provider, type TurnRequest, type TurnResult } from '../packages/agent/src/index';
-import { globToRegExp, normalize } from '../packages/agent/src/tools';
+import { Agent, AgentOs, AGENT_HOME, type AgentEvent, type Block, type PermRequest, type Provider, type TurnRequest, type TurnResult } from '../packages/agent/src/index';
+import { SEED_FILES } from '../packages/agent/src/ext/seed';
 
-/** An in-memory box with just enough of the SDK's surface for the tools. */
-function fakeBox(files: Record<string, string> = {}): BrowserBox & { files: Map<string, string>; commands: string[] } {
+/**
+ * The ported agent (packages/agent) driven by a scripted model against an
+ * in-memory box with just enough of the SDK's surface. The browser e2e test
+ * (scripts/sdk-e2e.mjs) runs it against a real box.
+ */
+
+type Stat = { path: string; name: string; kind: 'file' | 'dir'; size: number; mtime: number };
+
+function fakeBox(files: Record<string, string> = {}) {
   const store = new Map(Object.entries(files));
+  const dirs = new Set<string>(['/', '/home', '/home/user', AGENT_HOME, '/tmp']);
   const commands: string[] = [];
-  const enoent = (p: string) => Object.assign(new Error(`ENOENT: no such file or directory, '${p}'`), { code: 'ENOENT' });
-  return {
-    files: store,
-    commands,
+  const parent = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/';
+  const addDirs = (p: string) => {
+    for (let d = parent(p); d !== '/'; d = parent(d)) dirs.add(d);
+  };
+  const enoent = (p: string) => new Error(`ENOENT: no such file or directory, '${p}'`);
+  const stat = (p: string): Stat | null =>
+    store.has(p) ? { path: p, name: p.split('/').pop()!, kind: 'file', size: store.get(p)!.length, mtime: 1 } : dirs.has(p) ? { path: p, name: p.split('/').pop()!, kind: 'dir', size: 0, mtime: 1 } : null;
+  const children = (p: string) => [...new Set([...store.keys(), ...dirs].filter((k) => k !== p && parent(k) === p))].map((k) => stat(k)!);
+  const stream = (text: string) => new ReadableStream<string>({ start: (c) => (text && c.enqueue(text), c.close()) });
+  const run = (cmd: string, cwd: string) => {
+    commands.push(cmd);
+    if (cmd.startsWith('cd ')) return { out: '', code: 0, cwd: cmd.slice(3).startsWith('/') ? cmd.slice(3) : `${cwd}/${cmd.slice(3)}` };
+    if (cmd === 'pwd') return { out: `${cwd}\n`, code: 0, cwd };
+    if (cmd.startsWith('fail')) return { out: 'nope\n', code: 2, cwd };
+    return { out: `ran: ${cmd}\n`, code: 0, cwd };
+  };
+  const box = {
     home: '/home/user',
     storage: 'memory',
+    version: 'test',
+    caps: ['opfs'],
     fs: {
+      readFile: async (p: string) => {
+        if (!store.has(p)) throw enoent(p);
+        return new TextEncoder().encode(store.get(p)!);
+      },
       readTextFile: async (p: string) => {
         if (!store.has(p)) throw enoent(p);
         return store.get(p)!;
       },
-      writeFile: async (p: string, d: string) => void store.set(p, d),
-      rm: async (p: string) => void store.delete(p),
-      readdir: async (p: string) =>
-        [...new Set([...store.keys()].filter((k) => k.startsWith(`${p}/`)).map((k) => k.slice(p.length + 1).split('/')[0]!))].map((name) => {
-          const full = `${p}/${name}`;
-          return store.has(full) ? { path: full, name, kind: 'file' as const, size: store.get(full)!.length, mtime: 0 } : { path: full, name, kind: 'dir' as const, size: 0, mtime: 0 };
-        }),
+      writeFile: async (p: string, d: string | Uint8Array) => (addDirs(p), void store.set(p, typeof d === 'string' ? d : new TextDecoder().decode(d))),
+      appendFile: async (p: string, d: string) => (addDirs(p), void store.set(p, (store.get(p) ?? '') + d)),
+      readdir: async (p: string) => {
+        if (!dirs.has(p)) throw enoent(p);
+        return children(p);
+      },
+      stat: async (p: string) => stat(p),
+      exists: async (p: string) => stat(p) !== null,
+      mkdir: async (p: string) => (addDirs(`${p}/x`), void dirs.add(p)),
+      rm: async (p: string) => {
+        if (!stat(p)) throw enoent(p);
+        store.delete(p);
+        for (const k of [...store.keys()]) if (k.startsWith(`${p}/`)) store.delete(k);
+        dirs.delete(p);
+      },
+      rename: async (a: string, b: string) => (addDirs(b), store.set(b, store.get(a)!), void store.delete(a)),
+      cp: async (a: string, b: string) => (addDirs(b), void store.set(b, store.get(a)!)),
+      glob: async (pattern: string, o: { cwd?: string } = {}) => [...store.keys()].filter((k) => k.startsWith(`${o.cwd}/`) && k.endsWith(pattern.replace(/^\*\*\/\*/, ''))),
     },
-    exec: async (command: string) => {
-      commands.push(command);
-      const find = /^find '([^']*)' -type f$/.exec(command);
-      if (find) return { exitCode: 0, stdout: [...store.keys()].filter((k) => k.startsWith(`${find[1]}/`)).join('\n') + '\n', stderr: '' };
-      if (command.startsWith('fail')) return { exitCode: 3, stdout: 'partial', stderr: 'boom' };
-      return { exitCode: 0, stdout: `ran: ${command}\n`, stderr: '' };
+    exec: async (cmd: string) => (commands.push(cmd), { exitCode: 0, stdout: '', stderr: '' }),
+    openShell: async (o: { cwd?: string } = {}) => {
+      const shell = {
+        cwd: o.cwd ?? '/home/user',
+        run: async (cmd: string) => {
+          const r = run(cmd, shell.cwd);
+          return {
+            stdout: stream(r.out),
+            stderr: stream(''),
+            exit: Promise.resolve(r.code).then((c) => ((shell.cwd = r.cwd), c)),
+            kill: async () => true,
+          };
+        },
+        close: async () => undefined,
+      };
+      return shell;
     },
-  } as unknown as BrowserBox & { files: Map<string, string>; commands: string[] };
+    processes: async () => [{ pid: 7, ppid: 0, name: 'bbsh', kind: 'shell', state: 'idle', detail: '', started: 0, cpuMs: 0, memBytes: 0 }],
+    killProcess: async (pid: number) => pid === 7,
+    dev: { start: async () => ({ port: 3000, root: '/', url: 'http://localhost:3000/', backend: null, network: false }), stop: async () => true, list: async () => [], logs: async () => [] },
+  };
+  return Object.assign(box as unknown as BrowserBox, { files: store, commands });
 }
 
 type Step = (req: TurnRequest) => Partial<TurnResult> & { content: Block[] };
-/** A model that plays back a script, one step per call, and records what it was sent. */
 function scripted(steps: Step[]): Provider & { requests: TurnRequest[] } {
   const requests: TurnRequest[] = [];
   return {
     id: 'scripted',
+    contextBudget: 0,
     contextWindow: 100_000,
     requests,
     async turn(req) {
@@ -58,166 +110,146 @@ function scripted(steps: Step[]): Provider & { requests: TurnRequest[] } {
 }
 const use = (id: string, name: string, input: Record<string, unknown>, extra: object = {}): Block => ({ type: 'tool_use', id, name, input, ...extra });
 const say = (text: string): Block => ({ type: 'text', text });
+const resultsOf = (req: TurnRequest) => req.messages.at(-1)!.content as Array<Extract<Block, { type: 'tool_result' }>>;
 
-async function collect(it: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
-  const out: AgentEvent[] = [];
-  for await (const e of it) out.push(e);
-  return out;
+async function setup(steps: Step[], opts: { files?: Record<string, string>; settings?: Record<string, unknown>; prompter?: (r: PermRequest) => Promise<'once' | 'always' | 'deny'> } = {}) {
+  const box = fakeBox(opts.files);
+  const model = scripted(steps);
+  const os = await AgentOs.create(box, { provider: model, settings: opts.settings, prompter: opts.prompter, seed: false });
+  const events: AgentEvent[] = [];
+  const agent = new Agent(os, { onEvent: (e) => events.push(e), ask: async () => 'yes' });
+  return { box, model, os, agent, events };
 }
 
-describe('agent loop', () => {
-  it('runs tools in the box until the model answers, keeping the conversation valid', async () => {
-    const box = fakeBox();
-    const model = scripted([
-      (req) => {
-        req.onText('Writing it. ');
-        return { content: [say('Writing it. '), use('a', 'write_file', { path: 'hello.txt', content: 'hi\nthere' }), use('b', 'shell', { command: 'ls' })] };
-      },
-      () => ({ content: [use('c', 'read_file', { path: '/home/user/hello.txt' })] }),
-      () => ({ content: [say('Done: wrote hello.txt.')] }),
+describe('the ported agent', () => {
+  it('runs tools in the box, reports diffs, and answers', async () => {
+    const { box, model, agent, events } = await setup([
+      () => ({ content: [say('On it.'), use('a', 'write_file', { path: 'notes.txt', content: 'one\ntwo' }), use('b', 'shell', { command: 'cd sub' })] }),
+      () => ({ content: [use('c', 'edit_file', { path: '../notes.txt', old_string: 'two', new_string: 'three' }) /* relative to the shell's folder, now sub/ */, use('d', 'shell', { command: 'pwd' })] }),
+      () => ({ content: [say('Done.')] }),
     ]);
-    const agent = new Agent({ box, model });
-    const events = await collect(agent.send('make hello.txt'));
-
-    expect(box.files.get('/home/user/hello.txt')).toBe('hi\nthere');
-    expect(box.commands).toContain('ls');
-    expect(events.at(-1)).toEqual({ type: 'done', reason: 'end', text: 'Done: wrote hello.txt.' });
-    expect(events.filter((e) => e.type === 'tool_call').map((e) => (e as { call: { summary: string } }).call.summary)).toEqual(['Write hello.txt', 'Run: ls', 'Read /home/user/hello.txt']);
-    expect(events[0]).toEqual({ type: 'text', delta: 'Writing it. ' });
-
-    // Both results of the first turn come back in one user message, in order.
-    const second = model.requests[1]!.messages;
-    const results = second.at(-1)!.content;
-    expect(results.map((b) => b.type === 'tool_result' && b.tool_use_id)).toEqual(['a', 'b']);
-    // read_file numbers lines.
-    const read = model.requests[2]!.messages.at(-1)!.content[0] as Extract<Block, { type: 'tool_result' }>;
-    expect(read.content).toBe('1\thi\n2\tthere');
-    expect(agent.usage).toEqual({ input: 30, output: 15, cacheRead: 0 });
-    expect(agent.busy).toBe(false);
+    await agent.send('make notes');
+    expect(box.files.get(`${AGENT_HOME}/notes.txt`)).toBe('one\nthree');
+    // The shell session keeps its folder between calls (cd, then pwd).
+    expect(resultsOf(model.requests[2]!).find((r) => r.tool_use_id === 'd')!.content).toBe(`${AGENT_HOME}/sub`);
+    expect(events.filter((e) => e.type === 'file_change')).toHaveLength(2);
+    expect(events.at(-1)).toEqual({ type: 'done', reason: 'end' });
+    expect(agent.lastText()).toBe('Done.');
+    expect(agent.total.input).toBe(30);
   });
 
-  it('returns errors to the model instead of running bad calls', async () => {
-    const box = fakeBox({ '/home/user/a.txt': 'x x' });
-    const model = scripted([
-      () => ({
-        content: [
-          use('1', 'write_file', { path: 'a.txt' }), // missing content
-          use('2', 'no_such_tool', {}),
-          use('3', 'shell', {}, { invalid: '{"command": "ls' }),
-          use('4', 'edit_file', { path: 'a.txt', old_string: 'x', new_string: 'y' }), // not unique
-          use('5', 'read_file', { path: 'missing.txt' }),
-          use('6', 'shell', { command: 'fail now' }),
-        ],
-      }),
-      () => ({ content: [say('ok')] }),
-    ]);
-    await collect(new Agent({ box, model }).send('go'));
-    const results = model.requests[1]!.messages.at(-1)!.content as Array<Extract<Block, { type: 'tool_result' }>>;
-    expect(results.map((r) => [r.tool_use_id, !!r.is_error])).toEqual([['1', true], ['2', true], ['3', true], ['4', true], ['5', true], ['6', false]]);
-    expect(results[0]!.content).toMatch(/missing required property "content"/);
-    expect(results[1]!.content).toMatch(/Unknown tool/);
-    expect(results[2]!.content).toMatch(/not valid JSON/);
-    expect(results[3]!.content).toMatch(/occurs 2 times/);
-    expect(results[4]!.content).toMatch(/ENOENT/);
-    expect(results[5]!.content).toBe('partial\n[stderr]\nboom\n[exit code 3]');
-    expect(box.files.get('/home/user/a.txt')).toBe('x x'); // nothing changed
+  it('returns bad calls to the model as errors instead of running them', async () => {
+    const { model, agent } = await setup(
+      [
+        () => ({ content: [use('1', 'write_file', { path: 'x' }), use('2', 'no_such_tool', {}), use('3', 'shell', {}, { invalid: '{"command":' }), use('4', 'edit_file', { path: 'a.txt', old_string: 'x', new_string: 'y' }), use('5', 'shell', { command: 'fail now' })] }),
+        () => ({ content: [say('ok')] }),
+      ],
+      { files: { [`${AGENT_HOME}/a.txt`]: 'x x' } },
+    );
+    await agent.send('go');
+    const r = resultsOf(model.requests[1]!);
+    expect(r.map((x) => [x.tool_use_id, !!x.is_error])).toEqual([['1', true], ['2', true], ['3', true], ['4', true], ['5', true]]);
+    expect(r[0]!.content).toMatch(/missing required property "content"/);
+    expect(r[1]!.content).toMatch(/Unknown tool/);
+    expect(r[2]!.content).toMatch(/INVALID_JSON/);
+    expect(r[3]!.content).toMatch(/occurs 2 times/);
+    expect(r[4]!.content).toMatch(/exit code 2/);
   });
 
-  it('asks approve() before every call, and tells the model when one is declined', async () => {
-    const box = fakeBox();
-    const seen: string[] = [];
-    const model = scripted([() => ({ content: [use('1', 'shell', { command: 'rm -r /' }), use('2', 'write_file', { path: 'ok.txt', content: '1' })] }), () => ({ content: [say('fine')] })]);
-    await collect(new Agent({ box, model, approve: (c) => (seen.push(c.summary), c.name !== 'shell') }).send('go'));
-    expect(seen).toEqual(['Run: rm -r /', 'Write ok.txt']);
-    expect(box.commands).toEqual([]);
-    expect(box.files.has('/home/user/ok.txt')).toBe(true);
-    const declined = model.requests[1]!.messages.at(-1)!.content[0] as Extract<Block, { type: 'tool_result' }>;
-    expect(declined.is_error && declined.content).toMatch(/declined/);
+  it('asks permission for gated actions in ask mode, and respects a denial', async () => {
+    const asked: string[] = [];
+    const { box, model, agent } = await setup([() => ({ content: [use('1', 'shell', { command: 'ls' }), use('2', 'write_file', { path: `${AGENT_HOME}/ok.txt`, content: '1' })] }), () => ({ content: [say('ok')] })], {
+      settings: { 'perms.mode': 'ask' },
+      prompter: async (req) => (asked.push(req.cap), 'deny'),
+    });
+    await agent.send('go');
+    expect(asked).toEqual(['exec']); // writing in the agent's workspace needs no grant
+    expect(box.files.has(`${AGENT_HOME}/ok.txt`)).toBe(true);
+    expect(resultsOf(model.requests[1]!)[0]!.content).toMatch(/denied permission/);
   });
 
-  it('stops mid-run, still answering every call the model made', async () => {
-    const box = fakeBox();
+  it('never runs a tool call from a reply cut off at max_tokens', async () => {
+    const { box, model, agent } = await setup([() => ({ content: [use('1', 'write_file', { path: 'half.txt', content: 'only the first ha' })], stop: 'max_tokens' }), () => ({ content: [say('retrying')] })]);
+    await agent.send('go');
+    expect(box.files.has(`${AGENT_HOME}/half.txt`)).toBe(false);
+    expect(resultsOf(model.requests[1]!)[0]!.content).toMatch(/cut off/);
+  });
+
+  it('rewinds the conversation and puts the files back', async () => {
+    const { box, agent } = await setup(
+      [() => ({ content: [use('1', 'write_file', { path: 'f.txt', content: 'changed' })] }), () => ({ content: [say('changed it')] })],
+      { files: { [`${AGENT_HOME}/f.txt`]: 'original' } },
+    );
+    await agent.send('change f');
+    expect(box.files.get(`${AGENT_HOME}/f.txt`)).toBe('changed');
+    const r = await agent.rewind(0, true);
+    expect(r.restored).toEqual([`${AGENT_HOME}/f.txt`]);
+    expect(box.files.get(`${AGENT_HOME}/f.txt`)).toBe('original');
+    expect(agent.transcript).toEqual([]);
+  });
+
+  it('compacts the conversation into a summary on request', async () => {
+    const { model, agent, events } = await setup([() => ({ content: [say('hello')] }), () => ({ content: [say('Summary: said hello.')] })]);
+    await agent.send('hi');
+    expect(await agent.compact()).toBe(true);
+    expect(agent.messages).toHaveLength(1);
+    expect((agent.messages[0]!.content[0] as { text: string }).text).toMatch(/Summary: said hello\./);
+    expect(agent.transcript.length).toBeGreaterThan(2); // the full history is kept for display
+    expect(events.some((e) => e.type === 'compact')).toBe(true);
+    expect(model.requests[1]!.tools.length).toBeGreaterThan(0);
+  });
+
+  it('offers only read-only tools in plan mode', async () => {
+    const { model, agent } = await setup([() => ({ content: [say('1. do this')] })]);
+    await agent.send('how would you do it?', { plan: true });
+    const names = model.requests[0]!.tools.map((t) => t.name);
+    expect(names).toContain('read_file');
+    expect(names).not.toContain('write_file');
+    expect(names).not.toContain('shell');
+  });
+
+  it('stops mid-run and leaves a valid conversation', async () => {
     let agent!: Agent;
-    const model = scripted([() => ({ content: [use('1', 'todo_write', { items: [{ text: 'a', status: 'in_progress' }] }), use('2', 'shell', { command: 'ls' })] })]);
-    agent = new Agent({ box, model, approve: (c) => (c.name === 'todo_write' && agent.stop(), true) });
-    const events = await collect(agent.send('go'));
-    expect(events.at(-1)).toMatchObject({ type: 'done', reason: 'stopped' });
-    expect(agent.todos).toEqual([{ text: 'a', status: 'in_progress' }]);
-    const last = agent.messages.at(-1)!.content as Array<Extract<Block, { type: 'tool_result' }>>;
-    expect(last.map((r) => r.tool_use_id)).toEqual(['1', '2']);
-    expect(last[1]!.content).toMatch(/Not run/);
-    expect(box.commands).toEqual([]);
+    const { box, model } = await (async () => {
+      const s = await setup([() => ({ content: [use('1', 'todo_write', { items: [{ text: 'a', status: 'in_progress' }] }), use('2', 'shell', { command: 'ls' })] })]);
+      agent = s.agent;
+      return s;
+    })();
+    const sending = agent.send('go');
+    agent.stop();
+    await sending;
+    expect(model.requests.length).toBeLessThanOrEqual(1);
+    const last = agent.messages.at(-1)!;
+    if (last.role === 'assistant') throw new Error('dangling assistant turn');
+    expect(box.commands.filter((c) => c === 'ls')).toHaveLength(0);
   });
 
-  it('reports model errors, step limits and refusals as the last event', async () => {
-    const failing: Provider = { id: 'x', contextWindow: 1, turn: async () => Promise.reject(new Error('rate limited')) };
-    const a = await collect(new Agent({ box: fakeBox(), model: failing }).send('hi'));
-    expect(a.slice(-2)).toEqual([{ type: 'error', message: 'rate limited', retryable: false }, { type: 'done', reason: 'error', text: '' }]);
-    await expect(new Agent({ box: fakeBox(), model: failing }).run('hi')).rejects.toThrow('rate limited');
-
-    const loop = scripted(Array.from({ length: 5 }, (_, i) => () => ({ content: [use(String(i), 'shell', { command: 'true' })] })));
-    expect((await collect(new Agent({ box: fakeBox(), model: loop, maxSteps: 3 }).send('go'))).at(-1)).toMatchObject({ reason: 'max_steps' });
-    expect(loop.requests).toHaveLength(3);
-
-    const refusing = scripted([() => ({ content: [], stop: 'refusal' })]);
-    expect((await collect(new Agent({ box: fakeBox(), model: refusing }).send('go'))).at(-1)).toMatchObject({ reason: 'refusal' });
-  });
-
-  it('saves and restores a conversation', async () => {
-    const box = fakeBox();
-    const first = new Agent({ box, model: scripted([() => ({ content: [say('one')] })]) });
-    expect(await first.run('hello')).toBe('one');
-    const saved = JSON.parse(JSON.stringify(first));
-    const model = scripted([() => ({ content: [say('two')] })]);
-    const again = Agent.restore(saved, { box, model });
-    expect(await again.run('more')).toBe('two');
-    expect(model.requests[0]!.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
-    expect(() => Agent.restore({} as never, { box, model })).toThrow(/not a saved session/);
-  });
-
-  it('refuses a second send while one is running', async () => {
-    let release!: () => void;
-    const slow: Provider = { id: 's', contextWindow: 1, turn: () => new Promise((r) => (release = () => r({ content: [say('x')], stop: 'end', usage: { input: 0, output: 0, cacheRead: 0 }, model: 's' }))) };
-    const agent = new Agent({ box: fakeBox(), model: slow });
-    const run = collect(agent.send('a'));
-    expect(() => agent.send('b')).toThrow(/already working/);
-    await new Promise((r) => setTimeout(r, 0));
-    release();
-    await run;
-    expect(agent.busy).toBe(false);
+  it('offers run_python only once the python package is installed', async () => {
+    const { model, agent } = await setup([() => ({ content: [say('ok')] })]);
+    await agent.send('hi');
+    expect(model.requests[0]!.tools.map((t) => t.name)).not.toContain('run_python');
   });
 });
 
-describe('agent tools helpers', () => {
-  it('matches globs', () => {
-    const m = (g: string, p: string) => globToRegExp(g).test(p);
-    expect(m('**/*.ts', 'a/b/c.ts')).toBe(true);
-    expect(m('**/*.ts', 'c.ts')).toBe(true);
-    expect(m('*.ts', 'a/c.ts')).toBe(false);
-    expect(m('src/*.{js,css}', 'src/a.css')).toBe(true);
-    expect(m('src/*.{js,css}', 'src/a.ts')).toBe(false);
-    expect(m('file?.txt', 'file1.txt')).toBe(true);
-    expect(m('a.b', 'aXb')).toBe(false);
-  });
-
-  it('normalizes paths', () => {
-    expect(normalize('/home/user/./a/../b//c')).toBe('/home/user/b/c');
-    expect(normalize('/../..')).toBe('/');
-  });
-});
-
-describe('agent package boundary', () => {
-  it('imports only its own files, the Claude SDK, and the BrowserBox SDK (types only)', () => {
-    const root = join(__dirname, '../packages/agent/src');
+describe('agent package', () => {
+  it('embeds the seed skills, agents and commands exactly as in ext/seed', () => {
+    const root = join(__dirname, '../packages/agent/src/ext/seed');
     const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
+    const onDisk = Object.fromEntries(files(root).map((f) => [relative(root, f).split('\\').join('/'), readFileSync(f, 'utf8')]));
+    expect(SEED_FILES).toEqual(onDisk);
+  });
+
+  it('imports only its own files, the Claude SDK, WebLLM, and the BrowserBox SDK (types only)', () => {
+    const root = join(__dirname, '../packages/agent/src');
+    const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : []));
     const bad: string[] = [];
     for (const f of files(root)) {
-      for (const m of readFileSync(f, 'utf8').matchAll(/^(import(?:\s+type)?)[^'"]*['"]([^'"]+)['"]/gm)) {
-        const [, kind, spec] = m;
-        if (spec!.startsWith('.')) continue;
-        if (spec === '@anthropic-ai/sdk') continue;
-        if (spec === '@jeevanand/agent-browserbox-sdk' && kind!.includes('type')) continue;
-        bad.push(`${f.slice(root.length + 1)}: ${kind} ${spec}`);
+      for (const m of readFileSync(f, 'utf8').matchAll(/(?:^import(\s+type)?[^'"]*|import\()\s*['"]([^'"]+)['"]/gm)) {
+        const typeOnly = !!m[1];
+        const spec = m[2]!;
+        if (spec.startsWith('.') || spec === '@anthropic-ai/sdk' || spec === '@mlc-ai/web-llm') continue;
+        if (spec === '@jeevanand/agent-browserbox-sdk' && typeOnly) continue;
+        bad.push(`${relative(root, f)}: ${spec}`);
       }
     }
     expect(bad).toEqual([]);

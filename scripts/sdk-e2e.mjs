@@ -305,55 +305,68 @@ await check('dev servers and the process table', () =>
   }),
 );
 
-await check('agent: a scripted model drives every tool against a real box', () =>
+await check('agent: the ported agent drives its tools against a real box', () =>
   run(async () => {
     // The agent package is optional here: SDK-only runs (its own CI and releases) do not build it.
-    const { Agent } = await import('/agent/index.js').catch(() => ({}));
-    if (!Agent) return 'skipped: the agent package is not built';
+    const lib = await import('/agent/index.js').catch(() => null);
+    if (!lib) return 'skipped: the agent package is not built';
+    const { Agent, AgentOs, AGENT_HOME } = lib;
     const work = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' });
-    // A model that plays back a fixed script and keeps what each tool returned.
+    // A model that plays back a fixed script, one turn per call, and keeps what each tool returned.
     const results = {};
     const say = (text) => ({ type: 'text', text });
-    const use = (name, input) => ({ type: 'tool_use', id: name, name, input });
+    const use = (name, input, id = name) => ({ type: 'tool_use', id, name, input });
     const script = [
       [use('write_file', { path: 'app/main.js', content: 'const n = 6 * 7;\nprint("answer " + n);\n' }), use('todo_write', { items: [{ text: 'build', status: 'in_progress' }] })],
       [use('edit_file', { path: 'app/main.js', old_string: '6 * 7', new_string: '6 * 9' }), use('list_dir', { path: 'app' })],
       [use('glob', { pattern: '**/*.js' }), use('grep', { pattern: 'answer', path: 'app' })],
-      [use('shell', { command: 'js app/main.js && echo shell-ok' }), use('run_js', { code: 'print(await fs.readText("app/main.js"))' })],
-      [use('read_file', { path: 'app/main.js', offset: 2 })],
+      [use('shell', { command: 'cd app' }, 'cd')],
+      [use('shell', { command: 'pwd && js main.js' }, 'shell')],
+      [use('run_js', { code: 'print(await fs.readText("main.js"))' }), use('read_file', { path: 'main.js', offset: 2 })],
+      [use('move_path', { from: 'main.js', to: 'moved.js' }), use('delete_path', { path: '/tmp/nothing-here' })],
+      [use('use_skill', { name: 'web-page' }), use('system_info', {}), use('list_processes', {})],
+      [use('write_file', { path: 'site/index.html', content: '<!doctype html><title>s</title><h1>hi</h1>' })],
+      [use('dev_server', { action: 'start', path: 'site' })],
+      [use('preview_logs', {})],
+      [use('dev_server', { action: 'stop' }, 'stop')], // its own turn: harmless calls in one turn run in parallel
       [say('All done.')],
     ];
     let step = 0;
     const model = {
-      id: 'scripted', contextWindow: 100000,
+      id: 'scripted', contextBudget: 0, contextWindow: 100000,
       async turn(req) {
-        const last = req.messages.at(-1);
-        for (const b of last.content) if (b.type === 'tool_result') results[b.tool_use_id] = (b.is_error ? 'ERROR: ' : '') + b.content;
+        for (const b of req.messages.at(-1).content) if (b.type === 'tool_result') results[b.tool_use_id] = (b.is_error ? 'ERROR: ' : '') + b.content;
         const content = script[step++];
         return { content, stop: content.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end', usage: { input: 1, output: 1, cacheRead: 0 }, model: 'scripted' };
       },
     };
-    const agent = new Agent({ box: work, model, cwd: '/home/user' });
-    const types = [];
-    let final;
-    for await (const e of agent.send('build it')) {
-      types.push(e.type);
-      if (e.type === 'done') final = e;
-    }
+    const os = await AgentOs.create(work, { provider: model });
+    const events = [];
+    const agent = new Agent(os, { onEvent: (e) => events.push(e), ask: async () => 'yes' });
+    await agent.send('build it');
+    const done = events.at(-1);
     work.teardown();
-    const expect = (name, ok) => { if (!ok) throw new Error(`${name}: ${JSON.stringify(results[name])}`); };
-    expect('write_file', /Wrote \/home\/user\/app\/main\.js/.test(results.write_file));
-    expect('todo_write', /0\/1 done/.test(results.todo_write));
-    expect('edit_file', /Edited/.test(results.edit_file));
-    expect('list_dir', /^main\.js {2}\d+ B$/.test(results.list_dir));
-    expect('glob', results.glob === 'app/main.js');
-    expect('grep', /main\.js:2:print\("answer " \+ n\);/.test(results.grep));
-    expect('shell', results.shell === 'answer 54\nshell-ok');
-    expect('run_js', results.run_js.includes('6 * 9'));
-    expect('read_file', results.read_file === '2\tprint("answer " + n);\n3\t');
-    if (final?.reason !== 'end' || final.text !== 'All done.') throw new Error(`done: ${JSON.stringify(final)}`);
-    if (agent.todos[0]?.text !== 'build') throw new Error('todos not kept');
-    return `9 tools ran in the box; ${types.filter((t) => t === 'tool_call').length} calls, final "${final.text}"`;
+    const expect = (name, ok) => { if (!ok) throw new Error(`${name}: ${JSON.stringify(results[name] ?? null)}`); };
+    const A = AGENT_HOME;
+    expect('write_file', results.write_file?.startsWith('Wrote'));
+    expect('todo_write', !results.todo_write?.startsWith('ERROR'));
+    expect('edit_file', results.edit_file?.startsWith('Edited'));
+    expect('list_dir', /main\.js/.test(results.list_dir ?? ''));
+    expect('glob', (results.glob ?? '').includes('app/main.js'));
+    expect('grep', /main\.js:2:/.test(results.grep ?? ''));
+    expect('shell', results.shell === `${A}/app\nanswer 54`);
+    expect('run_js', (results.run_js ?? '').includes('6 * 9'));
+    expect('read_file', /^\s*2\tprint/.test(results.read_file ?? ''));
+    expect('move_path', !results.move_path?.startsWith('ERROR'));
+    expect('use_skill', (results.use_skill ?? '').length > 50 && !results.use_skill.startsWith('ERROR'));
+    expect('system_info', /BrowserBox/.test(results.system_info ?? ''));
+    expect('list_processes', /\d+\tppid/.test(results.list_processes ?? ''));
+    expect('dev_server', /localhost:\d+/.test(results.dev_server ?? ''));
+    expect('preview_logs', !results.preview_logs?.startsWith('ERROR'));
+    expect('stop', /Stopped/.test(results.stop ?? ''));
+    if (done?.type !== 'done' || done.reason !== 'end' || agent.lastText() !== 'All done.') throw new Error(`done: ${JSON.stringify(done)}, ${agent.lastText()}`);
+    const diffs = events.filter((e) => e.type === 'file_change').length;
+    return `${Object.keys(results).length} tool calls against a real box (incl. a dev server); ${diffs} file diffs; delete_path on a missing path → ${results.delete_path?.startsWith('ERROR') ? 'error, as expected' : 'ok'}`;
   }),
 );
 

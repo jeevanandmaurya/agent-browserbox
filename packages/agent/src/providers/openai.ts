@@ -1,19 +1,5 @@
+import { relayed, unreachable, type AgentConfig } from '../config.js';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types.js';
-
-export interface OpenAiOptions {
-  /** The server's base URL, e.g. http://localhost:11434/v1 (Ollama) or https://openrouter.ai/api/v1. */
-  baseUrl: string;
-  model: string;
-  /** Sent as a Bearer token when given. Local servers usually need none. */
-  apiKey?: string;
-  /** The model's context window in tokens. Default: 32768. */
-  contextWindow?: number;
-  /**
-   * For servers that do not allow requests from web pages (CORS): a relay
-   * URL that the request URL is appended to.
-   */
-  relay?: string;
-}
 
 interface WireMsg {
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -66,26 +52,35 @@ async function* sse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
 
 /**
  * Any server that speaks the OpenAI chat-completions protocol: Ollama,
- * LM Studio, llama.cpp, vLLM, OpenRouter, or a hosted endpoint. In a browser
- * the server must allow requests from the page's origin (CORS), or go through `relay`.
+ * LM Studio, llama.cpp, vLLM, or a hosted endpoint. This is how BrowserBox
+ * connects to a local LLM — the request goes straight from the tab to the server.
  */
-export function openai(opts: OpenAiOptions): Provider {
-  if (!opts.baseUrl || !opts.model) throw new ProviderError('openai(): baseUrl and model are required.');
-  const base = opts.baseUrl.replace(/\/+$/, '');
-  const relay = opts.relay?.trim() ?? '';
-  const url = relay ? `${relay.replace(/\/+$/, '')}/${base}/chat/completions` : `${base}/chat/completions`;
+/** Where to send requests: a local model server or a hosted OpenAI-compatible API. */
+export interface ServerTarget {
+  kind: 'local' | 'openai';
+  baseUrl: string;
+  model: string;
+}
+
+export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, apiKey: string | null): Provider {
+  const base = target.baseUrl.replace(/\/+$/, '');
+  const where = target.kind === 'local' ? 'the local server' : 'the API';
+  // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
+  const relay = target.kind === 'openai' ? cfg.corsRelay : '';
   return {
-    id: 'openai',
-    contextWindow: opts.contextWindow ?? 32768,
+    id: target.kind,
+    contextBudget: Math.floor(cfg.contextWindow * 0.75),
+    contextWindow: cfg.contextWindow,
     async turn(req: TurnRequest): Promise<TurnResult> {
+      if (!target.model) throw new ProviderError(`No model selected for ${where}. Pick one in Settings → Model.`);
       let res: Response;
       try {
-        res = await fetch(url, {
+        res = await fetch(relayed(`${base}/chat/completions`, relay), {
           method: 'POST',
           signal: req.signal,
-          headers: { 'content-type': 'application/json', ...(opts.apiKey ? { authorization: `Bearer ${opts.apiKey}` } : {}) },
+          headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
           body: JSON.stringify({
-            model: opts.model,
+            model: target.model,
             stream: true,
             messages: toWire(req.system, req.messages),
             ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) } : {}),
@@ -93,16 +88,17 @@ export function openai(opts: OpenAiOptions): Provider {
         });
       } catch (err) {
         if (req.signal.aborted) throw err;
-        throw new ProviderError(`Could not reach ${base}. Is the server running, and does it allow requests from this page (CORS)? For Ollama: OLLAMA_ORIGINS="*" ollama serve. Otherwise pass a relay.`, true);
+        throw new ProviderError(unreachable(base, target.kind, relay), true);
       }
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');
         throw new ProviderError(`${base} answered ${res.status}: ${detail.slice(0, 400) || res.statusText}`, res.status >= 500);
       }
+
       let text = '';
       let thinking = '';
       let finish = '';
-      let model = opts.model;
+      let model = target.model;
       const usage = { input: 0, output: 0, cacheRead: 0 };
       const calls: Array<{ id: string; name: string; args: string }> = [];
       for await (const data of sse(res.body)) {

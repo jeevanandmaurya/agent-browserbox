@@ -1,7 +1,7 @@
 {
   "name": "@jeevanand/agent-browserbox",
   "version": "0.2.0",
-  "description": "An AI agent that works inside a BrowserBox: reads and writes files, searches, runs commands and code in a sandboxed computer in the browser. Works with Claude or any OpenAI-compatible model.",
+  "description": "The BrowserBox agent as a library: works inside a BrowserBox with file, search, shell, code, dev-server and publishing tools, compaction, checkpoints and undo, plan mode, skills, sub-agents and MCP. Claude, OpenAI-compatible or in-browser models.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -23,7 +23,8 @@
     "@anthropic-ai/sdk": "^1.8.0"
   },
   "peerDependencies": {
-    "@jeevanand/agent-browserbox-sdk": "^0.2.0"
+    "@jeevanand/agent-browserbox-sdk": "^0.2.0",
+    "@mlc-ai/web-llm": "^0.2.88"
   },
   "keywords": [
     "ai-agent",
@@ -52,5 +53,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepack": "npm run build"
+  },
+  "peerDependenciesMeta": {
+    "@mlc-ai/web-llm": {
+      "optional": true
+    }
   }
 }

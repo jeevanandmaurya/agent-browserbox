@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "verbatimModuleSyntax": true,
@@ -13,7 +17,11 @@
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": []
+    "types": [
+      "@webgpu/types"
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
