@@ -114,7 +114,10 @@ export async function bundle(input: BundleInput): Promise<BundleOutput> {
           return { path: npm.url(args.path), namespace: 'npm' };
         }
         let candidates: string[];
-        if (spec.startsWith('./') || spec.startsWith('../') || spec === '.' || spec === '..') candidates = [resolve(args.resolveDir || root, spec)];
+        // esbuild hands back resolveDir as a host path (on Windows, `D:\…\app\src`),
+        // so take the importer's VFS path instead; it is always POSIX.
+        const from = args.importer?.startsWith('/') ? dirname(args.importer) : args.resolveDir || root;
+        if (spec.startsWith('./') || spec.startsWith('../') || spec === '.' || spec === '..') candidates = [resolve(from, spec)];
         else if (spec.startsWith('/')) candidates = isInside(root, spec) && root !== '/' ? [normalize(spec)] : [join(root, spec)];
         else {
           candidates = alias(spec);
