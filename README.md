@@ -26,7 +26,7 @@ running on the user's device.
 |---|---|
 | [`@jeevanand/agent-browserbox`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
 | [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
-| `@jeevanand/browserbox` | This app, with the CLI below. |
+| `@jeevanand/browserbox` | This app. Not on npm at the moment; use the hosted app or run it from source (below). |
 
 ```ts
 import { BrowserBox } from '@jeevanand/agent-browserbox';
@@ -40,11 +40,17 @@ and `npm run e2e:sdk` tests them together across two origins in headless Chromiu
 
 ## Run it
 
+Open the hosted app: https://jeevanandmaurya.github.io/agent-browserbox/agent/
+
+Or run it from a clone of this repository:
+
 ```
-npx @jeevanand/browserbox
+npm install
+npm run build
+node bin/browserbox.mjs
 ```
 
-This serves the prebuilt app at `http://127.0.0.1:4173/agent/` and opens it.
+This serves the built app at `http://127.0.0.1:4173/agent/` and opens it.
 The kernel, desktop and docs are on the same origin, with the cross-origin
 isolation headers that SharedArrayBuffer and WebAssembly threads need.
 
@@ -55,9 +61,9 @@ isolation headers that SharedArrayBuffer and WebAssembly threads need.
 --dir          print the path of the built site (to host it elsewhere) and exit
 ```
 
-`browserbox --dir` prints the folder to point a static host at if you would
-rather not use the built-in server. The app's service worker adds the same
-headers there; keep `agent/`, `os/`, `docs/`, `kernel/` and `assets/` together.
+`--dir` prints the folder to point a static host at if you would rather not
+use the built-in server. The app's service worker adds the same headers
+there; keep `agent/`, `os/`, `docs/`, `kernel/` and `assets/` together.
 
 ## Development
 
