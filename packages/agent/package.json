@@ -1,0 +1,56 @@
+{
+  "name": "@jeevanand/agent-browserbox",
+  "version": "0.2.0",
+  "description": "An AI agent that works inside a BrowserBox: reads and writes files, searches, runs commands and code in a sandboxed computer in the browser. Works with Claude or any OpenAI-compatible model.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  },
+  "peerDependencies": {
+    "@jeevanand/agent-browserbox-sdk": "^0.1.1"
+  },
+  "keywords": [
+    "ai-agent",
+    "agent",
+    "coding-agent",
+    "sandbox",
+    "browser",
+    "claude",
+    "llm",
+    "tool-use"
+  ],
+  "homepage": "https://github.com/jeevanandmaurya/agent-browserbox/tree/main/packages/agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git",
+    "directory": "packages/agent"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  }
+}

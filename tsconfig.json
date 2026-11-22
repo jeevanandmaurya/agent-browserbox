@@ -24,6 +24,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@jeevanand/agent-browserbox-sdk": [
+        "./packages/sdk/src/index.ts"
       ]
     }
   },
@@ -31,6 +34,7 @@
     "src",
     "tests",
     "embed",
-    "packages/sdk/src"
+    "packages/sdk/src",
+    "packages/agent/src"
   ]
 }

@@ -1,0 +1,45 @@
+name: CI · agent
+
+# Tests the agent package when its code (or the SDK types it builds on)
+# changes. Deploys nothing: agent releases do that (release.yml, agent-v*).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/agent/**'
+      - 'packages/sdk/src/**'
+      - 'tests/agent.test.ts'
+      - 'scripts/sdk-e2e.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-agent.yml'
+  pull_request:
+    paths:
+      - 'packages/agent/**'
+      - 'packages/sdk/src/**'
+      - 'tests/agent.test.ts'
+      - 'scripts/sdk-e2e.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-agent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run tests/agent.test.ts
+      - name: Build the agent and the runtime, and drive a real box with the agent
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          npm run build:agent && npm run build:runtime && node scripts/sdk-e2e.mjs

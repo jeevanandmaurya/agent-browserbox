@@ -4,22 +4,23 @@ name: Release
 #   sdk  @jeevanand/agent-browserbox-sdk + @jeevanand/agent-browserbox-runtime
 #        (npm, always the same version, packages/*/package.json); tag sdk-v1.2.3.
 #        The runtime is also served at /runtime/<version>/ on the site.
+#   agent @jeevanand/agent-browserbox (npm, packages/agent/package.json); tag agent-v1.2.3.
 #   app  the BrowserBox app (root package.json); tag app-v1.2.3. Not on npm:
 #        released as a site zip and served at /agent/, /os/, /docs/.
 # Start it from the Actions tab (Run workflow), which releases the version in
 # package.json and creates the tag, or by pushing such a tag.
 #
-# Every release ends by reassembling the site from all releases (pages.yml).
+# SDK and app releases end by reassembling the site from all releases (pages.yml).
 # A release only adds its own part; nothing is ever built from a push.
 on:
   push:
-    tags: ['sdk-v*', 'app-v*']
+    tags: ['sdk-v*', 'agent-v*', 'app-v*']
   workflow_dispatch:
     inputs:
       release:
         description: What to release
         type: choice
-        options: [sdk, app]
+        options: [sdk, agent, app]
         default: sdk
 
 permissions:
@@ -33,6 +34,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    outputs:
+      kind: ${{ steps.what.outputs.kind }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,20 +54,21 @@ jobs:
         run: |
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             kind="$INPUT"
-            if [ "$kind" = sdk ]; then tag="sdk-v$(node -p "require('./packages/sdk/package.json').version")"
-            else tag="app-v$(node -p "require('./package.json').version")"; fi
+            case "$kind" in
+              sdk) tag="sdk-v$(node -p "require('./packages/sdk/package.json').version")" ;;
+              agent) tag="agent-v$(node -p "require('./packages/agent/package.json').version")" ;;
+              *) tag="app-v$(node -p "require('./package.json').version")" ;;
+            esac
           else
             tag="$GITHUB_REF_NAME"
             kind="${tag%%-v*}"
           fi
           version="${tag#*-v}"
-          if [ "$kind" = sdk ]; then
-            files="packages/sdk/package.json packages/runtime/package.json"
-            changelog=packages/sdk/CHANGELOG.md
-          else
-            files="package.json"
-            changelog=CHANGELOG.md
-          fi
+          case "$kind" in
+            sdk) files="packages/sdk/package.json packages/runtime/package.json"; changelog=packages/sdk/CHANGELOG.md ;;
+            agent) files="packages/agent/package.json"; changelog=packages/agent/CHANGELOG.md ;;
+            *) files="package.json"; changelog=CHANGELOG.md ;;
+          esac
           for f in $files; do
             have=$(node -p "require('./$f').version")
             if [ "$have" != "$version" ]; then
@@ -81,7 +85,7 @@ jobs:
           echo "Releasing $kind as $tag"
 
       - name: Check that NPM_TOKEN is configured
-        if: steps.what.outputs.kind == 'sdk'
+        if: steps.what.outputs.kind != 'app'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -130,6 +134,27 @@ jobs:
             fi
           done
 
+      # ---- agent: to npm (it needs the SDK version it names to be on npm) -----------
+      - name: Test the agent against a real box
+        if: steps.what.outputs.kind == 'agent'
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          npm run build:agent && npm run build:runtime && node scripts/sdk-e2e.mjs
+
+      - name: Publish the agent
+        if: steps.what.outputs.kind == 'agent'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.what.outputs.version }}
+        run: |
+          p=@jeevanand/agent-browserbox
+          if [ "$(npm view "$p@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "$p@$VERSION is already on npm; not publishing it again"
+          else
+            npm publish --provenance --access public -w "$p"
+          fi
+
       # ---- app: the built site, zipped ---------------------------------------------
       - name: Build the app
         if: steps.what.outputs.kind == 'app'
@@ -172,6 +197,20 @@ jobs:
               echo
               cat whats-new.md
             } > release-notes.md
+          elif [ "$KIND" = agent ]; then
+            title="agent-browserbox $VERSION: the agent"
+            zip=""
+            {
+              echo "[\`@jeevanand/agent-browserbox@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox/v/$VERSION): an AI agent that works inside a BrowserBox."
+              echo
+              echo '```bash'
+              echo "npm install @jeevanand/agent-browserbox@$VERSION @jeevanand/agent-browserbox-sdk"
+              echo '```'
+              echo
+              echo "## What's new"
+              echo
+              cat whats-new.md
+            } > release-notes.md
           else
             title="BrowserBox app $VERSION"
             zip="browserbox-app-$VERSION.zip"
@@ -187,7 +226,7 @@ jobs:
             } > release-notes.md
           fi
           cat release-notes.md
-          unzip -l "$zip" | tail -1
+          if [ -n "$zip" ]; then unzip -l "$zip" | tail -1; fi
           echo "title=$title" >> "$GITHUB_OUTPUT"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
 
@@ -200,14 +239,16 @@ jobs:
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "$TITLE" --notes-file release-notes.md
-            gh release upload "$TAG" "$ZIP" --clobber
+            if [ -n "$ZIP" ]; then gh release upload "$TAG" "$ZIP" --clobber; fi
           else
-            gh release create "$TAG" --target "$(git rev-parse HEAD)" --title "$TITLE" --notes-file release-notes.md "$ZIP"
+            gh release create "$TAG" --target "$(git rev-parse HEAD)" --title "$TITLE" --notes-file release-notes.md $ZIP
           fi
 
   # Put the new release on the site (it is assembled from all releases).
   site:
     needs: publish
+    # The agent is not on the site; only SDK and app releases change it.
+    if: needs.publish.outputs.kind != 'agent'
     permissions:
       contents: read
       pages: write

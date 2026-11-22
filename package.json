@@ -35,13 +35,14 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:sdk": "npm run build -w @jeevanand/agent-browserbox-sdk",
+    "build:agent": "npm run build:sdk && npm run build -w @jeevanand/agent-browserbox",
     "build:runtime": "BBX_TARGET=runtime vite build",
     "build:wasm": "node scripts/build-wasm.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs",
-    "e2e:sdk": "npm run build:sdk && npm run build:runtime && NODE_PATH=$(npm root -g) node scripts/sdk-e2e.mjs"
+    "e2e:sdk": "npm run build:agent && npm run build:runtime && NODE_PATH=$(npm root -g) node scripts/sdk-e2e.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

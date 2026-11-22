@@ -26,7 +26,7 @@ running on the user's device.
 |---|---|
 | [`@jeevanand/agent-browserbox-sdk`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
 | [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
-| `@jeevanand/agent-browserbox` | Coming next: our agent (models, tools, sessions), working on a BrowserBox. |
+| [`@jeevanand/agent-browserbox`](packages/agent) | The agent: Claude or any OpenAI-compatible model, working inside a box with file, search, shell and JavaScript tools. |
 | `@jeevanand/browserbox` | This app. Not on npm at the moment; use the hosted app or run it from source (below). |
 
 ```ts
@@ -47,11 +47,12 @@ push to `main` runs tests, never a deployment.
 | Release | Tag | Goes to | Changelog |
 |---|---|---|---|
 | SDK + runtime | `sdk-v<version>` | npm (both packages), and the runtime to `/runtime/<version>/` on the site | `packages/sdk/CHANGELOG.md` |
+| The agent | `agent-v<version>` | npm | `packages/agent/CHANGELOG.md` |
 | The app | `app-v<version>` | the site: `/agent/`, `/os/`, `/docs/` (not npm) | `CHANGELOG.md` |
 
 To release: bump the version (`packages/sdk` and `packages/runtime` together,
 or the root `package.json` for the app), add its section to the changelog,
-then **Actions → Release → Run workflow** and pick `sdk` or `app`. The
+then **Actions → Release → Run workflow** and pick `sdk`, `agent` or `app`. The
 workflow tests, publishes, writes the release notes from the changelog,
 attaches a zip (the built runtime, or the built app), and then rebuilds the
 site from all releases (`.github/workflows/pages.yml`):
@@ -63,7 +64,7 @@ site from all releases (`.github/workflows/pages.yml`):
 
 A release only adds its own part: releasing the runtime never rebuilds the
 app, and releasing the app never touches a runtime. Tests run per product
-(`ci-sdk.yml`, `ci-app.yml`), triggered by their own paths.
+(`ci-sdk.yml`, `ci-agent.yml`, `ci-app.yml`), triggered by their own paths.
 
 ## Run it
 

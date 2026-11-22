@@ -22,3 +22,11 @@ describe('SDK and runtime versions', () => {
     expect(readFileSync(new URL('../packages/sdk/CHANGELOG.md', import.meta.url), 'utf8')).toContain(`\n## ${VERSION}\n`);
   });
 });
+
+describe('agent version', () => {
+  it("matches the agent's VERSION, and has a changelog section", async () => {
+    const { VERSION: agentVersion } = await import('../packages/agent/src/index');
+    expect(agentVersion).toBe(version('agent'));
+    expect(readFileSync(new URL('../packages/agent/CHANGELOG.md', import.meta.url), 'utf8')).toContain(`\n## ${agentVersion}\n`);
+  });
+});

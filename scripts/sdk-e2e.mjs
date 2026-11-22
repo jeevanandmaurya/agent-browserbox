@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SDK_DIST = join(ROOT, 'packages/sdk/dist');
+const AGENT_DIST = join(ROOT, 'packages/agent/dist');
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 const RUNTIME_PORT = 4581;
@@ -40,9 +41,10 @@ const host = createServer(async (req, res) => {
   if (path === '/') return res.writeHead(200, { 'Content-Type': 'text/html' }).end(page);
   // Fetched from inside the box by curl, to test network permissions.
   if (path === '/data.txt') return res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' }).end('hello-from-the-network');
-  if (path.startsWith('/sdk/')) {
-    const file = normalize(join(SDK_DIST, path.slice(5)));
-    if (!file.startsWith(SDK_DIST + sep)) return res.writeHead(403).end();
+  if (path.startsWith('/sdk/') || path.startsWith('/agent/')) {
+    const dist = path.startsWith('/sdk/') ? SDK_DIST : AGENT_DIST;
+    const file = normalize(join(dist, path.slice(path.indexOf('/', 1) + 1)));
+    if (!file.startsWith(dist + sep)) return res.writeHead(403).end();
     const body = await readFile(file).catch(() => null);
     if (!body) return res.writeHead(404).end();
     return res.writeHead(200, { 'Content-Type': 'text/javascript' }).end(body);
@@ -242,6 +244,58 @@ await check('invalid box ids are refused before anything loads', () =>
       if (!(err instanceof BoxError)) throw err;
       return err.message;
     }
+  }),
+);
+
+await check('agent: a scripted model drives every tool against a real box', () =>
+  run(async () => {
+    // The agent package is optional here: SDK-only runs (its own CI and releases) do not build it.
+    const { Agent } = await import('/agent/index.js').catch(() => ({}));
+    if (!Agent) return 'skipped: the agent package is not built';
+    const work = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' });
+    // A model that plays back a fixed script and keeps what each tool returned.
+    const results = {};
+    const say = (text) => ({ type: 'text', text });
+    const use = (name, input) => ({ type: 'tool_use', id: name, name, input });
+    const script = [
+      [use('write_file', { path: 'app/main.js', content: 'const n = 6 * 7;\nprint("answer " + n);\n' }), use('todo_write', { items: [{ text: 'build', status: 'in_progress' }] })],
+      [use('edit_file', { path: 'app/main.js', old_string: '6 * 7', new_string: '6 * 9' }), use('list_dir', { path: 'app' })],
+      [use('glob', { pattern: '**/*.js' }), use('grep', { pattern: 'answer', path: 'app' })],
+      [use('shell', { command: 'js app/main.js && echo shell-ok' }), use('run_js', { code: 'print(await fs.readText("app/main.js"))' })],
+      [use('read_file', { path: 'app/main.js', offset: 2 })],
+      [say('All done.')],
+    ];
+    let step = 0;
+    const model = {
+      id: 'scripted', contextWindow: 100000,
+      async turn(req) {
+        const last = req.messages.at(-1);
+        for (const b of last.content) if (b.type === 'tool_result') results[b.tool_use_id] = (b.is_error ? 'ERROR: ' : '') + b.content;
+        const content = script[step++];
+        return { content, stop: content.some((b) => b.type === 'tool_use') ? 'tool_use' : 'end', usage: { input: 1, output: 1, cacheRead: 0 }, model: 'scripted' };
+      },
+    };
+    const agent = new Agent({ box: work, model, cwd: '/home/user' });
+    const types = [];
+    let final;
+    for await (const e of agent.send('build it')) {
+      types.push(e.type);
+      if (e.type === 'done') final = e;
+    }
+    work.teardown();
+    const expect = (name, ok) => { if (!ok) throw new Error(`${name}: ${JSON.stringify(results[name])}`); };
+    expect('write_file', /Wrote \/home\/user\/app\/main\.js/.test(results.write_file));
+    expect('todo_write', /0\/1 done/.test(results.todo_write));
+    expect('edit_file', /Edited/.test(results.edit_file));
+    expect('list_dir', /^main\.js {2}\d+ B$/.test(results.list_dir));
+    expect('glob', results.glob === 'app/main.js');
+    expect('grep', /main\.js:2:print\("answer " \+ n\);/.test(results.grep));
+    expect('shell', results.shell === 'answer 54\nshell-ok');
+    expect('run_js', results.run_js.includes('6 * 9'));
+    expect('read_file', results.read_file === '2\tprint("answer " + n);\n3\t');
+    if (final?.reason !== 'end' || final.text !== 'All done.') throw new Error(`done: ${JSON.stringify(final)}`);
+    if (agent.todos[0]?.text !== 'build') throw new Error('todos not kept');
+    return `9 tools ran in the box; ${types.filter((t) => t === 'tool_call').length} calls, final "${final.text}"`;
   }),
 );
 
