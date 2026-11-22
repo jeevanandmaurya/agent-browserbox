@@ -1,7 +1,7 @@
 name: Remove the old app release (one-off)
 
-# Unpublishes @jeevanand/browserbox from npm (all versions: 0.0.0-stage and
-# 0.1.0, the first app build) and deletes the v0.1.0 GitHub release and tag.
+# Deletes the v0.1.0 GitHub release and tag (the first app build). npm does
+# not let CI tokens unpublish, so @jeevanand/browserbox is unpublished by hand.
 # The SDK release (sdk-v0.1.0, @jeevanand/agent-browserbox*) is not touched.
 # This file is removed again once it has run.
 on:
@@ -26,18 +26,6 @@ jobs:
             echo "::error::confirmation does not match"
             exit 1
           fi
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-
-      - name: Unpublish @jeevanand/browserbox from npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm view @jeevanand/browserbox versions || { echo "already gone"; exit 0; }
-          npm unpublish @jeevanand/browserbox --force
 
       - name: Delete the v0.1.0 GitHub release and tag
         env:
