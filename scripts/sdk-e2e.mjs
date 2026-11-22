@@ -247,6 +247,64 @@ await check('invalid box ids are refused before anything loads', () =>
   }),
 );
 
+await check('shell sessions keep their folder and variables; one command at a time', () =>
+  run(async () => {
+    const sh = await box.openShell({ cwd: '/tmp', env: { WHO: 'session' } });
+    await sh.exec('mkdir -p s1/deeper && cd s1');
+    if (sh.cwd !== '/tmp/s1') throw new Error(`cwd after cd: ${sh.cwd}`);
+    await sh.exec('export COLOR=blue');
+    const r = await sh.exec('pwd && echo "$WHO $COLOR"');
+    if (r.stdout !== '/tmp/s1\nsession blue\n') throw new Error(JSON.stringify(r));
+    const long = await sh.run('sleep 30');
+    try {
+      await sh.run('echo too soon');
+      throw new Error('a second command ran while one was running');
+    } catch (err) {
+      if (!/still running/.test(err.message)) throw err;
+    }
+    await long.kill();
+    const killed = await long.exit;
+    const after = await sh.exec('pwd');
+    await sh.close();
+    if (killed !== 130 || after.stdout.trim() !== '/tmp/s1') throw new Error(JSON.stringify({ killed, after }));
+    return `cd and export persisted; killed → ${killed}; session still usable`;
+  }),
+);
+
+await check('fs.glob and fs.appendFile', () =>
+  run(async () => {
+    await box.fs.writeFile('g/a.ts', '1');
+    await box.fs.writeFile('g/sub/b.ts', '2');
+    await box.fs.writeFile('g/sub/c.css', '3');
+    await box.fs.appendFile('g/log.txt', 'one\n');
+    await box.fs.appendFile('g/log.txt', 'two\n');
+    const ts = (await box.fs.glob('**/*.ts', { cwd: 'g' })).sort().join(',');
+    const log = await box.fs.readTextFile('g/log.txt');
+    await box.fs.rm('g', { recursive: true });
+    if (!ts.includes('a.ts') || !ts.includes('b.ts') || ts.includes('c.css') || log !== 'one\ntwo\n') throw new Error(JSON.stringify({ ts, log }));
+    return `glob **/*.ts → ${ts}`;
+  }),
+);
+
+await check('dev servers and the process table', () =>
+  run(async () => {
+    await box.fs.writeFile('site/index.html', '<!doctype html><title>t</title><h1>hi</h1>');
+    const srv = await box.dev.start('site');
+    const listed = (await box.dev.list()).some((d) => d.port === srv.port);
+    const logs = await box.dev.logs(srv.port);
+    const procs = await box.processes();
+    const sleeper = await box.spawn('sleep 30');
+    await new Promise((r) => setTimeout(r, 200));
+    const shell = (await box.processes()).find((p) => p.kind === 'shell' && /sleep/.test(p.detail));
+    const killed = shell ? await box.killProcess(shell.pid) : false;
+    const code = await sleeper.exit;
+    const stopped = await box.dev.stop(srv.port);
+    await box.fs.rm('site', { recursive: true });
+    if (!srv.url || !listed || !Array.isArray(logs) || !procs.length || !killed || code !== 130 || !stopped) throw new Error(JSON.stringify({ srv, listed, logs: logs.length, procs: procs.length, killed, code, stopped }));
+    return `served ${srv.root} at ${srv.url}; ${procs.length} processes; killed a shell by pid → ${code}`;
+  }),
+);
+
 await check('agent: a scripted model drives every tool against a real box', () =>
   run(async () => {
     // The agent package is optional here: SDK-only runs (its own CI and releases) do not build it.

@@ -5,6 +5,19 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.2.0
+
+New, all backward compatible:
+
+- **Shell sessions**: `box.openShell({ cwd, env })` keeps its working folder
+  and variables between commands, like a terminal; `shell.exec()` and
+  `shell.run()` (streaming), `shell.cwd`, `shell.close()`.
+- **Files**: `box.fs.glob(pattern, { cwd, limit })` and `box.fs.appendFile()`.
+- **Dev servers**: `box.dev.start(folder)`, `stop`, `list` and `logs` (console
+  output, server logs, build errors and failed requests).
+- **Processes**: `box.processes()` lists the box's process table, and
+  `box.killProcess(pid)` stops one.
+
 ## 0.1.1
 
 - **The SDK now uses the hosted runtime of its own exact version** by default

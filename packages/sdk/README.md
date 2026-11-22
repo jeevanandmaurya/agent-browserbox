@@ -78,6 +78,22 @@ Commands run in BrowserBox's shell (`help` lists them): files and text (`ls`,
 load from esm.sh) and `pkg install python|git|sqlite|zip|esbuild` for more.
 It is not bash, and there is no Node.js.
 
+### Shell sessions
+
+```ts
+const sh = await box.openShell({ cwd: 'project' });
+await sh.exec('cd src && export MODE=dev');
+await sh.exec('pwd && echo $MODE'); // "…/project/src", "dev"; sh.cwd follows
+```
+
+`sh.run(command)` streams like `box.spawn()`. One command at a time per session.
+
+### More
+
+- `box.fs.glob('**/*.ts', { cwd })` → absolute paths · `box.fs.appendFile(path, data)`
+- `box.dev.start('site')` → `{ port, url, root }` · `box.dev.logs(port)` · `box.dev.list()` · `box.dev.stop(port)`
+- `box.processes()` → the process table · `box.killProcess(pid)`
+
 ### `box.teardown()`
 
 Removes the frame and fails any call still pending.

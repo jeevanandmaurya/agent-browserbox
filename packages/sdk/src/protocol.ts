@@ -68,6 +68,47 @@ export interface PermissionRequest {
   detail: string;
 }
 
+/** A shell session: keeps its working folder and variables between commands. */
+export interface ShellInfo {
+  id: number;
+  cwd: string;
+}
+
+/** A process in the box's process table (shells, sandboxes, dev servers, …). */
+export interface ProcessInfo {
+  pid: number;
+  ppid?: number;
+  name: string;
+  kind: string;
+  /** 'running', 'idle', … */
+  state: string;
+  detail: string;
+  /** When it started, ms since the epoch. */
+  started: number;
+  cpuMs: number;
+  memBytes: number;
+}
+
+/** A dev server the box runs for a project folder. Nothing listens on a real port: `url` is virtual. */
+export interface DevServer {
+  port: number;
+  root: string;
+  url: string;
+  /** The project's request handler (server.ts, …), if it has one. */
+  backend: string | null;
+  network: boolean;
+}
+
+export interface DevLogEntry {
+  /** Increasing per server; pass the last one as `after` to get newer entries. */
+  seq: number;
+  t: number;
+  level: 'log' | 'info' | 'warn' | 'error' | 'debug';
+  /** page: the app's console · server: the backend · build: bundling · network: failed requests. */
+  source: 'page' | 'server' | 'build' | 'network';
+  text: string;
+}
+
 /** Calls the SDK can make, with their arguments and results. */
 export interface Methods {
   info(): Hello;
@@ -81,6 +122,19 @@ export interface Methods {
   'fs.rm'(path: string, opts?: { recursive?: boolean }): void;
   'fs.rename'(from: string, to: string): void;
   'fs.cp'(from: string, to: string): void;
+  'fs.appendFile'(path: string, data: string | Uint8Array): void;
+  /** Absolute paths of the files under `cwd` that match a glob ('**', '*', '?', '{a,b}'). */
+  'fs.glob'(pattern: string, cwd?: string, limit?: number): string[];
+  'shell.open'(opts?: { cwd?: string; env?: Record<string, string> }): ShellInfo;
+  /** Runs a command line in a shell session; output and exit (with the new cwd) arrive as events. Returns its process id. */
+  'shell.run'(id: number, command: string, opts?: { timeoutMs?: number }): number;
+  'shell.close'(id: number): void;
+  'dev.start'(opts: { root: string; port?: number; network?: boolean }): DevServer;
+  'dev.stop'(port: number): boolean;
+  'dev.list'(): DevServer[];
+  'dev.logs'(port: number, opts?: { after?: number; limit?: number }): DevLogEntry[];
+  'procs.list'(): ProcessInfo[];
+  'procs.kill'(pid: number): boolean;
   exec(command: string, opts?: ExecOptions): ExecResult;
   /** Starts a command; its output and exit arrive as events. Returns its process id. */
   spawn(command: string, opts?: ExecOptions): number;
@@ -101,5 +155,6 @@ export type FromRuntime =
   | { t: 'result'; id: number; ok: true; value: unknown }
   | { t: 'result'; id: number; ok: false; error: string; code?: string }
   | { t: 'output'; pid: number; stream: 'stdout' | 'stderr'; data: string }
-  | { t: 'exit'; pid: number; exitCode: number }
+  /** `cwd`: for commands run in a shell session, its working folder afterwards. */
+  | { t: 'exit'; pid: number; exitCode: number; cwd?: string }
   | { t: 'permission'; id: number; request: PermissionRequest };

@@ -6,7 +6,7 @@ import { fromSearch } from '@/kernel/instance';
 import { HOME } from '@/kernel/paths';
 import { plainText, stripAnsi } from '@/shell/ansi';
 import type { ShellHandle } from '@/kernel/api';
-import { PROTOCOL_VERSION, type ExecOptions, type ExecResult, type FromRuntime, type Hello, type Methods, type ToRuntime } from '../packages/sdk/src/protocol';
+import { PROTOCOL_VERSION, type DevServer, type ExecOptions, type ExecResult, type FromRuntime, type Hello, type Methods, type ToRuntime } from '../packages/sdk/src/protocol';
 
 /**
  * The SDK runtime: a UI-less page that owns a BrowserBox kernel and lends it
@@ -45,16 +45,26 @@ const quote = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
 let nextPid = 1;
 const running = new Map<number, AbortController>();
 
-/** Runs one command line in a fresh shell. Output goes to `out`/`err` as it comes. */
-async function run(command: string, opts: ExecOptions, io: { out(t: string): void; err(t: string): void }, ctl: AbortController): Promise<number> {
-  const shell: ShellHandle = await os.shells.open({ cwd: opts.cwd, confined: true });
-  let timedOut = false;
-  const timer = opts.timeoutMs ? setTimeout(() => ((timedOut = true), ctl.abort()), opts.timeoutMs) : undefined;
-  try {
-    for (const [k, v] of Object.entries(opts.env ?? {})) {
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new Error(`invalid environment variable name: ${k}`);
-      await shell.run(`export ${k}=${quote(String(v))}`, { out: () => undefined, err: io.err });
+type Io = { out(t: string): void; err(t: string): void };
+
+/** Opens a confined shell (network needs the embedding page's permission) with extra variables. */
+async function openShell(opts: { cwd?: string; env?: Record<string, string> }, err: (t: string) => void): Promise<ShellHandle> {
+  const shell = await os.shells.open({ cwd: opts.cwd, confined: true });
+  for (const [k, v] of Object.entries(opts.env ?? {})) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+      shell.close();
+      throw new Error(`invalid environment variable name: ${k}`);
     }
+    await shell.run(`export ${k}=${quote(String(v))}`, { out: () => undefined, err });
+  }
+  return shell;
+}
+
+/** Runs a command line in `shell`. Output goes to `io` as it comes; 124 = timed out, 130 = killed. */
+async function runIn(shell: ShellHandle, command: string, timeoutMs: number | undefined, io: Io, ctl: AbortController): Promise<number> {
+  let timedOut = false;
+  const timer = timeoutMs ? setTimeout(() => ((timedOut = true), ctl.abort()), timeoutMs) : undefined;
+  try {
     const code = await shell.run(command, { ...io, signal: ctl.signal });
     return timedOut ? 124 : ctl.signal.aborted ? 130 : code;
   } catch (err) {
@@ -64,11 +74,35 @@ async function run(command: string, opts: ExecOptions, io: { out(t: string): voi
     return 1;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Runs one command line in a fresh shell. */
+async function run(command: string, opts: ExecOptions, io: Io, ctl: AbortController): Promise<number> {
+  let shell: ShellHandle;
+  try {
+    shell = await openShell(opts, io.err);
+  } catch (err) {
+    io.err(`${(err as Error).message}\n`);
+    return 1;
+  }
+  try {
+    return await runIn(shell, command, opts.timeoutMs, io, ctl);
+  } finally {
     shell.close();
   }
 }
 
+/** Shell sessions the embedding page opened, by id. */
+const sessions = new Map<number, { shell: ShellHandle; busy: boolean }>();
+let nextSession = 1;
+const streamTo = (pid: number): Io => ({
+  out: (data) => send({ t: 'output', pid, stream: 'stdout', data: stripAnsi(data) }),
+  err: (data) => send({ t: 'output', pid, stream: 'stderr', data: stripAnsi(data) }),
+});
+
 // ---- methods -----------------------------------------------------------------
+const devInfo = ({ port, root, url, backend, network }: DevServer): DevServer => ({ port, root, url, backend, network });
 type Impl = { [M in keyof Methods]: (...args: Parameters<Methods[M]>) => ReturnType<Methods[M]> | Promise<ReturnType<Methods[M]>> };
 
 async function hello(): Promise<Hello> {
@@ -102,12 +136,45 @@ const methods: Impl = {
     const pid = nextPid++;
     const ctl = new AbortController();
     running.set(pid, ctl);
-    void run(command, opts, { out: (data) => send({ t: 'output', pid, stream: 'stdout', data: stripAnsi(data) }), err: (data) => send({ t: 'output', pid, stream: 'stderr', data: stripAnsi(data) }) }, ctl).then((exitCode) => {
+    void run(command, opts, streamTo(pid), ctl).then((exitCode) => {
       running.delete(pid);
       send({ t: 'exit', pid, exitCode });
     });
     return pid;
   },
+  'fs.appendFile': (path, data) => os.fs.appendFile(path, data),
+  'fs.glob': (pattern, cwd, limit) => os.fs.glob(pattern, cwd ?? HOME, limit),
+  async 'shell.open'(opts = {}) {
+    const shell = await openShell(opts, () => undefined);
+    const id = nextSession++;
+    sessions.set(id, { shell, busy: false });
+    return { id, cwd: shell.cwd };
+  },
+  'shell.run'(id, command, opts = {}) {
+    const s = sessions.get(id);
+    if (!s) throw new Error(`no such shell session: ${id}`);
+    if (s.busy) throw new Error('this shell session is still running a command');
+    s.busy = true;
+    const pid = nextPid++;
+    const ctl = new AbortController();
+    running.set(pid, ctl);
+    void runIn(s.shell, command, opts.timeoutMs, streamTo(pid), ctl).then((exitCode) => {
+      s.busy = false;
+      running.delete(pid);
+      send({ t: 'exit', pid, exitCode, cwd: s.shell.cwd });
+    });
+    return pid;
+  },
+  'shell.close'(id) {
+    sessions.get(id)?.shell.close();
+    sessions.delete(id);
+  },
+  'dev.start': ({ root, port, network }) => os.dev.start({ root, port, network }).then(devInfo),
+  'dev.stop': (port) => os.dev.stop(port),
+  'dev.list': async () => (await os.dev.list()).map(devInfo),
+  'dev.logs': async (port, opts) => (await os.dev.logs(port, opts)).map(({ seq, t, level, source, text }) => ({ seq, t, level, source, text })),
+  'procs.list': () => os.procs.list().map((p) => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, state: p.state, detail: p.detail, started: p.started, cpuMs: p.cpuMs, memBytes: p.memBytes })),
+  'procs.kill': (pid) => os.procs.kill(pid, 'killed through the SDK'),
   kill(pid) {
     const ctl = running.get(pid);
     ctl?.abort();

@@ -23,7 +23,7 @@
     "@anthropic-ai/sdk": "^1.8.0"
   },
   "peerDependencies": {
-    "@jeevanand/agent-browserbox-sdk": "^0.1.1"
+    "@jeevanand/agent-browserbox-sdk": "^0.2.0"
   },
   "keywords": [
     "ai-agent",

@@ -1,8 +1,11 @@
 import {
   PROTOCOL_VERSION,
+  type DevLogEntry,
+  type DevServer,
   type ExecOptions,
   type ExecResult,
   type FileStat,
+  type ProcessInfo,
   type FromRuntime,
   type Hello,
   type Method,
@@ -12,11 +15,11 @@ import {
   type ToRuntime,
 } from './protocol.js';
 
-export type { ExecOptions, ExecResult, FileStat, PermissionDecision, PermissionRequest };
+export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, PermissionDecision, PermissionRequest, ProcessInfo };
 export { PROTOCOL_VERSION };
 
 /** This SDK's version. Always released together with the runtime of the same version. */
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';
 
 /**
  * The hosted runtime of exactly this SDK's version. Released runtimes never
@@ -65,10 +68,10 @@ interface Sink {
   out: ReadableStreamDefaultController<string>[];
   stdout: ReadableStreamDefaultController<string>[];
   stderr: ReadableStreamDefaultController<string>[];
-  exit(code: number): void;
+  exit(code: number, cwd?: string): void;
 }
 
-type ProcEvent = { t: 'output'; stream: 'stdout' | 'stderr'; data: string } | { t: 'exit'; exitCode: number };
+type ProcEvent = { t: 'output'; stream: 'stdout' | 'stderr'; data: string } | { t: 'exit'; exitCode: number; cwd?: string };
 
 /** A running command in the box. */
 export class BoxProcess {
@@ -84,19 +87,75 @@ export class BoxProcess {
     readonly pid: number,
     private box: BrowserBox,
     attach: (sink: Sink) => void,
+    onExit?: (code: number, cwd?: string) => void,
   ) {
     const sink: Sink = { out: [], stdout: [], stderr: [], exit: () => undefined };
     const stream = (list: ReadableStreamDefaultController<string>[]) => new ReadableStream<string>({ start: (c) => void list.push(c) });
     this.output = stream(sink.out);
     this.stdout = stream(sink.stdout);
     this.stderr = stream(sink.stderr);
-    this.exit = new Promise((resolve) => (sink.exit = resolve));
+    this.exit = new Promise((resolve) => (sink.exit = (code, cwd) => (onExit?.(code, cwd), resolve(code))));
     attach(sink);
   }
 
   /** Stops the command. Resolves false if it had already finished. */
   kill(): Promise<boolean> {
     return this.box.call('kill', this.pid);
+  }
+}
+
+/** Reads a stream to the end. */
+async function readAll(stream: ReadableStream<string>): Promise<string> {
+  let text = '';
+  const reader = stream.getReader();
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return text;
+    text += value;
+  }
+}
+
+/** Collapses progress bars redrawn with \r to their final state, as exec() does. */
+const settle = (text: string) =>
+  text
+    .split('\n')
+    .map((l) => l.slice(l.lastIndexOf('\r') + 1))
+    .join('\n');
+
+/**
+ * A shell session in the box: like a terminal, it keeps its working folder
+ * and variables between commands (`cd`, `export`).
+ */
+export class BoxShell {
+  /** The working folder, as of the last command. */
+  cwd: string;
+
+  /** @internal */
+  constructor(
+    readonly id: number,
+    cwd: string,
+    private box: BrowserBox,
+  ) {
+    this.cwd = cwd;
+  }
+
+  /** Starts a command line and streams its output. One command at a time per session. */
+  async run(command: string, opts: { timeoutMs?: number } = {}): Promise<BoxProcess> {
+    const pid = await this.box.call('shell.run', this.id, command, opts);
+    return this.box._process(pid, (_code, cwd) => {
+      if (cwd) this.cwd = cwd;
+    });
+  }
+
+  /** Runs a command line to completion and returns its output. */
+  async exec(command: string, opts: { timeoutMs?: number } = {}): Promise<ExecResult> {
+    const p = await this.run(command, opts);
+    const [stdout, stderr, exitCode] = await Promise.all([readAll(p.stdout), readAll(p.stderr), p.exit]);
+    return { exitCode, stdout: settle(stdout), stderr: settle(stderr) };
+  }
+
+  close(): Promise<void> {
+    return this.box.call('shell.close', this.id);
   }
 }
 
@@ -142,6 +201,39 @@ export class BoxFs {
   cp(from: string, to: string): Promise<void> {
     return this.box.call('fs.cp', this.#abs(from), this.#abs(to));
   }
+  /** Creates the file if needed. */
+  appendFile(path: string, data: string | Uint8Array): Promise<void> {
+    return this.box.call('fs.appendFile', this.#abs(path), data);
+  }
+  /** Absolute paths of the files under `cwd` (default: home) that match a glob ('**', '*', '?', '{a,b}'). */
+  glob(pattern: string, opts: { cwd?: string; limit?: number } = {}): Promise<string[]> {
+    return this.box.call('fs.glob', pattern, this.#abs(opts.cwd ?? '.'), opts.limit);
+  }
+}
+
+/**
+ * Dev servers for project folders: bundling TS/JSX, reloading on save, and a
+ * backend (server.ts) when the project has one. Nothing listens on a real
+ * port; the app shows a server's pages through the runtime.
+ */
+export class BoxDev {
+  /** @internal */
+  constructor(private box: BrowserBox) {}
+
+  /** Starts a server for a project folder, or returns the one already serving it. */
+  start(root: string, opts: { port?: number; network?: boolean } = {}): Promise<DevServer> {
+    return this.box.call('dev.start', { root: root.startsWith('/') ? root : `${this.box.home.replace(/\/$/, '')}/${root}`, ...opts });
+  }
+  stop(port: number): Promise<boolean> {
+    return this.box.call('dev.stop', port);
+  }
+  list(): Promise<DevServer[]> {
+    return this.box.call('dev.list');
+  }
+  /** Console output, server logs, build errors and failed requests, oldest first. */
+  logs(port: number, opts: { after?: number; limit?: number } = {}): Promise<DevLogEntry[]> {
+    return this.box.call('dev.logs', port, opts);
+  }
 }
 
 /**
@@ -155,6 +247,7 @@ export class BoxFs {
  */
 export class BrowserBox {
   readonly fs = new BoxFs(this);
+  readonly dev = new BoxDev(this);
   /** Runtime version. */
   readonly version: string;
   /** This box's id. */
@@ -239,12 +332,37 @@ export class BrowserBox {
 
   /** Starts a shell command line and streams its output. */
   async spawn(command: string, opts?: ExecOptions): Promise<BoxProcess> {
-    const pid = await this.call('spawn', command, opts);
-    return new BoxProcess(pid, this, (sink) => {
-      this.#sinks.set(pid, sink);
-      for (const ev of this.#early.get(pid) ?? []) this.#deliver(pid, ev);
-      this.#early.delete(pid);
-    });
+    return this._process(await this.call('spawn', command, opts));
+  }
+
+  /** Opens a shell session that keeps its working folder and variables between commands. */
+  async openShell(opts: { cwd?: string; env?: Record<string, string> } = {}): Promise<BoxShell> {
+    const { id, cwd } = await this.call('shell.open', opts);
+    return new BoxShell(id, cwd, this);
+  }
+
+  /** The box's process table: shells, sandboxes, dev servers and so on. */
+  processes(): Promise<ProcessInfo[]> {
+    return this.call('procs.list');
+  }
+
+  /** Stops a process from `processes()`. Resolves false if there was none with that id. */
+  killProcess(pid: number): Promise<boolean> {
+    return this.call('procs.kill', pid);
+  }
+
+  /** @internal Wraps a runtime process id whose events are routed here. */
+  _process(pid: number, onExit?: (code: number, cwd?: string) => void): BoxProcess {
+    return new BoxProcess(
+      pid,
+      this,
+      (sink) => {
+        this.#sinks.set(pid, sink);
+        for (const ev of this.#early.get(pid) ?? []) this.#deliver(pid, ev);
+        this.#early.delete(pid);
+      },
+      onExit,
+    );
   }
 
   /** Shuts the box down: removes its frame and fails anything still pending. */
@@ -280,7 +398,7 @@ export class BrowserBox {
       case 'output':
         return this.#route(msg.pid, { t: 'output', stream: msg.stream, data: msg.data });
       case 'exit':
-        return this.#route(msg.pid, { t: 'exit', exitCode: msg.exitCode });
+        return this.#route(msg.pid, { t: 'exit', exitCode: msg.exitCode, cwd: msg.cwd });
       case 'permission':
         void Promise.resolve()
           .then(() => this.#permissions(msg.request))
@@ -313,6 +431,6 @@ export class BrowserBox {
     if (ev.t === 'output') return each([...sink.out, ...sink[ev.stream]], (c) => c.enqueue(ev.data));
     each([...sink.out, ...sink.stdout, ...sink.stderr], (c) => c.close());
     this.#sinks.delete(pid);
-    sink.exit(ev.exitCode);
+    sink.exit(ev.exitCode, ev.cwd);
   }
 }
