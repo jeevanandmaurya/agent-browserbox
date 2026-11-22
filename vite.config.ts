@@ -76,8 +76,12 @@ const input = runtimeOnly
   ? { bridge: 'kernel/bridge.html', embed: 'embed/index.html' }
   : { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html', embed: 'embed/index.html' };
 
+/** The runtime's version, reported by the kernel (and to the SDK). One source of truth: packages/runtime/package.json. */
+const RUNTIME_VERSION: string = JSON.parse(readFileSync(new URL('./packages/runtime/package.json', import.meta.url), 'utf8')).version;
+
 export default defineConfig({
   plugins: [kernelChain()],
+  define: { __BBX_RUNTIME_VERSION__: JSON.stringify(RUNTIME_VERSION) },
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {

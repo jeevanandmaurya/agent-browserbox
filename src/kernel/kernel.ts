@@ -47,7 +47,7 @@ export interface UiBridge {
  * headless in a worker; windows talk to it through `RemoteKernel`.
  */
 export class KernelCore implements Kernel {
-  readonly version = '0.1.0';
+  readonly version = __BBX_RUNTIME_VERSION__;
   readonly bootStart = 0;
   readonly bus = new Bus<KernelEvents>();
   readonly settings = new Settings(this.bus, (key, value) => {

@@ -1,15 +1,12 @@
 {
   "name": "@jeevanand/browserbox",
   "version": "0.1.0",
-  "description": "An operating system for AI agents that runs entirely in the browser, with no backend. Run it with: npx @jeevanand/browserbox",
+  "private": true,
+  "description": "BrowserBox: an operating system for AI agents that runs entirely in the browser. Released as a site (app-v* releases), not on npm.",
   "type": "module",
   "bin": {
     "browserbox": "bin/browserbox.mjs"
   },
-  "files": [
-    "dist",
-    "bin"
-  ],
   "keywords": [
     "ai-agent",
     "agent",
@@ -31,9 +28,6 @@
   },
   "author": "Jeevanand Maurya",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=18"
   },
@@ -42,13 +36,11 @@
     "build": "tsc --noEmit && vite build",
     "build:sdk": "npm run build -w @jeevanand/agent-browserbox-sdk",
     "build:runtime": "BBX_TARGET=runtime vite build",
-    "build:pages": "npm run build && BBX_TARGET=runtime BBX_OUT=dist/runtime vite build",
     "build:wasm": "node scripts/build-wasm.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs",
-    "prepack": "npm run build",
     "e2e:sdk": "npm run build:sdk && npm run build:runtime && NODE_PATH=$(npm root -g) node scripts/sdk-e2e.mjs"
   },
   "devDependencies": {

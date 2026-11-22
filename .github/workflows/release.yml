@@ -1,14 +1,19 @@
-name: Release to npm
+name: Release
 
-# What is released:
-#   app  @jeevanand/browserbox (root package.json); tag v1.2.3
-#   sdk  @jeevanand/agent-browserbox-sdk and @jeevanand/agent-browserbox-runtime
-#        (always the same version, packages/*/package.json); tag sdk-v1.2.3
-# Start it by pushing such a tag, or from the Actions tab (Run workflow), which
-# releases the version in package.json and creates the tag.
+# Three independent products, each released on its own:
+#   sdk  @jeevanand/agent-browserbox-sdk + @jeevanand/agent-browserbox-runtime
+#        (npm, always the same version, packages/*/package.json); tag sdk-v1.2.3.
+#        The runtime is also served at /runtime/<version>/ on the site.
+#   app  the BrowserBox app (root package.json); tag app-v1.2.3. Not on npm:
+#        released as a site zip and served at /agent/, /os/, /docs/.
+# Start it from the Actions tab (Run workflow), which releases the version in
+# package.json and creates the tag, or by pushing such a tag.
+#
+# Every release ends by reassembling the site from all releases (pages.yml).
+# A release only adds its own part; nothing is ever built from a push.
 on:
   push:
-    tags: ['v*', 'sdk-v*']
+    tags: ['sdk-v*', 'app-v*']
   workflow_dispatch:
     inputs:
       release:
@@ -20,6 +25,10 @@ on:
 permissions:
   contents: write
   id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -35,15 +44,6 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Check that NPM_TOKEN is configured
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish under @jeevanand."
-            exit 1
-          fi
-
       - name: Work out what to release
         id: what
         env:
@@ -52,40 +52,53 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             kind="$INPUT"
             if [ "$kind" = sdk ]; then tag="sdk-v$(node -p "require('./packages/sdk/package.json').version")"
-            else tag="v$(node -p "require('./package.json').version")"; fi
+            else tag="app-v$(node -p "require('./package.json').version")"; fi
           else
             tag="$GITHUB_REF_NAME"
-            if [[ "$tag" == sdk-v* ]]; then kind=sdk; else kind=app; fi
+            kind="${tag%%-v*}"
           fi
+          version="${tag#*-v}"
           if [ "$kind" = sdk ]; then
-            want="${tag#sdk-v}"
-            for p in packages/sdk packages/runtime; do
-              have=$(node -p "require('./$p/package.json').version")
-              if [ "$have" != "$want" ]; then
-                echo "::error::$tag does not match $p/package.json version $have (the SDK and the runtime share a version)"
-                exit 1
-              fi
-            done
+            files="packages/sdk/package.json packages/runtime/package.json"
+            changelog=packages/sdk/CHANGELOG.md
           else
-            have=$(node -p "require('./package.json').version")
-            if [ "v$have" != "$tag" ]; then
-              echo "::error::tag $tag does not match package.json version $have"
+            files="package.json"
+            changelog=CHANGELOG.md
+          fi
+          for f in $files; do
+            have=$(node -p "require('./$f').version")
+            if [ "$have" != "$version" ]; then
+              echo "::error::$tag does not match $f version $have"
               exit 1
             fi
-          fi
-          echo "kind=$kind" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=${tag#*v}" >> "$GITHUB_OUTPUT"
+          done
+          {
+            echo "kind=$kind"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "changelog=$changelog"
+          } >> "$GITHUB_OUTPUT"
           echo "Releasing $kind as $tag"
+
+      - name: Check that NPM_TOKEN is configured
+        if: steps.what.outputs.kind == 'sdk'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish under @jeevanand."
+            exit 1
+          fi
 
       # A manual run for a version that already has a tag rebuilds that tag's
       # code, so a rerun only refreshes the release page and its assets.
       - name: Use the tagged code if the tag exists
         env:
           TAG: ${{ steps.what.outputs.tag }}
+          CHANGELOG: ${{ steps.what.outputs.changelog }}
         run: |
           # Release notes always come from the newest changelog, so they can be improved later.
-          cp packages/sdk/CHANGELOG.md "$RUNNER_TEMP/CHANGELOG.md"
+          cp "$CHANGELOG" "$RUNNER_TEMP/CHANGELOG.md"
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             git checkout -q "refs/tags/$TAG"
             echo "building $TAG ($(git rev-parse --short HEAD))"
@@ -94,12 +107,7 @@ jobs:
       - run: npm ci
       - run: npm test
 
-      - name: Publish the app
-        if: steps.what.outputs.kind == 'app'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
+      # ---- sdk: SDK + runtime to npm, runtime zip to the release ------------------
       - name: Test the SDK against the runtime
         if: steps.what.outputs.kind == 'sdk'
         run: |
@@ -122,58 +130,86 @@ jobs:
             fi
           done
 
-      - name: Prepare the SDK release notes and runtime zip
-        if: steps.what.outputs.kind == 'sdk'
+      # ---- app: the built site, zipped ---------------------------------------------
+      - name: Build the app
+        if: steps.what.outputs.kind == 'app'
+        run: npm run build
+
+      # ---- both: notes, asset, GitHub release --------------------------------------
+      - name: Prepare the release notes and asset
+        id: asset
         env:
+          KIND: ${{ steps.what.outputs.kind }}
           VERSION: ${{ steps.what.outputs.version }}
+          CHANGELOG: ${{ steps.what.outputs.changelog }}
         run: |
-          # What's new: this version's section of packages/sdk/CHANGELOG.md (leading blank lines dropped).
+          # What's new: this version's section of the changelog (leading blank lines dropped).
           awk -v v="## $VERSION" '$0 == v { on = 1; next } /^## / && on { exit } on' "$RUNNER_TEMP/CHANGELOG.md" | sed '/./,$!d' > whats-new.md
           if [ ! -s whats-new.md ]; then
-            echo "::error::packages/sdk/CHANGELOG.md has no '## $VERSION' section"
+            echo "::error::$CHANGELOG has no '## $VERSION' section"
             exit 1
           fi
-          {
-            echo "Two packages, always released together with the same version:"
-            echo
-            echo "| Package | What it is |"
-            echo "|---|---|"
-            echo "| [\`@jeevanand/agent-browserbox-sdk@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-sdk/v/$VERSION) | The SDK your app imports. 3 kB, no dependencies. |"
-            echo "| [\`@jeevanand/agent-browserbox-runtime@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-runtime/v/$VERSION) | The runtime the SDK drives, for self-hosting. |"
-            echo
-            echo '```bash'
-            echo "npm install @jeevanand/agent-browserbox-sdk@$VERSION"
-            echo '```'
-            echo
-            echo "The SDK uses the hosted runtime by default. To host it yourself, run \`npx @jeevanand/agent-browserbox-runtime@$VERSION\`, or unzip **agent-browserbox-runtime-$VERSION.zip** below onto any static host and pass its URL as \`runtimeUrl\`. Use the same version of the SDK and the runtime."
-            echo
-            echo "## What's new"
-            echo
-            cat whats-new.md
-          } > release-notes.md
+          site=https://jeevanandmaurya.github.io/agent-browserbox
+          if [ "$KIND" = sdk ]; then
+            title="agent-browserbox $VERSION: SDK + runtime"
+            zip="agent-browserbox-runtime-$VERSION.zip"
+            (cd packages/runtime/dist && zip -qr "../../../$zip" .)
+            {
+              echo "Two packages, always released together with the same version:"
+              echo
+              echo "| Package | What it is |"
+              echo "|---|---|"
+              echo "| [\`@jeevanand/agent-browserbox-sdk@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-sdk/v/$VERSION) | The SDK your app imports. 3 kB, no dependencies. |"
+              echo "| [\`@jeevanand/agent-browserbox-runtime@$VERSION\`](https://www.npmjs.com/package/@jeevanand/agent-browserbox-runtime/v/$VERSION) | The runtime the SDK drives, for self-hosting. |"
+              echo
+              echo '```bash'
+              echo "npm install @jeevanand/agent-browserbox-sdk@$VERSION"
+              echo '```'
+              echo
+              echo "The SDK uses the hosted runtime of its own version ($site/runtime/$VERSION/) by default. To host it yourself, run \`npx @jeevanand/agent-browserbox-runtime@$VERSION\`, or unzip **$zip** below onto any static host and pass its URL as \`runtimeUrl\`. Use the same version of the SDK and the runtime."
+              echo
+              echo "## What's new"
+              echo
+              cat whats-new.md
+            } > release-notes.md
+          else
+            title="BrowserBox app $VERSION"
+            zip="browserbox-app-$VERSION.zip"
+            (cd dist && zip -qr "../$zip" .)
+            {
+              echo "The BrowserBox app: an agent OS in the browser. Open it at $site/agent/."
+              echo
+              echo "To host it yourself, unzip **$zip** below onto any static host and open \`agent/\`."
+              echo
+              echo "## What's new"
+              echo
+              cat whats-new.md
+            } > release-notes.md
+          fi
           cat release-notes.md
-          # The built runtime, ready to serve (built from this tag by the test step above).
-          (cd packages/runtime/dist && zip -qr "../../../agent-browserbox-runtime-$VERSION.zip" .)
-          unzip -l "agent-browserbox-runtime-$VERSION.zip" | tail -1
+          unzip -l "$zip" | tail -1
+          echo "title=$title" >> "$GITHUB_OUTPUT"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
 
       - name: Create or update the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.what.outputs.tag }}
-          KIND: ${{ steps.what.outputs.kind }}
-          VERSION: ${{ steps.what.outputs.version }}
+          TITLE: ${{ steps.asset.outputs.title }}
+          ZIP: ${{ steps.asset.outputs.zip }}
         run: |
-          target=$(git rev-parse HEAD)
-          if [ "$KIND" = sdk ]; then
-            title="agent-browserbox $VERSION: SDK + runtime"
-            zip="agent-browserbox-runtime-$VERSION.zip"
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release edit "$TAG" --title "$title" --notes-file release-notes.md
-              gh release upload "$TAG" "$zip" --clobber
-            else
-              gh release create "$TAG" --target "$target" --title "$title" --notes-file release-notes.md "$zip"
-            fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes-file release-notes.md
+            gh release upload "$TAG" "$ZIP" --clobber
           else
-            gh release view "$TAG" >/dev/null 2>&1 ||
-              gh release create "$TAG" --target "$target" --generate-notes --title "$TAG"
+            gh release create "$TAG" --target "$(git rev-parse HEAD)" --title "$TITLE" --notes-file release-notes.md "$ZIP"
           fi
+
+  # Put the new release on the site (it is assembled from all releases).
+  site:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

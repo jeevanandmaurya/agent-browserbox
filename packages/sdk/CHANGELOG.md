@@ -5,6 +5,15 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.1.1
+
+- **The SDK now uses the hosted runtime of its own exact version** by default
+  (`…/runtime/0.1.1/`). Released runtimes never change, so a later runtime
+  release can never break an app built on this SDK. `VERSION` is exported.
+- The SDK package is now `@jeevanand/agent-browserbox-sdk` (it was briefly
+  published as `@jeevanand/agent-browserbox`, which will be the agent).
+- The runtime reports its real version.
+
 ## 0.1.0
 
 First release.

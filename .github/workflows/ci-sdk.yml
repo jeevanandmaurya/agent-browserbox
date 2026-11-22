@@ -1,0 +1,87 @@
+name: CI · SDK + runtime
+
+# Tests the SDK and the runtime when their code changes. Deploys nothing:
+# releases do that (release.yml).
+#
+# The runtime is still built from the shared kernel source in src/ (the agent
+# moves out into its own package next), so changes there run this too.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/runtime/**'
+      - 'embed/**'
+      - 'kernel/**'
+      - 'public/**'
+      - 'crates/**'
+      - 'src/kernel/**'
+      - 'src/kernel-worker/**'
+      - 'src/kernel-host/**'
+      - 'src/sandbox/**'
+      - 'src/rpc/**'
+      - 'src/config/**'
+      - 'src/client/**'
+      - 'src/shell/**'
+      - 'src/packages/**'
+      - 'src/agent/**'
+      - 'src/ui/app-manifest.ts'
+      - 'src/apps/*/manifest.ts'
+      - 'src/env.d.ts'
+      - 'tests/**'
+      - 'scripts/sdk-e2e.mjs'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-sdk.yml'
+  pull_request:
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/runtime/**'
+      - 'embed/**'
+      - 'kernel/**'
+      - 'public/**'
+      - 'crates/**'
+      - 'src/kernel/**'
+      - 'src/kernel-worker/**'
+      - 'src/kernel-host/**'
+      - 'src/sandbox/**'
+      - 'src/rpc/**'
+      - 'src/config/**'
+      - 'src/client/**'
+      - 'src/shell/**'
+      - 'src/packages/**'
+      - 'src/agent/**'
+      - 'src/ui/app-manifest.ts'
+      - 'src/apps/*/manifest.ts'
+      - 'src/env.d.ts'
+      - 'tests/**'
+      - 'scripts/sdk-e2e.mjs'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-sdk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Build the SDK and the runtime, and test them together across two origins
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          npm run build:sdk && npm run build:runtime && node scripts/sdk-e2e.mjs

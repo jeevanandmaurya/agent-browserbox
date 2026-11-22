@@ -1,0 +1,62 @@
+name: CI · app
+
+# Tests and builds the BrowserBox app when its code changes. Deploys nothing:
+# app releases do that (release.yml, app-v*).
+#
+# Until the app moves to its own workspace on top of the released packages,
+# it is built from all of src/, so any change there runs this too.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'agent/**'
+      - 'os/**'
+      - 'docs/**'
+      - 'embed/**'
+      - 'kernel/**'
+      - 'public/**'
+      - 'index.html'
+      - 'bin/**'
+      - 'tests/**'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'CHANGELOG.md'
+      - '.github/workflows/ci-app.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'agent/**'
+      - 'os/**'
+      - 'docs/**'
+      - 'embed/**'
+      - 'kernel/**'
+      - 'public/**'
+      - 'index.html'
+      - 'bin/**'
+      - 'tests/**'
+      - 'vite.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'CHANGELOG.md'
+      - '.github/workflows/ci-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

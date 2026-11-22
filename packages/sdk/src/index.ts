@@ -15,8 +15,15 @@ import {
 export type { ExecOptions, ExecResult, FileStat, PermissionDecision, PermissionRequest };
 export { PROTOCOL_VERSION };
 
-/** Where the hosted runtime lives. Self-host it with @jeevanand/agent-browserbox-runtime. */
-export const DEFAULT_RUNTIME_URL = 'https://jeevanandmaurya.github.io/agent-browserbox/runtime/';
+/** This SDK's version. Always released together with the runtime of the same version. */
+export const VERSION = '0.1.1';
+
+/**
+ * The hosted runtime of exactly this SDK's version. Released runtimes never
+ * change, so a newer runtime can never break an app on this SDK. Self-host it
+ * with @jeevanand/agent-browserbox-runtime.
+ */
+export const DEFAULT_RUNTIME_URL = `https://jeevanandmaurya.github.io/agent-browserbox/runtime/${VERSION}/`;
 
 export type PermissionHandler = (request: PermissionRequest) => PermissionDecision | Promise<PermissionDecision>;
 

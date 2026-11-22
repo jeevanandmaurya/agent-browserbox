@@ -99,7 +99,7 @@ export class McpClient {
 
   init(signal?: AbortSignal): Promise<void> {
     return (this.#ready ??= (async () => {
-      await this.#rpc('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'BrowserBox', version: '0.1.0' } }, signal);
+      await this.#rpc('initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'BrowserBox', version: __BBX_RUNTIME_VERSION__ } }, signal);
       await this.#post({ jsonrpc: '2.0', method: 'notifications/initialized' }, signal);
     })().catch((err) => {
       this.#ready = null;

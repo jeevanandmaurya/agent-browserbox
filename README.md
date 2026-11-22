@@ -39,6 +39,32 @@ The SDK and the runtime are built from this repository (`packages/sdk`,
 `embed/`, and the kernel in `src/`): `npm run build:sdk`, `npm run build:runtime`,
 and `npm run e2e:sdk` tests them together across two origins in headless Chromium.
 
+## Releases and the site
+
+The products are released independently, and **only releases deploy**: a
+push to `main` runs tests, never a deployment.
+
+| Release | Tag | Goes to | Changelog |
+|---|---|---|---|
+| SDK + runtime | `sdk-v<version>` | npm (both packages), and the runtime to `/runtime/<version>/` on the site | `packages/sdk/CHANGELOG.md` |
+| The app | `app-v<version>` | the site: `/agent/`, `/os/`, `/docs/` (not npm) | `CHANGELOG.md` |
+
+To release: bump the version (`packages/sdk` and `packages/runtime` together,
+or the root `package.json` for the app), add its section to the changelog,
+then **Actions → Release → Run workflow** and pick `sdk` or `app`. The
+workflow tests, publishes, writes the release notes from the changelog,
+attaches a zip (the built runtime, or the built app), and then rebuilds the
+site from all releases (`.github/workflows/pages.yml`):
+
+- `/` is the newest app release;
+- `/runtime/<version>/` is each runtime release, never changed once released;
+  each SDK uses its own version's runtime by default;
+- `/runtime/` is the newest runtime release.
+
+A release only adds its own part: releasing the runtime never rebuilds the
+app, and releasing the app never touches a runtime. Tests run per product
+(`ci-sdk.yml`, `ci-app.yml`), triggered by their own paths.
+
 ## Run it
 
 Open the hosted app: https://jeevanandmaurya.github.io/agent-browserbox/agent/

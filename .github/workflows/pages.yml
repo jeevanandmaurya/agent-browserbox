@@ -1,8 +1,12 @@
-name: Deploy to GitHub Pages
+name: Deploy the site
 
+# The site is assembled from releases only, never from a push:
+#   /                    the newest app release (app-v*): /agent/, /os/, /docs/
+#   /runtime/<version>/  every SDK release's runtime (sdk-v*), never changed once released
+#   /runtime/            the newest runtime release (for SDKs that use the unversioned URL)
+# The release workflow runs this after each release; run it by hand to redeploy.
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -10,32 +14,65 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages-build
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build:pages
+      - name: Assemble the site from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p site dl
+          tags=$(gh release list -R "$REPO" --limit 1000 --exclude-drafts --json tagName --jq '.[].tagName')
+
+          app=$(printf '%s\n' $tags | sed -n 's/^app-v//p' | sort -V | tail -1)
+          if [ -z "$app" ]; then
+            echo "::error::there is no app release (app-v*) yet: release the app first"
+            exit 1
+          fi
+          gh release download "app-v$app" -R "$REPO" -p "browserbox-app-$app.zip" -D dl
+          unzip -q "dl/browserbox-app-$app.zip" -d site
+          rm -rf site/runtime # /runtime/ belongs to the SDK releases
+
+          mkdir -p site/runtime
+          versions=$(printf '%s\n' $tags | sed -n 's/^sdk-v//p' | sort -V)
+          served=""
+          for v in $versions; do
+            if gh release download "sdk-v$v" -R "$REPO" -p "agent-browserbox-runtime-$v.zip" -D dl; then
+              mkdir -p "site/runtime/$v"
+              unzip -q "dl/agent-browserbox-runtime-$v.zip" -d "site/runtime/$v"
+              served="$served $v"
+            else
+              echo "::warning::sdk-v$v has no runtime zip; not served"
+            fi
+          done
+          latest=$(printf '%s\n' $served | sort -V | tail -1)
+          if [ -n "$latest" ]; then cp -r "site/runtime/$latest/." site/runtime/; fi
+
+          {
+            echo "### Site assembled from releases"
+            echo "- app: app-v$app"
+            echo "- runtimes:${served:- none} (latest at /runtime/: ${latest:-none})"
+          } >> "$GITHUB_STEP_SUMMARY"
+          du -sh site
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
