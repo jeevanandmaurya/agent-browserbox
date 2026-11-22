@@ -25,4 +25,4 @@ Large repositories, heavy builds, Docker, databases or long-running servers stil
 
 ## Open source
 
-BrowserBox is open source. It is built with TypeScript and Vite, a Rust core compiled to WebAssembly, and these libraries and services, under their own licences: the Anthropic SDK, WebLLM (in-browser models), Pyodide (Python), esbuild (bundling), isomorphic-git, sql.js, fflate, and StackBlitz WebContainers for the optional real Node.js.
+BrowserBox is open source. It is built with TypeScript and Vite, a Rust core compiled to WebAssembly, and these libraries and services, under their own licences: the Anthropic SDK, WebLLM (in-browser models), Pyodide (Python), esbuild (bundling), isomorphic-git, sql.js and fflate.

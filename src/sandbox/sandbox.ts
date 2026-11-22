@@ -244,7 +244,6 @@ export class Sandbox {
 export interface SandboxHost {
   run(kind: 'js' | 'python' | 'wasm', payload: Record<string, unknown>, opts: RunOptions): Promise<RunResult>;
   backend(op: BackendOp, id: string, payload: BackendPayload, opts: RunOptions): Promise<RunResult>;
-  node(job: import('@/sandbox/node').NodeJob, opts: RunOptions): Promise<{ code: number }>;
 }
 
 export type BackendOp = 'load' | 'request' | 'stop';
@@ -370,12 +369,4 @@ export async function devBackend(os: Kernel, op: BackendOp, id: string, p: Backe
   const sb = backends.get(id);
   if (!sb?.alive || !p.req) return none('backend not loaded');
   return sb.run({ op: 'server-request', req: p.req, origin: p.origin ?? 'http://localhost' }, { ...opts, timeoutMs: opts.timeoutMs ?? 30000 });
-}
-
-// ---- Node.js (WebContainers) ----------------------------------------------------
-/** Runs node, npm or npx for a project folder, in a window (Node.js needs an isolated document). */
-export async function nodeRun(os: Kernel, job: import('@/sandbox/node').NodeJob, opts: RunOptions = {}): Promise<{ code: number }> {
-  if (host) return host.node(job, opts);
-  const { runNode } = await import('@/sandbox/node');
-  return runNode(os, job, { out: (t) => opts.onStdout?.(t), signal: opts.signal ?? new AbortController().signal });
 }

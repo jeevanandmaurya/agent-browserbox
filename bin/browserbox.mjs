@@ -4,7 +4,7 @@
 //   npx @jeevanand/browserbox [--port 4173] [--host 127.0.0.1] [--no-open] [--dir]
 //
 // No dependencies: BrowserBox is a static site, so all this needs is a file server that sends
-// the cross-origin isolation headers (SharedArrayBuffer, WebContainers) and correct MIME types.
+// the cross-origin isolation headers (SharedArrayBuffer, WebAssembly threads) and correct MIME types.
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";

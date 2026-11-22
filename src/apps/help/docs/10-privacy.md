@@ -9,7 +9,7 @@ Your files, chats, settings and installed packages live in this browser's storag
 - **Model requests** go to the model you chose: Anthropic, your local server, a hosted API, or nowhere (in-browser models).
 - **Network tools** the agent uses with your permission (fetching a URL, searching, installing packages).
 - **Publishing** you ask for: GitHub, Netlify, Vercel.
-- **Downloads**: packages from jsDelivr, npm packages from esm.sh and npm, Python packages from PyPI, models from Hugging Face, and Node.js from StackBlitz.
+- **Downloads**: packages from jsDelivr, npm packages from esm.sh and npm, Python packages from PyPI, and models from Hugging Face.
 
 ## Keys and tokens
 

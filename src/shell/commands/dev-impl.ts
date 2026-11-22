@@ -2,7 +2,6 @@ import type { DevLog } from '@/kernel/dev/types';
 import { pinVersion, splitSpecifier } from '@/kernel/dev/npm';
 import { basename, join } from '@/kernel/vfs/path';
 import { C } from '../ansi';
-import { runInNode } from './noderun';
 import type { Command, CommandContext } from '../shell';
 import { progressBar } from './pkg';
 
@@ -130,11 +129,6 @@ async function latest(name: string): Promise<string> {
   return ((await res.json()) as { version: string }).version;
 }
 
-/** Real Node.js, when the node package is installed and the page is cross-origin isolated. */
-async function realNode(ctx: CommandContext) {
-  return ctx.os.packages.isInstalled('node') ? runInNode : null;
-}
-
 const DEV_SCRIPTS = /\b(vite|next|webpack|parcel|serve|http-server|live-server|react-scripts|astro|nuxt|svelte-kit)\b/;
 
 export const npmCommand: Command = {
@@ -142,9 +136,6 @@ export const npmCommand: Command = {
   summary: 'manage package.json; npm run dev serves the project (packages load from esm.sh)',
   usage: 'npm init | npm install <pkg>[@version]… [-D] | npm uninstall <pkg>… | npm ls | npm run dev',
   async run(ctx) {
-    // With the node package, npm is the real one (WebContainers).
-    const real = await realNode(ctx);
-    if (real) return real(ctx, 'npm', ctx.args);
     const { out } = ctx;
     const { flags, rest } = parse(ctx.args);
     const [verb = 'help', ...names] = rest;
@@ -223,8 +214,6 @@ export const npxCommand: Command = {
   summary: 'npx vite / serve / http-server start the dev server',
   usage: 'npx vite | npx serve [dir] | npx http-server [dir]',
   async run(ctx) {
-    const real = await realNode(ctx);
-    if (real) return real(ctx, 'npx', ctx.args);
     const [tool, ...rest] = ctx.args;
     if (tool && /^(vite|serve|http-server|live-server)(@.*)?$/.test(tool)) {
       await startServer(ctx, ctx.path(rest.find((a) => !a.startsWith('-')) ?? '.'), { open: true });

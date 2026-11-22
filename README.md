@@ -23,7 +23,7 @@ npx @jeevanand/browserbox
 
 This serves the prebuilt app at `http://127.0.0.1:4173/agent/` and opens it.
 The kernel, desktop and docs are on the same origin, with the cross-origin
-isolation headers that SharedArrayBuffer and WebContainers need.
+isolation headers that SharedArrayBuffer and WebAssembly threads need.
 
 ```
 --port <n>     port to listen on (default 4173, or the next free one)
@@ -160,7 +160,7 @@ them):
 
 The agent has the same through its `github` and `deploy` tools.
 
-## Real Node.js: cross-origin isolation and WebContainers
+## Cross-origin isolation
 
 **Settings → Environment → Isolate BrowserBox** turns on cross-origin
 isolation, so `SharedArrayBuffer` and WebAssembly threads work. GitHub Pages
@@ -168,17 +168,6 @@ cannot send the COOP/COEP headers this needs, so the service worker adds them
 (COEP `credentialless`, so CDNs and model downloads keep working). Sandboxes,
 previews and pages in the Browser app are then embedded as `credentialless`
 frames (Chrome and Edge; other browsers do not embed them while isolated).
-
-With isolation on, `pkg install node` adds **real Node.js and npm** through
-[WebContainers](https://webcontainers.io): `node`, `npm install`,
-`npm run …` and `npx` run in the browser for the current project (the folder
-with `package.json`). Files are copied into the container before a command,
-edits follow it live while it runs (dev servers reload), and what it changed
-comes back afterwards; `node_modules` stays inside. A server that starts
-listening opens in the Browser app; ^C stops it. The WebContainer runtime is
-loaded from StackBlitz when Node first starts; its client library is MIT, and
-StackBlitz's terms apply to the runtime (commercial production use needs
-their licence).
 
 ## Packages
 

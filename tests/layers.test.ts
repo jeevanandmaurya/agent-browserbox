@@ -60,4 +60,14 @@ describe('layering', () => {
     }
     expect(violations).toEqual([]);
   });
+
+  it('uses no third-party VM: BrowserBox is its own runtime', () => {
+    // We build our own sandbox; WebContainers (or similar) must not creep back in.
+    const banned = /@webcontainer\/api|webcontainer|stackblitz/i;
+    const hits: string[] = [];
+    for (const file of files(SRC)) if (banned.test(readFileSync(file, 'utf8'))) hits.push(relative(SRC, file));
+    const pkg = readFileSync(resolve(SRC, '../package.json'), 'utf8');
+    if (banned.test(pkg)) hits.push('package.json');
+    expect(hits).toEqual([]);
+  });
 });

@@ -53,17 +53,6 @@ void os.handle({
       aborts.delete(runId);
     }
   },
-  'host.node': async (runId: number, job: import('@/sandbox/node').NodeJob): Promise<{ code: number }> => {
-    const ctl = new AbortController();
-    aborts.set(runId, ctl);
-    const peer = await os.handle({});
-    try {
-      const { runNode } = await import('@/sandbox/node');
-      return await runNode(os, job, { out: (t) => peer.emit('host:out', { runId, s: 'o', t }), signal: ctl.signal });
-    } finally {
-      aborts.delete(runId);
-    }
-  },
   'host.backend': async (runId: number, op: BackendOp, id: string, p: BackendPayload, o: { cwd?: string; timeoutMs?: number }): Promise<RunResult> => {
     const peer = await os.handle({});
     return devBackend(os, op, id, p, { ...o, onStdout: (t: string) => peer.emit('host:out', { runId, s: 'o', t }), onStderr: (t: string) => peer.emit('host:out', { runId, s: 'e', t }) });
