@@ -1,6 +1,6 @@
 import { basename, join } from '@/kernel/vfs/path';
 import type { Stat } from '@/kernel/vfs/types';
-import { fmtBytes } from '@/ui/dom';
+import { fmtBytes } from '@/kernel/format';
 import { flags, type Command } from '../shell';
 import { C } from '../ansi';
 

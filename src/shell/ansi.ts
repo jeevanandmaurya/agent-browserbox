@@ -14,3 +14,12 @@ export const C = {
 export function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, '');
 }
+
+/** Removes colour codes and applies carriage returns, giving the text a program would read. */
+export function plainText(text: string): string {
+  return text
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((l) => l.slice(l.lastIndexOf('\r') + 1))
+    .join('\n');
+}

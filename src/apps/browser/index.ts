@@ -1,4 +1,4 @@
-import { embeddable } from '@/ui/isolation';
+import { embeddable } from '@/sandbox/isolation';
 import './style.css';
 import type { AppModule } from '@/ui/apps';
 import { h } from '@/ui/dom';

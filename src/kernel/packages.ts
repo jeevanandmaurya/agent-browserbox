@@ -1,10 +1,11 @@
-import type { ToolDef } from '@/agent/tools/types';
 import { KERNEL_URL } from '@/config/origins';
-import { importPackage, PACKAGES, findPackage, providerOf } from '@/packages/registry';
-import type { PackageManifest, PackageModule } from '@/packages/types';
 import { PACKAGE_CACHE } from '@/sandbox/python-runtime';
-import type { Command } from '@/shell/shell';
 import type { KernelCore } from './kernel';
+import { NO_PACKAGES, type PackageManifest, type PackageModule, type PackageRegistry } from './package-types';
+
+/** What packages can provide by name: the kinds listed in a manifest that a layer above has given a type to. */
+export type ProvidedKind = keyof PackageModule & ('commands' | 'tools');
+type Item<K extends ProvidedKind> = NonNullable<PackageModule[K]> extends ReadonlyArray<infer T> ? T : never;
 
 export const INSTALLED_KEY = 'pkg.installed';
 
@@ -28,7 +29,24 @@ export class PackageManager {
   #loaded = new Map<string, Promise<PackageModule>>();
   #built: Promise<Record<string, Array<{ url: string; bytes: number }>>> | null = null;
 
-  constructor(private os: KernelCore) {}
+  constructor(
+    private os: KernelCore,
+    private registry: PackageRegistry = NO_PACKAGES,
+  ) {}
+
+  /** Every package this build knows about, installed or not. */
+  manifests(): readonly PackageManifest[] {
+    return this.registry.manifests;
+  }
+
+  #find(id: string): PackageManifest | undefined {
+    return this.registry.manifests.find((p) => p.id === id);
+  }
+
+  /** The package that provides a shell command or an agent tool. */
+  #providerOf(name: string, kind: 'commands' | 'tools'): PackageManifest | undefined {
+    return this.registry.manifests.find((p) => p[kind].includes(name));
+  }
 
   installed(): string[] {
     return this.os.settings.get<string[]>(INSTALLED_KEY, []);
@@ -50,7 +68,7 @@ export class PackageManager {
   async list(): Promise<PackageInfo[]> {
     const cache = await caches.open(PACKAGE_CACHE).catch(() => null);
     return Promise.all(
-      PACKAGES.map(async (m) => {
+      this.registry.manifests.map(async (m) => {
         let bytes = 0;
         let missing = false;
         for (const f of await this.#files(m)) {
@@ -65,7 +83,7 @@ export class PackageManager {
   }
 
   async install(id: string, progress?: Progress): Promise<void> {
-    const m = findPackage(id);
+    const m = this.#find(id);
     if (!m) throw new Error(`no such package: ${id} (see pkg list)`);
     const files = await this.#files(m);
     const cache = await caches.open(PACKAGE_CACHE);
@@ -106,7 +124,7 @@ export class PackageManager {
   }
 
   async remove(id: string): Promise<void> {
-    const m = findPackage(id);
+    const m = this.#find(id);
     if (!m) throw new Error(`no such package: ${id}`);
     this.os.settings.set(
       INSTALLED_KEY,
@@ -122,24 +140,25 @@ export class PackageManager {
     if (!this.isInstalled(id)) return Promise.reject(new Error(`package ${id} is not installed. Run: pkg install ${id}`));
     let p = this.#loaded.get(id);
     if (!p) {
-      p = importPackage(id);
+      p = this.registry.load(id);
       this.#loaded.set(id, p);
       p.catch(() => this.#loaded.delete(id));
     }
     return p;
   }
 
-  /** Resolves a shell command from an installed package. Throws a helpful error when it needs installing. */
-  async command(name: string): Promise<Command | null> {
-    const m = providerOf(name, 'commands');
+  /** Resolves a command or tool from an installed package. Throws a helpful error when it needs installing. */
+  async provided<K extends ProvidedKind>(kind: K, name: string): Promise<Item<K> | null> {
+    const m = this.#providerOf(name, kind);
     if (!m) return null;
     if (!this.isInstalled(m.id)) throw new Error(`${name}: provided by the ${m.id} package, which is not installed. Run: pkg install ${m.id}`);
-    return (await this.load(m.id)).commands?.find((c) => c.name === name) ?? null;
+    const items = (await this.load(m.id))[kind] as unknown as ReadonlyArray<Item<K> & { name: string }> | undefined;
+    return items?.find((c) => c.name === name) ?? null;
   }
 
-  /** Agent tools from installed packages. */
-  async tools(): Promise<ToolDef[]> {
-    const mods = await Promise.all(PACKAGES.filter((m) => m.tools.length && this.isInstalled(m.id)).map((m) => this.load(m.id).catch(() => null)));
-    return mods.flatMap((m) => m?.tools ?? []);
+  /** Everything of one kind (e.g. agent tools) from installed packages. */
+  async all<K extends ProvidedKind>(kind: K): Promise<Array<Item<K>>> {
+    const mods = await Promise.all(this.registry.manifests.filter((m) => m[kind].length && this.isInstalled(m.id)).map((m) => this.load(m.id).catch(() => null)));
+    return mods.flatMap((m) => (m?.[kind] ?? []) as unknown as ReadonlyArray<Item<K>>);
   }
 }

@@ -1,4 +1,4 @@
-import { mimeOf } from '@/apps/files/filetypes';
+import { mimeOf } from '@/kernel/filetypes';
 import { dirname, isInside, join, normalize, resolve } from '@/kernel/vfs/path';
 import type { BuildFs, BundleInput, BundleOutput } from './bundle';
 import { dataUrl } from './bundle';

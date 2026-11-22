@@ -59,11 +59,16 @@ const HOST_PAGE = `<!doctype html>
 </body></html>`;
 
 const CHROME = [
+  process.env.CHROME,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-].find((p) => existsSync(p));
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+].find((p) => p && existsSync(p));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -118,7 +123,7 @@ const runtimeServer = spawn(process.execPath, ['bin/browserbox.mjs', '--port', S
 
 const profile = await mkdtemp(join(tmpdir(), 'bbx-spike-'));
 const chrome = CHROME
-  ? spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' })
+  ? spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []), 'about:blank'], { stdio: 'ignore' })
   : null;
 
 try {

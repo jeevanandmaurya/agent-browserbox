@@ -1,7 +1,9 @@
 import { gpuCompute } from '@/sandbox/gpu';
 import { runJs, runWasm, type RunResult } from '@/sandbox/sandbox';
-import { userEnv } from '@/agent/tools/exec';
 import { flags, type Command, type CommandContext } from '../shell';
+
+/** A shell's environment as a program sees it (without `?`, the last exit code). */
+export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
 
 function finish(ctx: CommandContext, r: RunResult): number {
   if (r.value !== undefined && r.value !== 'undefined') ctx.out(r.value + '\n');

@@ -1,4 +1,4 @@
-import type { PackageManifest, PackageModule } from './types';
+import type { PackageManifest, PackageModule, PackageRegistry } from '@/kernel/package-types';
 
 // Every folder in src/packages is a package. Adding one needs no other change:
 // its manifest is read here and its code becomes its own build chunk.
@@ -21,3 +21,6 @@ export function importPackage(id: string): Promise<PackageModule> {
   if (!load) return Promise.reject(new Error(`package ${id} has no code`));
   return load();
 }
+
+/** Every package in this build, for the kernel's package manager. */
+export const REGISTRY: PackageRegistry = { manifests: PACKAGES, load: importPackage };

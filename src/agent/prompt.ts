@@ -1,15 +1,15 @@
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { AGENT_HOME, HOME } from '@/kernel/paths';
 import type { AgentConfig } from './config';
-import { PACKAGES } from '@/packages/registry';
+import type { PackageManifest } from '@/kernel/package-types';
 import { loadExtensions, type Extension } from './ext/library';
 
 /** Built once per session so the prompt prefix stays byte-stable and cacheable. */
 /** Installed and installable packages, from the registry, so the agent can install what a task needs. */
 function packageLine(os: Kernel): string {
-  const desc = (p: (typeof PACKAGES)[number]) => `${p.id} (${[...p.commands, ...p.tools].join(', ')})`;
-  const installed = PACKAGES.filter((p) => os.packages.isInstalled(p.id));
-  const available = PACKAGES.filter((p) => !os.packages.isInstalled(p.id));
+  const desc = (p: PackageManifest) => `${p.id} (${[...p.commands, ...p.tools].join(', ')})`;
+  const installed = os.packages.manifests().filter((p) => os.packages.isInstalled(p.id));
+  const available = os.packages.manifests().filter((p) => !os.packages.isInstalled(p.id));
   return `installed: ${installed.map(desc).join('; ') || 'none'}.${available.length ? ` Not installed: ${available.map(desc).join('; ')} — when a task needs one, run \`pkg install <name>\` with the shell tool; its tools are available from your next step.` : ''}`;
 }
 

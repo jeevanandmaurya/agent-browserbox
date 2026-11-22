@@ -2,7 +2,7 @@ import './style.css';
 import './chat.css';
 import './workbench.css';
 import { OS_URL } from '@/config/origins';
-import type { AgentHandle } from '@/kernel/api';
+import type { AgentHandle } from '@/agent/api';
 import type { TodoItem } from '@/agent/tools/types';
 import type { AppModule } from '@/ui/apps';
 import { loadConfig } from '@/agent/config';

@@ -1,9 +1,9 @@
-import type { AgentHandle, ShellHandle } from '@/kernel/api';
+import type { ShellHandle } from '@/kernel/api';
 import type { KernelCore } from '@/kernel/kernel';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
 import type { KernelEvents, KernelLogLine } from '@/kernel/types';
-import { Peer } from '@/rpc/peer';
+import { Peer, type Handlers } from '@/rpc/peer';
 import type { DevStartOptions, WireRequest } from '@/kernel/dev/types';
 import { setSandboxHost, type BackendOp, type BackendPayload, type RunOptions, type RunResult } from '@/sandbox/sandbox';
 
@@ -40,8 +40,26 @@ interface Client {
   peer: Peer;
   /** 'new' until the client says hello. Only 'ui' clients are windows a person can see. */
   role: 'ui' | 'host' | 'new';
-  agents: Map<string, AgentHandle>;
   shells: Map<string, ShellHandle>;
+  /** Cleanups from services, run when the client goes. */
+  drops: Array<() => void>;
+}
+
+/** A connected client, as a service sees it. */
+export interface ClientScope {
+  readonly id: number;
+  readonly peer: Peer;
+  /** Asks windows something (a permission, a question) and waits for the first answer. `onlyThisClient` asks just this one. */
+  ask<T>(ask: Omit<Ask, 'askId'>, signal?: AbortSignal, onlyThisClient?: boolean): Promise<T>;
+}
+
+/**
+ * A service built on the kernel (agents, …) that windows reach over RPC. The
+ * server stays ignorant of it: for each client it asks the service for its
+ * RPC methods and for what to clean up when the client goes.
+ */
+export interface ServerService {
+  connect(client: ClientScope): { handlers: Handlers; drop?: () => void };
 }
 
 const wire = (p: Proc): WireProc => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, started: p.started, state: p.state, detail: p.detail, cpuMs: p.cpuMs, memBytes: p.memBytes });
@@ -61,6 +79,7 @@ export class KernelServer {
   #runs = new Map<number, RunOptions>();
   /** Suppresses echoing an event back to the client that caused it. */
   #origin: number | null = null;
+  #services: ServerService[] = [];
 
   constructor(
     private os: KernelCore,
@@ -75,6 +94,12 @@ export class KernelServer {
     // Clipboard and speech happen in exactly one window.
     os.ui = { call: (method, ...args) => this.#ask({ kind: 'ui', payload: { method, args } }, undefined, [...this.#clients.values()].find((c) => c.role === 'ui')) as Promise<never> };
     setSandboxHost({ run: (kind, payload, opts) => this.#hostRun(kind, payload, opts), backend: (op, id, payload, opts) => this.#hostBackend(op, id, payload, opts), node: (job, opts) => this.#hostNode(job, opts) });
+  }
+
+  /** Adds a service's RPC methods for clients that connect from now on. */
+  use(service: ServerService): this {
+    this.#services.push(service);
+    return this;
   }
 
   #broadcast(name: string, payload: unknown, except: number | null = null): void {
@@ -121,7 +146,7 @@ export class KernelServer {
     }
   }
 
-  async #hostNode(job: import('@/kernel-host/node-host').NodeJob, opts: RunOptions): Promise<{ code: number }> {
+  async #hostNode(job: import('@/sandbox/node').NodeJob, opts: RunOptions): Promise<{ code: number }> {
     const host = [...this.#clients.values()].find((c) => c.role === 'host');
     if (!host) throw new Error('Node.js runs in a window: open the agent window or the desktop.');
     const runId = this.#nextRun++;
@@ -153,7 +178,7 @@ export class KernelServer {
   /** Accepts a new connection from a window (or from a window's sandbox host). */
   connect(port: MessagePort): void {
     const peer = new Peer(port);
-    const client: Client = { id: this.#nextClient++, peer, role: 'new', agents: new Map(), shells: new Map() };
+    const client: Client = { id: this.#nextClient++, peer, role: 'new', shells: new Map(), drops: [] };
     const os = this.os;
     const fs = os.fs;
     const server = this;
@@ -165,45 +190,11 @@ export class KernelServer {
         this.#origin = null;
       }
     };
-    const agent = (sid: string) => {
-      const h = client.agents.get(sid);
-      if (!h) throw new Error(`not attached to agent session ${sid}`);
-      return h;
-    };
     const shell = (id: string) => {
       const h = client.shells.get(id);
       if (!h) throw new Error(`no such shell: ${id}`);
       return h;
     };
-    const adoptAgent = (h: AgentHandle) => {
-      client.agents.get(h.sid)?.detach();
-      client.agents.set(h.sid, h);
-      // Streaming deltas arrive token by token; coalesce them so a slow device
-      // handles ~30 messages a second instead of hundreds.
-      let held: { type: 'text' | 'thinking'; delta: string } | null = null;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const flush = () => {
-        clearTimeout(timer);
-        timer = undefined;
-        if (held) peer.emit('agent', { sid: h.sid, event: held });
-        held = null;
-      };
-      h.onEvent((event) => {
-        if (event.type === 'text' || event.type === 'thinking') {
-          if (held && held.type !== event.type) flush();
-          if (held) held.delta += event.delta;
-          else held = { type: event.type, delta: event.delta };
-          timer ??= setTimeout(flush, 33);
-          return;
-        }
-        flush();
-        peer.emit('agent', { sid: h.sid, event });
-      });
-      h.onAsk((question, options) => this.#ask<string>({ kind: 'user', sid: h.sid, payload: { question, options } }, undefined, client));
-      h.prompter = (req: PermRequest, signal) => this.#ask<PermDecision>({ kind: 'perm', sid: h.sid, payload: req }, signal).catch(() => 'deny');
-      return { sid: h.sid, pid: h.pid };
-    };
-
     peer.handle({
       async hello(role: 'ui' | 'host'): Promise<Hello> {
         client.role = role;
@@ -269,28 +260,6 @@ export class KernelServer {
         as(() => os.bus.emit(type, type === 'app:open' ? ({ ...(payload as object), fromWindow: client.role === 'ui' } as never) : payload));
       },
 
-      // Agents
-      'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean }) => adoptAgent(await os.agents.create(opts)),
-      'agent.attach': async (sid: string) => adoptAgent(await os.agents.attach(sid)),
-      'agent.live': () => os.agents.live(),
-      'agent.probeModels': (baseUrl: string, kind?: 'local' | 'openai') => os.agents.probeModels(baseUrl, kind),
-      'agent.send': (sid: string, text: string, opts?: { plan?: boolean }) => agent(sid).send(text, opts),
-      'agent.rewind': (sid: string, index: number, files: boolean) => agent(sid).rewind(index, files),
-      'agent.changes': (sid: string) => agent(sid).changes(),
-      'agent.stop': (sid: string) => agent(sid).stop(),
-      'agent.snapshot': (sid: string) => agent(sid).snapshot(),
-      'agent.context': (sid: string) => agent(sid).context(),
-      'agent.compact': (sid: string) => agent(sid).compact(),
-      'agent.probeMcp': (name: string) => os.agents.probeMcp(name),
-      'agent.detach': (sid: string) => {
-        client.agents.get(sid)?.detach();
-        client.agents.delete(sid);
-      },
-      'agent.dispose': (sid: string) => {
-        client.agents.get(sid)?.dispose();
-        client.agents.delete(sid);
-      },
-
       // Shells
       'shell.open': async (opts?: { cwd?: string; ppid?: number }) => {
         const h = await os.shells.open(opts);
@@ -325,6 +294,17 @@ export class KernelServer {
       },
     });
 
+    const scope: ClientScope = {
+      id: client.id,
+      peer,
+      ask: (ask, signal, onlyThisClient) => this.#ask(ask, signal, onlyThisClient ? client : undefined),
+    };
+    for (const service of this.#services) {
+      const { handlers, drop } = service.connect(scope);
+      peer.handle(handlers);
+      if (drop) client.drops.push(drop);
+    }
+
     // Sandbox output streamed back from a host bridge.
     peer.on<{ runId: number; s: 'o' | 'e'; t: string }>('host:out', ({ runId, s, t }) => {
       const run = this.#runs.get(runId);
@@ -342,7 +322,7 @@ export class KernelServer {
   #drop(client: Client): void {
     if (!this.#clients.delete(client.id)) return;
     client.peer.close();
-    for (const h of client.agents.values()) h.detach(); // sessions keep running
+    for (const drop of client.drops) drop();
     for (const h of client.shells.values()) h.close();
     for (const p of this.os.procs.list()) if (Math.floor(p.pid / PID_BLOCK) === client.id) this.os.procs.kill(p.pid, 'window closed');
     // Unanswerable questions: fail the ones that only this client could answer.

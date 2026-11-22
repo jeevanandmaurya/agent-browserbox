@@ -1,6 +1,10 @@
-import { AgentManager } from '@/agent/manager';
+import { agentRpc } from '@/agent/rpc';
+import { installAgents } from '@/agent/service';
+import { registerApps } from '@/kernel/apps';
 import { KernelCore } from '@/kernel/kernel';
+import { REGISTRY } from '@/packages/registry';
 import { ShellManager } from '@/shell/manager';
+import { APP_MANIFESTS } from '@/ui/app-manifest';
 import { KernelServer } from './server';
 
 /**
@@ -14,10 +18,12 @@ type Handler = ((e: MessageEvent) => void) | null;
 const scope = self as unknown as { onconnect: Handler; onmessage: Handler };
 const shared = 'SharedWorkerGlobalScope' in self;
 
-const os = new KernelCore();
-os.agents = new AgentManager(os);
+// This is the composition root: the one place that assembles the layers (see tests/layers.test.ts).
+registerApps(APP_MANIFESTS);
+const os = new KernelCore({ packages: REGISTRY });
+installAgents(os);
 os.shells = new ShellManager(os);
-const server = new KernelServer(os, shared);
+const server = new KernelServer(os, shared).use(agentRpc(os));
 void os.start().then(() => os.mark('kernel-ready'));
 
 if (!shared) {

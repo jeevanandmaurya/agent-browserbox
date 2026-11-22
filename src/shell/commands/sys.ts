@@ -1,5 +1,5 @@
-import { APP_MANIFESTS as APPS } from '@/ui/app-manifest';
-import { fmtBytes, fmtDuration } from '@/ui/dom';
+import { listApps } from '@/kernel/apps';
+import { fmtBytes, fmtDuration } from '@/kernel/format';
 import type { Command } from '../shell';
 import { C } from '../ansi';
 
@@ -48,8 +48,8 @@ export const sysCommands: Command[] = [
     usage: 'open <app | path>',
     async run({ args, os, path, out }) {
       const target = args[0];
-      if (!target) return void out(`apps: ${APPS.filter((a) => !a.hidden).map((a) => a.id).join(', ')}\n`);
-      if (APPS.some((a) => a.id === target)) return void os.openApp(target, args[1] ? { path: path(args[1]) } : {});
+      if (!target) return void out(`apps: ${listApps().filter((a) => !a.hidden).map((a) => a.id).join(', ')}\n`);
+      if (listApps().some((a) => a.id === target)) return void os.openApp(target, args[1] ? { path: path(args[1]) } : {});
       const p = path(target);
       const st = await os.fs.stat(p);
       if (!st) throw new Error(`${target}: no such app or file`);

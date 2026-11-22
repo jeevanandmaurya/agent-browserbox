@@ -73,11 +73,4 @@ export class AnsiView {
   }
 }
 
-/** Removes colour codes and applies carriage returns, giving the text a program would read. */
-export function plainText(text: string): string {
-  return text
-    .replace(/\x1b\[[0-9;]*m/g, '')
-    .split('\n')
-    .map((l) => l.slice(l.lastIndexOf('\r') + 1))
-    .join('\n');
-}
+export { plainText } from '@/shell/ansi';

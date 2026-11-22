@@ -1,6 +1,6 @@
 import { dirname, join } from '@/kernel/vfs/path';
 import { flags, type Command, type CommandContext } from '@/shell/shell';
-import { fmtBytes } from '@/ui/dom';
+import { fmtBytes } from '@/kernel/format';
 import { unzipSync, zipSync } from 'fflate';
 import type { PackageModule } from '../types';
 

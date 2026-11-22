@@ -1,6 +1,5 @@
 import { INSTALLED_KEY } from '@/kernel/packages';
-import { PACKAGES } from '@/packages/registry';
-import { fmtBytes } from '@/ui/dom';
+import { fmtBytes } from '@/kernel/format';
 import { C } from '../ansi';
 import type { Command, CommandContext } from '../shell';
 
@@ -68,5 +67,5 @@ export const dmesgCommand: Command = {
 };
 
 /** Packages selected at first boot (kept so `setup` can offer the same choice again). */
-export const defaultPackages = () => PACKAGES.filter((p) => p.default).map((p) => p.id);
+export const defaultPackages = (os: CommandContext['os']) => os.packages.manifests().filter((p) => p.default).map((p) => p.id);
 export { INSTALLED_KEY, install as installPackages };

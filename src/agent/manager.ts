@@ -1,4 +1,4 @@
-import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from '@/kernel/api';
+import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from './api';
 import type { KernelCore } from '@/kernel/kernel';
 import type { Prompter } from '@/kernel/perms';
 import { Agent, type AgentEvent } from './agent';

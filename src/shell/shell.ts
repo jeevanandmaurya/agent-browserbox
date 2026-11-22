@@ -135,7 +135,7 @@ export class Shell {
       if (!cmd) {
         // Not built in: an installed package may provide it.
         try {
-          const fromPackage = await this.os.packages.command(name);
+          const fromPackage = await this.os.packages.provided('commands', name);
           if (fromPackage) this.commands.set(name, (cmd = fromPackage));
         } catch (err) {
           io.err(`bbsh: ${(err as Error).message}\n`);
@@ -199,5 +199,12 @@ export class Shell {
     const dir = resolve(this.cwd, dirPart.replace(/^~/, this.env.HOME ?? '~') || '.');
     const entries = await this.os.fs.readdir(dir).catch(() => []);
     return { start, options: entries.filter((e) => e.name.startsWith(base)).map((e) => dirPart + e.name + (e.kind === 'dir' ? '/' : ' ')) };
+  }
+}
+
+// Packages can provide shell commands.
+declare module '@/kernel/package-types' {
+  interface PackageModule {
+    commands?: Command[];
   }
 }

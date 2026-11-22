@@ -1,4 +1,3 @@
-import { McpHub } from '@/agent/ext/mcp';
 import { Bus } from './bus';
 import { detectCaps, type PlatformCap } from './caps';
 import { KCore } from './kcore';
@@ -6,6 +5,7 @@ import { setEsbuildLoader } from './dev/esbuild';
 import { loadEsbuild } from './dev/esbuild-loader';
 import { LazyDev } from './dev/lazy';
 import { PackageManager } from './packages';
+import type { PackageRegistry } from './package-types';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
@@ -15,7 +15,7 @@ import type { KernelEvents, KernelLogLine, Notice } from './types';
 import { HandleFs } from './vfs/handlefs';
 import { MemFs } from './vfs/memfs';
 import { Vfs } from './vfs/vfs';
-import type { AgentsApi, Kernel, ShellsApi } from './api';
+import type { Kernel, ShellsApi } from './api';
 
 import { AGENT_HOME, HOME } from './paths';
 
@@ -61,16 +61,14 @@ export class KernelCore implements Kernel {
   readonly fs = new Vfs(this.bus);
   readonly kcore = new KCore();
   readonly caps: PlatformCap[] = detectCaps();
-  /** Installed by the worker entry point once the managers exist. */
-  agents!: AgentsApi;
+  /** Installed by the worker entry point once the shell service exists. Other services (agents) add their own fields. */
   shells!: ShellsApi;
   ui: UiBridge | null = null;
-  /** Connections to remote MCP servers (connectors). */
-  readonly mcp = new McpHub(this);
-  readonly packages = new PackageManager(this);
+  readonly packages: PackageManager;
   readonly dev = new LazyDev(this);
 
-  constructor() {
+  constructor(opts: { packages?: PackageRegistry } = {}) {
+    this.packages = new PackageManager(this, opts.packages);
     setEsbuildLoader(() => loadEsbuild(this.packages, (msg) => this.log('dev', msg)));
   }
   /** The kernel log (`dmesg`): what the kernel did, with times since it started. */
@@ -145,12 +143,11 @@ export class KernelCore implements Kernel {
     this.log('kernel', 'ready');
   }
 
+  /** First-boot content from services built on the kernel (the agent's example skills, …). Run by `start`. */
+  readonly seeders: Array<() => Promise<void>> = [];
+
   async #seed(): Promise<void> {
-    // Example skills, agents and commands; only when the folder has never existed.
-    if (!(await this.fs.exists(`${AGENT_HOME}/skills`))) {
-      const { SEED } = await import('@/agent/ext/library');
-      for (const [path, text] of SEED) await this.fs.writeFile(path, text);
-    }
+    for (const seed of this.seeders) await seed();
     if (await this.fs.exists(`${HOME}/Welcome.md`)) return;
     await Promise.all([this.fs.mkdir(`${HOME}/Documents`), this.fs.mkdir(AGENT_HOME), this.fs.mkdir('/mnt')]);
     await this.fs.writeFile(`${HOME}/Welcome.md`, WELCOME);

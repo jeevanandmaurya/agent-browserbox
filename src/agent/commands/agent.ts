@@ -1,6 +1,6 @@
 import type { PermDecision } from '@/kernel/perms';
-import type { Command, CommandContext } from '../shell';
-import { C } from '../ansi';
+import type { Command, CommandContext } from '@/shell/shell';
+import { C } from '@/shell/ansi';
 
 /**
  * The CLI face of the agent. `agent "task"` runs one task; plain `agent`
@@ -12,8 +12,8 @@ export const agentCommand: Command = {
   summary: 'talk to the AI agent from the command line',
   usage: 'agent ["task"]   — no argument starts an interactive session (/exit to leave, /new to reset)',
   async run(ctx: CommandContext) {
-    const { Agent } = await import('@/agent/agent');
-    const { describeModel, loadConfig } = await import('@/agent/config');
+    const { Agent } = await import('../agent');
+    const { describeModel, loadConfig } = await import('../config');
     const { out, tty } = ctx;
     let inText = false;
     let failed = false;

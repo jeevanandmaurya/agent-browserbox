@@ -1,10 +1,12 @@
-import { plainText } from '@/ui/ansi-view';
+import { userEnv } from '@/shell/commands/exec';
+
+export { userEnv };
+import { plainText } from '@/shell/ansi';
 import { gpuCompute } from '@/sandbox/gpu';
 import { runJs, runWasm, type RunResult } from '@/sandbox/sandbox';
 import { clip, obj, tool, type ToolDef } from './types';
 
 /** Shell variables minus the shell's own bookkeeping. */
-export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
 
 export function report(r: RunResult): string {
   const parts: string[] = [];

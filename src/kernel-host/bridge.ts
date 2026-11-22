@@ -53,12 +53,12 @@ void os.handle({
       aborts.delete(runId);
     }
   },
-  'host.node': async (runId: number, job: import('./node-host').NodeJob): Promise<{ code: number }> => {
+  'host.node': async (runId: number, job: import('@/sandbox/node').NodeJob): Promise<{ code: number }> => {
     const ctl = new AbortController();
     aborts.set(runId, ctl);
     const peer = await os.handle({});
     try {
-      const { runNode } = await import('./node-host');
+      const { runNode } = await import('@/sandbox/node');
       return await runNode(os, job, { out: (t) => peer.emit('host:out', { runId, s: 'o', t }), signal: ctl.signal });
     } finally {
       aborts.delete(runId);

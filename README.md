@@ -365,6 +365,35 @@ src/
 crates/kcore/     Rust → WebAssembly: hashing, line search, word count, token estimate
 ```
 
+### Layers
+
+The source is layered so the kernel can ship without any UI (the base for
+the SDK's headless runtime) and the agent can ship without the desktop:
+
+| Layer | Folders | May import |
+|---|---|---|
+| core | `kernel/` `kernel-worker/` `sandbox/` `rpc/` `config/` | core only |
+| shell | `shell/` | core, shell |
+| agent | `agent/` | core, shell, agent |
+| packages | `packages/` | all of the above |
+| app | `ui/` `apps/` `client/` `pages/` `kernel-host/` | anything |
+
+`tests/layers.test.ts` fails the build if a lower layer imports a higher one.
+Higher layers plug into lower ones by registering, never by being imported:
+
+- **Services** add themselves to the `Kernel` type by module augmentation
+  (`src/agent/api.ts` adds `agents`) and are installed by the composition
+  root, `src/kernel-worker/main.ts` (`installAgents(os)`).
+- **RPC methods** for a service are added with `KernelServer.use(...)`
+  (`src/agent/rpc.ts` provides `agent.*`).
+- **Shell commands** from higher layers are added with `contributeCommands`
+  (the agent adds `agent`, `setup`, `gh`, `deploy`, `build`).
+- **Packages** are handed to the kernel as a registry
+  (`new KernelCore({ packages: REGISTRY })`); what a package can contain is
+  declared by the layers that use it (`commands` by the shell, `tools` by the agent).
+- **Apps** are listed for the shell and the agent with `registerApps`; a
+  headless runtime registers none, and the agent's `open_app` tool disappears.
+
 Apps, the shell and the agent are written against the `Kernel` interface. The
 real kernel (`KernelCore`) implements it in the worker; `RemoteKernel`
 implements it in each window. To add an app, create `src/apps/<id>/` with a

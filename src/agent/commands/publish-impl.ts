@@ -1,7 +1,7 @@
 import type { KernelCore } from '@/kernel/kernel';
 import { join } from '@/kernel/vfs/path';
-import { C } from '../ansi';
-import type { Command, CommandContext } from '../shell';
+import { C } from '@/shell/ansi';
+import type { Command, CommandContext } from '@/shell/shell';
 
 /** `--name value`, `--name=value`, bare flags and positional arguments. */
 function args(list: string[]): { opt: Map<string, string | true>; rest: string[] } {
@@ -27,7 +27,7 @@ export const ghCommand: Command = {
   usage: 'gh auth login|status|logout · gh repo create <name> [--public] · gh repo clone <owner/repo> [dir] · gh push [dir] [--repo owner/name] [--branch b] [-m msg] · gh pr create --head <branch> --title <t> [--body b] [--base main] [--repo owner/name]',
   async run(ctx) {
     const os = kernel(ctx);
-    const pub = await import('@/agent/publish');
+    const pub = await import('../publish');
     const { opt, rest } = args(ctx.args);
     const [a = 'help', b, c] = rest;
     if (a === 'auth') {
@@ -36,7 +36,7 @@ export const ghCommand: Command = {
         ctx.out('Create a fine-grained token at https://github.com/settings/personal-access-tokens\nwith Contents, Pull requests, Pages and Administration (read and write) for your repositories.\n');
         const t = (await ctx.tty.readLine('GitHub token (hidden): ', { secret: true }))?.trim();
         if (!t) return 1;
-        const me = await new (await import('@/agent/publish/github')).GitHub(t).user();
+        const me = await new (await import('../publish/github')).GitHub(t).user();
         await os.secrets.set(pub.TOKENS.github, t);
         return ctx.out(`${C.green}✓${C.reset} signed in as ${me.login}; the token is stored encrypted\n`);
       }
@@ -82,7 +82,7 @@ export const deployCommand: Command = {
   summary: 'build a project for production and publish it to Netlify, Vercel or GitHub Pages',
   usage: 'deploy [dir] --to netlify|vercel|github-pages [--name site-name] [--repo owner/name]',
   async run(ctx) {
-    const pub = await import('@/agent/publish');
+    const pub = await import('../publish');
     const { opt, rest } = args(ctx.args);
     const to = str(opt.get('to') ?? opt.get('target'));
     if (to && !pub.DEPLOY_TARGETS.includes(to as never)) throw new Error(`--to must be one of: ${pub.DEPLOY_TARGETS.join(', ')}`);

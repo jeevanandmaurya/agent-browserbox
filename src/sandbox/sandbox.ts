@@ -2,7 +2,7 @@ import type { Kernel } from '@/kernel/api';
 import type { Proc } from '@/kernel/proc';
 import { resolve } from '@/kernel/vfs/path';
 import { KERNEL_URL } from '@/config/origins';
-import { embeddable } from '@/ui/isolation';
+import { embeddable } from '@/sandbox/isolation';
 import { PACKAGE_CACHE, PYODIDE_URL, PYTHON_RUNTIME_FILES } from './python-runtime';
 import runtimeSrc from './runtime.js?raw';
 import type { WireRequest, WireResponse } from '@/kernel/dev/types';
@@ -244,7 +244,7 @@ export class Sandbox {
 export interface SandboxHost {
   run(kind: 'js' | 'python' | 'wasm', payload: Record<string, unknown>, opts: RunOptions): Promise<RunResult>;
   backend(op: BackendOp, id: string, payload: BackendPayload, opts: RunOptions): Promise<RunResult>;
-  node(job: import('@/kernel-host/node-host').NodeJob, opts: RunOptions): Promise<{ code: number }>;
+  node(job: import('@/sandbox/node').NodeJob, opts: RunOptions): Promise<{ code: number }>;
 }
 
 export type BackendOp = 'load' | 'request' | 'stop';
@@ -374,8 +374,8 @@ export async function devBackend(os: Kernel, op: BackendOp, id: string, p: Backe
 
 // ---- Node.js (WebContainers) ----------------------------------------------------
 /** Runs node, npm or npx for a project folder, in a window (Node.js needs an isolated document). */
-export async function nodeRun(os: Kernel, job: import('@/kernel-host/node-host').NodeJob, opts: RunOptions = {}): Promise<{ code: number }> {
+export async function nodeRun(os: Kernel, job: import('@/sandbox/node').NodeJob, opts: RunOptions = {}): Promise<{ code: number }> {
   if (host) return host.node(job, opts);
-  const { runNode } = await import('@/kernel-host/node-host');
+  const { runNode } = await import('@/sandbox/node');
   return runNode(os, job, { out: (t) => opts.onStdout?.(t), signal: opts.signal ?? new AbortController().signal });
 }

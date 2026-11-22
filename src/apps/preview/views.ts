@@ -1,7 +1,7 @@
 /** Per-type preview renderers. Each returns the element to show. */
 import { PREVIEW_FRAME_URL } from '@/config/origins';
 import { h } from '@/ui/dom';
-import { embeddable } from '@/ui/isolation';
+import { embeddable } from '@/sandbox/isolation';
 
 const MAX_TEXT = 2 * 1024 * 1024;
 const HEX_BYTES = 64 * 1024;

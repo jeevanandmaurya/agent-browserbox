@@ -5,6 +5,7 @@ import { AGENT_HOME } from '@/kernel/paths';
 import type { Prompter } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
 import { resolve } from '@/kernel/vfs/path';
+import { listApps } from '@/kernel/apps';
 import { registerCommands } from '@/shell/index';
 import { Shell } from '@/shell/shell';
 import { describeModel, loadConfig } from './config';
@@ -188,8 +189,9 @@ export class Agent {
       const allowed = this.#persona?.tools.length ? new Set(this.#persona.tools) : null;
       // Rebuilt every step: a package the agent installs mid-task adds its tools straight away.
       const toolset = async () =>
-        [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.tools()), ...(lite ? [] : await this.os.mcp.tools())]
+        [...(lite ? LITE_TOOLS : ALL_TOOLS), ...(lite ? [] : await this.os.packages.all('tools')), ...(lite ? [] : await this.os.mcp.tools())]
           .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
+          .filter((t) => t.name !== 'open_app' || listApps().length > 0) // a headless runtime has no apps
           .filter((t) => !allowed || allowed.has(t.name))
           .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));
       let tools = (this.#tools = await toolset());

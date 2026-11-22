@@ -56,3 +56,10 @@ export function clip(text: string, max = MAX_RESULT): string {
   const head = Math.floor(max * 0.7);
   return `${text.slice(0, head)}\n\n… [${text.length - max} characters omitted] …\n\n${text.slice(text.length - (max - head))}`;
 }
+
+// Packages can provide agent tools.
+declare module '@/kernel/package-types' {
+  interface PackageModule {
+    tools?: ToolDef[];
+  }
+}

@@ -1,6 +1,7 @@
 import type { DevApi } from '@/kernel/dev/types';
 import type { AgentEvent } from '@/agent/agent';
-import type { AgentHandle, AgentsApi, FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
+import type { AgentHandle, AgentsApi } from '@/agent/api';
+import type { FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
 import { Bus } from '@/kernel/bus';
 import { detectCaps, type PlatformCap } from '@/kernel/caps';
 import { KCore } from '@/kernel/kcore';

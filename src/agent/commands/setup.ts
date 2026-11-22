@@ -1,7 +1,7 @@
-import { DEFAULT_CONFIG, SECRET, probeOpenAi, saveConfig } from '@/agent/config';
-import { C } from '../ansi';
-import type { Command, Tty } from '../shell';
-import { defaultPackages, installPackages } from './pkg';
+import { DEFAULT_CONFIG, SECRET, probeOpenAi, saveConfig } from '../config';
+import { C } from '@/shell/ansi';
+import type { Command, Tty } from '@/shell/shell';
+import { defaultPackages, installPackages } from '@/shell/commands/pkg';
 
 export const SETUP_DONE = 'setup.done';
 
@@ -60,7 +60,7 @@ export const setupCommand: Command = {
     }
 
     // Small packages are installed without asking; Python (11 MB) only on request.
-    await installPackages(ctx, defaultPackages().filter((id) => !os.packages.isInstalled(id)));
+    await installPackages(ctx, defaultPackages(os).filter((id) => !os.packages.isInstalled(id)));
     if (!os.settings.keys().includes('ui.theme')) os.settings.set('ui.theme', 'system');
     os.settings.set(SETUP_DONE, true);
     out(`${C.dim}done · python: pkg install python · run setup again any time${C.reset}\n`);

@@ -1,4 +1,4 @@
-import { mimeOf } from '@/apps/files/filetypes';
+import { mimeOf } from '@/kernel/filetypes';
 import { devBackend } from '@/sandbox/sandbox';
 import { basename, extname, isInside, join, normalize } from '@/kernel/vfs/path';
 import type { KernelCore } from '../kernel';

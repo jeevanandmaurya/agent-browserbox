@@ -1,5 +1,5 @@
-import { APP_MANIFESTS as APPS } from '@/ui/app-manifest';
-import { fmtBytes } from '@/ui/dom';
+import { listApps } from '@/kernel/apps';
+import { fmtBytes } from '@/kernel/format';
 import { loadExtensions } from '../ext/library';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types';
 
@@ -60,8 +60,13 @@ export const systemTools: ToolDef[] = [
   }),
   tool<{ app: string; path?: string; url?: string }>({
     name: 'open_app',
-    description: `Open an application window for the user. Apps: ${APPS.filter((a) => !a.hidden).map((a) => a.id).join(', ')}. Pass path to open a file or folder (files, editor, preview) or url for the browser.`,
-    input_schema: obj({ app: { type: 'string', enum: APPS.map((a) => a.id) }, path: { type: 'string' }, url: { type: 'string' } }, ['app']),
+    // Getters: the apps are registered by the frontend after this module loads.
+    get description() {
+      return `Open an application window for the user. Apps: ${listApps().filter((a) => !a.hidden).map((a) => a.id).join(', ')}. Pass path to open a file or folder (files, editor, preview) or url for the browser.`;
+    },
+    get input_schema() {
+      return obj({ app: { type: 'string', enum: listApps().map((a) => a.id) }, path: { type: 'string' }, url: { type: 'string' } }, ['app']);
+    },
     cap: () => null,
     describe: (i) => `Open ${i.app}${i.path ? ` ${i.path}` : ''}`,
     async run(i, tc) {
