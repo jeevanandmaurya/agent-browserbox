@@ -1,0 +1,47 @@
+name: Remove the old app release (one-off)
+
+# Unpublishes @jeevanand/browserbox from npm (all versions: 0.0.0-stage and
+# 0.1.0, the first app build) and deletes the v0.1.0 GitHub release and tag.
+# The SDK release (sdk-v0.1.0, @jeevanand/agent-browserbox*) is not touched.
+# This file is removed again once it has run.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type @jeevanand/browserbox to confirm
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "@jeevanand/browserbox" ]; then
+            echo "::error::confirmation does not match"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Unpublish @jeevanand/browserbox from npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm view @jeevanand/browserbox versions || { echo "already gone"; exit 0; }
+          npm unpublish @jeevanand/browserbox --force
+
+      - name: Delete the v0.1.0 GitHub release and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v0.1.0 --cleanup-tag --yes -R "$GITHUB_REPOSITORY" || echo "no v0.1.0 release"
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/v0.1.0" || echo "no v0.1.0 tag left"
