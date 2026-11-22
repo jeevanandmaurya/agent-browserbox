@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Serves the prebuilt BrowserBox (kernel + agent + desktop + docs) on localhost and opens it.
 //
-//   npx @jeevanand/browserbox [--port 4173] [--host 127.0.0.1] [--no-open] [--dir]
+//   npx @jeevanand/browserbox-app [--port 4173] [--host 127.0.0.1] [--no-open] [--dir]
 //
 // No dependencies: BrowserBox is a static site, so all this needs is a file server that sends
 // the cross-origin isolation headers (SharedArrayBuffer, WebContainers) and correct MIME types.

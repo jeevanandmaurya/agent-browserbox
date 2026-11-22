@@ -1,0 +1,41 @@
+{
+  "name": "@jeevanand/browserbox-app",
+  "version": "0.2.0",
+  "description": "Run the BrowserBox app (agent, desktop, docs) on localhost, or get its build to host yourself: npx @jeevanand/browserbox-app",
+  "type": "module",
+  "bin": {
+    "browserbox": "bin/browserbox.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepack": "node -e \"const f=require('fs');if(!f.existsSync('../../dist/embed/index.html'))throw new Error('Build the app first: npm run build (in the repository root)');f.rmSync('dist',{recursive:true,force:true});f.cpSync('../../dist','dist',{recursive:true})\""
+  },
+  "keywords": [
+    "ai-agent",
+    "agent",
+    "browser",
+    "operating-system",
+    "sandbox"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "homepage": "https://jeevanandmaurya.github.io/agent-browserbox/",
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

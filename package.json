@@ -1,43 +1,14 @@
 {
-  "name": "@jeevanand/browserbox",
+  "name": "agent-browserbox",
   "version": "0.1.0",
-  "description": "An operating system for AI agents that runs entirely in the browser, with no backend. Run it with: npx @jeevanand/browserbox",
+  "description": "BrowserBox: an operating system for AI agents that runs entirely in the browser. The npm packages live in packages/ (sdk, app).",
   "type": "module",
-  "bin": {
-    "browserbox": "bin/browserbox.mjs"
-  },
-  "files": [
-    "dist",
-    "bin"
-  ],
-  "keywords": [
-    "ai-agent",
-    "agent",
-    "browser",
-    "operating-system",
-    "sandbox",
-    "webcontainer",
-    "sharedworker",
-    "wasm",
-    "claude",
-    "llm"
-  ],
-  "homepage": "https://jeevanandmaurya.github.io/agent-browserbox/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git"
   },
-  "bugs": {
-    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
-  },
   "author": "Jeevanand Maurya",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -46,7 +17,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs",
-    "prepack": "npm run build"
+    "build:sdk": "vite build --config vite.sdk.config.ts && tsc -p tsconfig.sdk.json",
+    "test:sdk": "node scripts/sdk-test.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
@@ -62,5 +34,6 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
-  }
+  },
+  "private": true
 }

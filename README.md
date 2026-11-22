@@ -15,10 +15,35 @@ agent window and its session carries on; open it again and it reattaches.
 Close the desktop and nothing is lost — it is only a view. Any other frontend
 can replace it by speaking the same protocol (`src/kernel/api.ts`).
 
-## Run it
+## Use it from your code: the SDK
 
 ```
-npx @jeevanand/browserbox
+npm install @jeevanand/browserbox
+```
+
+```js
+import { BrowserBox } from '@jeevanand/browserbox';
+
+const box = await BrowserBox.boot();
+await box.fs.writeFile('main.py', 'print(6 * 7)');
+const { stdout } = await box.exec('pkg install python && python main.py');
+
+await box.agent.configure({ provider: 'anthropic', apiKey });
+const chat = await box.agent.create();
+const answer = await chat.send('Make a chart of data.csv');
+```
+
+Like WebContainers, but for agents. `boot()` loads the runtime (`/embed/`) in
+a hidden frame. The package is only the ~4 KB client (`src/sdk/`). The app
+needs no COOP/COEP, and each embedding site gets its own partitioned box. See
+[packages/sdk/README.md](packages/sdk/README.md) for the API.
+`npm run build:sdk` builds it and `npm run test:sdk` runs it end to end
+across two origins.
+
+## Run the app
+
+```
+npx @jeevanand/browserbox-app
 ```
 
 This serves the prebuilt app at `http://127.0.0.1:4173/agent/` and opens it.
@@ -34,7 +59,14 @@ isolation headers that SharedArrayBuffer and WebContainers need.
 
 `browserbox --dir` prints the folder to point a static host at if you would
 rather not use the built-in server. The app's service worker adds the same
-headers there; keep `agent/`, `os/`, `docs/`, `kernel/` and `assets/` together.
+headers there; keep `agent/`, `os/`, `docs/`, `embed/`, `kernel/` and
+`assets/` together.
+
+## Releasing
+
+Both packages share a version. Bump `version` in `packages/sdk/package.json`
+and `packages/app/package.json`, then push a tag `vX.Y.Z`. The release workflow
+tests, builds and publishes both. It needs an `NPM_TOKEN` repository secret.
 
 ## Development
 

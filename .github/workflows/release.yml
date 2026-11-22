@@ -1,5 +1,6 @@
 name: Release to npm
 
+# Push a tag vX.Y.Z after setting that version in packages/sdk and packages/app.
 on:
   push:
     tags: ['v*']
@@ -20,28 +21,37 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Check that the tag matches package.json
+      - name: Check that the tag matches both packages
         run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
+          for pkg in sdk app; do
+            version=$(node -p "require('./packages/$pkg/package.json').version")
+            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match packages/$pkg version $version"
+              exit 1
+            fi
+          done
 
       - name: Check that NPM_TOKEN is configured
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish @jeevanand/browserbox."
+            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish @jeevanand/browserbox and @jeevanand/browserbox-app."
             exit 1
           fi
 
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm run build:sdk
 
-      - name: Publish to npm
+      - name: Publish the SDK (@jeevanand/browserbox)
+        run: npm publish ./packages/sdk --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish the app (@jeevanand/browserbox-app)
+        working-directory: packages/app
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -11,6 +11,7 @@ Ask it for something and it works the way a developer would: it writes files, ru
 - **Private and offline AI.** With a model running [in the browser](models) or on your own machine, nothing leaves your device.
 - **Working with data**: drop in a file and have it analysed with Python, SQLite or JavaScript.
 - **Learning to code** with a terminal, Python, Node.js, git and an AI tutor from a single link.
+- **Building it into your own app** with the [SDK](sdk): a sandboxed computer and agent for your users, with no server.
 
 ## How it works
 

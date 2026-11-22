@@ -1,0 +1,46 @@
+{
+  "name": "@jeevanand/browserbox",
+  "version": "0.2.0",
+  "description": "A sandboxed computer for AI agents in the browser: filesystem, shell, Python, packages and an agent, with no backend. Like WebContainers, for agents.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "ai-agent",
+    "agent",
+    "sandbox",
+    "browser",
+    "sdk",
+    "webcontainer",
+    "wasm",
+    "python",
+    "llm",
+    "code-interpreter"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "homepage": "https://jeevanandmaurya.github.io/agent-browserbox/docs/#sdk",
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
