@@ -4,12 +4,13 @@
  * key but can never read its bytes, and the ciphertext is useless elsewhere.
  * Sandboxed agent code runs in an opaque origin and cannot reach this store.
  */
-const DB = 'bbx-secrets';
+export const SECRETS_DB = 'bbx-secrets';
 const STORE = 'kv';
 
-function open(): Promise<IDBDatabase> {
+function open(db: string | null): Promise<IDBDatabase> {
+  if (db === null) return Promise.reject(new Error('in-memory'));
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
+    const req = indexedDB.open(db, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -28,8 +29,11 @@ export class Secrets {
   #db: Promise<IDBDatabase> | null = null;
   #mem = new Map<string, string>();
 
+  /** `dbName` null: secrets are kept in memory only (an in-memory box). */
+  constructor(private dbName: string | null = SECRETS_DB) {}
+
   #open(): Promise<IDBDatabase> {
-    return (this.#db ??= open());
+    return (this.#db ??= open(this.dbName));
   }
 
   async #key(db: IDBDatabase): Promise<CryptoKey> {

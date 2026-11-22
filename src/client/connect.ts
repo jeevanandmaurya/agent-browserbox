@@ -1,8 +1,11 @@
 import { KERNEL_URL } from '@/config/origins';
+import { APP_KERNEL, toSearch, type KernelInstance } from '@/kernel/instance';
 
 export interface ConnectOptions {
   /** Where the kernel is served. Defaults to the build-time KERNEL_URL. */
   kernelUrl?: string;
+  /** Which kernel: the app's (default) or an SDK box. */
+  instance?: KernelInstance;
 }
 
 export interface KernelLink {
@@ -24,7 +27,7 @@ export function connectKernel(opts: ConnectOptions = {}): Promise<KernelLink> {
   const base = kernelUrl.endsWith('/') ? kernelUrl : `${kernelUrl}/`;
   const origin = new URL(base).origin;
   return new Promise((resolve, reject) => {
-    const src = new URL('bridge.html', base).href;
+    const src = new URL(`bridge.html${toSearch(opts.instance ?? APP_KERNEL)}`, base).href;
     // The page's HTML normally pre-starts the bridge so the kernel boots in parallel with our script.
     const early = document.getElementById('bbx-bridge') as HTMLIFrameElement | null;
     const frame = early?.src === src ? early : document.createElement('iframe');

@@ -9,8 +9,9 @@ import type { PackageRegistry } from './package-types';
 import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
-import { Secrets } from './secrets';
-import { loadSettings, persistSetting, Settings } from './settings';
+import { Secrets, SECRETS_DB } from './secrets';
+import { APP_KERNEL, dbName, type KernelInstance } from './instance';
+import { loadSettings, persistSetting, Settings, SETTINGS_DB } from './settings';
 import type { KernelEvents, KernelLogLine, Notice } from './types';
 import { HandleFs } from './vfs/handlefs';
 import { MemFs } from './vfs/memfs';
@@ -50,12 +51,14 @@ export class KernelCore implements Kernel {
   readonly bootStart = 0;
   readonly bus = new Bus<KernelEvents>();
   readonly settings = new Settings(this.bus, (key, value) => {
-    void persistSetting(key, value);
+    void persistSetting(key, value, dbName(SETTINGS_DB, this.instance));
     this.onSettingWritten?.(key, value);
   });
   /** Hook for cross-kernel sync when several kernels share storage (no SharedWorker). */
   onSettingWritten?: (key: string, value: unknown) => void;
-  readonly secrets = new Secrets();
+  readonly secrets: Secrets;
+  /** The app's kernel, or an SDK box. */
+  readonly instance: KernelInstance;
   readonly perms = new Permissions(this.settings);
   readonly procs = new ProcTable(this.bus);
   readonly fs = new Vfs(this.bus);
@@ -67,7 +70,9 @@ export class KernelCore implements Kernel {
   readonly packages: PackageManager;
   readonly dev = new LazyDev(this);
 
-  constructor(opts: { packages?: PackageRegistry } = {}) {
+  constructor(opts: { packages?: PackageRegistry; instance?: KernelInstance } = {}) {
+    this.instance = opts.instance ?? APP_KERNEL;
+    this.secrets = new Secrets(dbName(SECRETS_DB, this.instance));
     this.packages = new PackageManager(this, opts.packages);
     setEsbuildLoader(() => loadEsbuild(this.packages, (msg) => this.log('dev', msg)));
   }
@@ -108,17 +113,22 @@ export class KernelCore implements Kernel {
     this.procs.update(init.pid, { state: 'idle' });
     // Loads in parallel with storage; awaited before "ready" so the log reads in order.
     const kcore = this.kcore.load().then(() => this.log('kcore', this.kcore.loaded ? 'WebAssembly core loaded' : 'WebAssembly unavailable, using JavaScript fallbacks'));
-    this.settings.hydrate(await loadSettings());
+    this.settings.hydrate(await loadSettings(dbName(SETTINGS_DB, this.instance)));
     this.log('settings', `${this.settings.keys().length} keys loaded`);
 
+    const box = this.instance.box;
+    if (box !== null) this.log('kernel', `box ${box} (${this.instance.storage})`);
     try {
-      const root = await navigator.storage.getDirectory();
+      if (this.instance.storage === 'memory') throw new Error('in-memory box');
+      let root = await navigator.storage.getDirectory();
+      // Each box keeps its files in its own folder; the app's kernel owns the rest.
+      if (box !== null) root = await (await root.getDirectoryHandle('boxes', { create: true })).getDirectoryHandle(box, { create: true });
       this.fs.mount('/', new HandleFs(root, 'opfs'));
       this.rootKind = 'opfs';
-      this.log('vfs', 'mounted opfs on / (persistent)');
-    } catch {
+      this.log('vfs', `mounted opfs${box !== null ? ` boxes/${box}` : ''} on / (persistent)`);
+    } catch (err) {
       this.fs.mount('/', new MemFs());
-      this.log('vfs', 'OPFS unavailable: mounted memfs on / (not persistent)');
+      this.log('vfs', this.instance.storage === 'memory' ? 'mounted memfs on / (in-memory box)' : `OPFS unavailable (${(err as Error).message}): mounted memfs on / (not persistent)`);
     }
     this.fs.mount('/tmp', new MemFs());
     this.fs.mount('/proc', new ProcFs(this));
@@ -147,6 +157,11 @@ export class KernelCore implements Kernel {
   readonly seeders: Array<() => Promise<void>> = [];
 
   async #seed(): Promise<void> {
+    // A box starts with a clean home: no welcome files, no example skills.
+    if (this.instance.box !== null) {
+      await Promise.all([this.fs.mkdir(HOME), this.fs.mkdir('/mnt')]);
+      return;
+    }
     for (const seed of this.seeders) await seed();
     if (await this.fs.exists(`${HOME}/Welcome.md`)) return;
     await Promise.all([this.fs.mkdir(`${HOME}/Documents`), this.fs.mkdir(AGENT_HOME), this.fs.mkdir('/mnt')]);

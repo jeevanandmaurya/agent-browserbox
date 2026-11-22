@@ -1,6 +1,7 @@
 import { agentRpc } from '@/agent/rpc';
 import { installAgents } from '@/agent/service';
 import { registerApps } from '@/kernel/apps';
+import { fromWorkerName } from '@/kernel/instance';
 import { KernelCore } from '@/kernel/kernel';
 import { REGISTRY } from '@/packages/registry';
 import { ShellManager } from '@/shell/manager';
@@ -20,7 +21,9 @@ const shared = 'SharedWorkerGlobalScope' in self;
 
 // This is the composition root: the one place that assembles the layers (see tests/layers.test.ts).
 registerApps(APP_MANIFESTS);
-const os = new KernelCore({ packages: REGISTRY });
+// The worker's name says which kernel this is: the app's, or an SDK box's.
+const instance = fromWorkerName(self.name);
+const os = new KernelCore({ packages: REGISTRY, instance });
 installAgents(os);
 os.shells = new ShellManager(os);
 const server = new KernelServer(os, shared).use(agentRpc(os));
@@ -28,7 +31,7 @@ void os.start().then(() => os.mark('kernel-ready'));
 
 if (!shared) {
   // Kernels in different windows share IndexedDB/OPFS; keep their settings replicas in step.
-  const channel = new BroadcastChannel('bbx-settings');
+  const channel = new BroadcastChannel(`bbx-settings:${self.name}`);
   os.onSettingWritten = (key, value) => channel.postMessage({ key, value });
   channel.onmessage = (e: MessageEvent<{ key: string; value: unknown }>) => os.settings.applyRemote(e.data.key, e.data.value);
 }

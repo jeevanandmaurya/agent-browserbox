@@ -23,6 +23,15 @@ export type PermissionHandler = (request: PermissionRequest) => PermissionDecisi
 export interface BootOptions {
   /** Base URL of the runtime (the folder holding embed/, kernel/, assets/). Default: the hosted runtime. */
   runtimeUrl?: string;
+  /**
+   * Which box. Each id is a separate machine with its own files, settings and
+   * processes; booting the same id again (e.g. after a reload) reattaches to
+   * its files. Letters, digits, '-' and '_'. Default: 'default', or a fresh id
+   * for an in-memory box.
+   */
+  id?: string;
+  /** 'persistent' (default): files survive reloads. 'memory': everything is gone when the box is torn down. */
+  storage?: 'persistent' | 'memory';
   /** Element the hidden runtime frame is added to. Default: document.body. */
   container?: HTMLElement;
   /**
@@ -141,6 +150,8 @@ export class BrowserBox {
   readonly fs = new BoxFs(this);
   /** Runtime version. */
   readonly version: string;
+  /** This box's id. */
+  readonly id: string;
   /** Default working directory; relative paths resolve against it. */
   readonly home: string;
   /** Platform features the runtime has (e.g. 'opfs', 'webgpu'). */
@@ -163,6 +174,7 @@ export class BrowserBox {
     this.#frame = frame;
     this.#permissions = permissions;
     this.version = hello.version;
+    this.id = hello.id;
     this.home = hello.home;
     this.caps = hello.caps;
     this.storage = hello.storage;
@@ -173,7 +185,10 @@ export class BrowserBox {
   static boot(opts: BootOptions = {}): Promise<BrowserBox> {
     const base = new URL(opts.runtimeUrl ?? DEFAULT_RUNTIME_URL, globalThis.location?.href);
     if (!base.pathname.endsWith('/')) base.pathname += '/';
-    const src = new URL('embed/', base);
+    const memory = opts.storage === 'memory';
+    const id = opts.id ?? (memory ? `mem-${crypto.randomUUID()}` : 'default');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return Promise.reject(new BoxError(`invalid box id "${id}": use letters, digits, '-' and '_' (at most 64)`));
+    const src = new URL(`embed/?box=${encodeURIComponent(id)}&storage=${memory ? 'memory' : 'opfs'}`, base);
     const permissions: PermissionHandler = typeof opts.permissions === 'function' ? opts.permissions : opts.permissions === 'allow' ? () => 'once' : () => 'deny';
 
     const frame = document.createElement('iframe');

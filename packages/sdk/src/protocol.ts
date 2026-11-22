@@ -16,6 +16,8 @@ export interface Hello {
   protocol: number;
   /** Runtime version. */
   version: string;
+  /** The box's id. */
+  id: string;
   /** The default working directory for commands. */
   home: string;
   /** Platform features available in the runtime (e.g. 'opfs', 'webgpu'). */

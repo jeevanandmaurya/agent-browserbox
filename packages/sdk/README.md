@@ -34,14 +34,23 @@ box.teardown();
 
 | Option | Default | |
 |---|---|---|
+| `id` | `'default'` (a fresh id for in-memory boxes) | Which box. Each id is a separate machine with its own files, settings and processes. Booting the same id again, e.g. after a reload, reattaches to its files. Letters, digits, `-` and `_`. |
+| `storage` | `'persistent'` | `'persistent'`: files survive reloads. `'memory'`: nothing is written to disk, and everything is gone when the box is torn down. |
 | `runtimeUrl` | the hosted runtime | Base URL of the runtime. Self-host it with [`@jeevanand/agent-browserbox-runtime`](../runtime). |
 | `permissions` | `'deny'` | What to answer when code in the box asks for a capability (today: network access from `curl` and `js --net`). `'deny'`, `'allow'`, or `(request) => 'once' \| 'always' \| 'deny'`. |
 | `container` | `document.body` | Where the hidden frame goes. |
 | `timeoutMs` | `30000` | Give up booting after this long. |
 
-The box has `version`, `home` (the default working directory), `caps` (platform
-features available) and `storage` (`'opfs'`: files persist across reloads,
-`'memory'`: they do not).
+The box has `id`, `version`, `home` (the default working directory), `caps`
+(platform features available) and `storage` (`'opfs'`: files persist across
+reloads, `'memory'`: they do not).
+
+```ts
+// One throwaway machine per agent task:
+const box = await BrowserBox.boot({ storage: 'memory' });
+// A project that should still be there tomorrow:
+const project = await BrowserBox.boot({ id: 'my-project' });
+```
 
 ### Files: `box.fs`
 
@@ -59,7 +68,9 @@ Errors are `BoxError`s with a `code` (`ENOENT`, `EEXIST`, `ENOTDIR`, …).
   `stdout` and `stderr` (`ReadableStream<string>`), `exit` (a promise of the exit
   code) and `kill()`.
 
-Exit code 124 means the command timed out, 130 that it was killed.
+Exit code 124 means the command timed out, 130 that it was killed. Output is
+plain text: colour codes are removed, and `exec` collapses progress bars
+(lines redrawn with `\r`) to their final state.
 
 Commands run in BrowserBox's shell (`help` lists them): files and text (`ls`,
 `cat`, `grep`, `find`, `sort`, …), `js` (JavaScript in a sandboxed worker),
@@ -79,10 +90,11 @@ Removes the frame and fails any call still pending.
 - **Network access needs permission.** `curl` and `js --net` ask, and the
   answer comes from your `permissions` option (deny by default). Installing
   packages (`pkg`, `npm`) fetches from fixed registries without asking.
+- **Every box is a separate machine.** Each id has its own kernel, files,
+  settings and permission grants; boxes never see each other's files.
 - **Storage is per embedding site.** Browsers partition a cross-site frame's
-  storage by the top-level site, so your box never sees another site's files.
-  Two boxes on the same page currently share one filesystem; separate
-  instances are planned.
+  storage by the top-level site, so your boxes never see another site's, even
+  with the same id.
 
 ## Self-hosting
 

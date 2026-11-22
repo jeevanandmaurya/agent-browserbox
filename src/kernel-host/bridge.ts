@@ -1,5 +1,6 @@
 import { RemoteKernel } from '@/client/remote-kernel';
 import { ALLOWED_ORIGINS } from '@/config/origins';
+import { fromSearch, workerName } from '@/kernel/instance';
 import { devBackend, runJs, runPython, runWasm, type BackendOp, type BackendPayload, type RunResult } from '@/sandbox/sandbox';
 
 /**
@@ -10,12 +11,14 @@ import { devBackend, runJs, runPython, runWasm, type BackendOp, type BackendPayl
  *  3. hosts sandbox frames for the kernel, which has no document of its own.
  */
 const shared = 'SharedWorker' in globalThis;
+/** The kernel to start or join: the app's, or the SDK box named in this page's URL. */
+const name = workerName(fromSearch(location.search));
 let dedicated: Worker | null = null;
 
 function kernelPort(): MessagePort {
   // Every window constructs the same SharedWorker and so reaches the one running kernel.
-  if (shared) return new SharedWorker(new URL('../kernel-worker/main.ts', import.meta.url), { type: 'module', name: 'bbx-kernel' }).port;
-  dedicated ??= new Worker(new URL('../kernel-worker/main.ts', import.meta.url), { type: 'module', name: 'bbx-kernel' });
+  if (shared) return new SharedWorker(new URL('../kernel-worker/main.ts', import.meta.url), { type: 'module', name }).port;
+  dedicated ??= new Worker(new URL('../kernel-worker/main.ts', import.meta.url), { type: 'module', name });
   const ch = new MessageChannel();
   dedicated.postMessage({ type: 'connect' }, [ch.port2]);
   return ch.port1;

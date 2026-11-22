@@ -2,7 +2,9 @@ import { connectKernel } from '@/client/connect';
 import { RemoteKernel } from '@/client/remote-kernel';
 import { EMBED_ORIGINS } from '@/config/origins';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
+import { fromSearch } from '@/kernel/instance';
 import { HOME } from '@/kernel/paths';
+import { plainText, stripAnsi } from '@/shell/ansi';
 import type { ShellHandle } from '@/kernel/api';
 import { PROTOCOL_VERSION, type ExecOptions, type ExecResult, type FromRuntime, type Hello, type Methods, type ToRuntime } from '../packages/sdk/src/protocol';
 
@@ -14,7 +16,11 @@ import { PROTOCOL_VERSION, type ExecOptions, type ExecResult, type FromRuntime, 
  * Only this page needs the kernel, the worker and the wasm. The embedding page
  * loads the SDK client alone and needs no special headers.
  */
-const os = new RemoteKernel(connectKernel());
+// Which box this page drives comes from its URL (embed/?box=<id>&storage=opfs|memory), set by the SDK.
+// Without one it is the 'default' box: SDK pages never drive the app's own kernel.
+const fromUrl = fromSearch(location.search);
+const instance = { box: fromUrl.box ?? 'default', storage: fromUrl.box === null ? ('opfs' as const) : fromUrl.storage };
+const os = new RemoteKernel(connectKernel({ instance }));
 (globalThis as unknown as { bbx: RemoteKernel }).bbx = os;
 
 let port: MessagePort | null = null;
@@ -67,7 +73,7 @@ type Impl = { [M in keyof Methods]: (...args: Parameters<Methods[M]>) => ReturnT
 
 async function hello(): Promise<Hello> {
   await os.fs.ready;
-  return { t: 'hello', protocol: PROTOCOL_VERSION, version: os.version, home: HOME, caps: os.caps.filter((c) => c.ok).map((c) => c.id), storage: os.rootKind };
+  return { t: 'hello', protocol: PROTOCOL_VERSION, version: os.version, id: instance.box, home: HOME, caps: os.caps.filter((c) => c.ok).map((c) => c.id), storage: os.rootKind };
 }
 
 const methods: Impl = {
@@ -89,13 +95,14 @@ const methods: Impl = {
     let stdout = '';
     let stderr = '';
     const exitCode = await run(command, opts, { out: (t) => (stdout += t), err: (t) => (stderr += t) }, new AbortController());
-    return { exitCode, stdout, stderr };
+    // Programs read plain text: no colour codes, and progress bars redrawn with \r collapse to their final line.
+    return { exitCode, stdout: plainText(stdout), stderr: plainText(stderr) };
   },
   spawn(command, opts = {}) {
     const pid = nextPid++;
     const ctl = new AbortController();
     running.set(pid, ctl);
-    void run(command, opts, { out: (data) => send({ t: 'output', pid, stream: 'stdout', data }), err: (data) => send({ t: 'output', pid, stream: 'stderr', data }) }, ctl).then((exitCode) => {
+    void run(command, opts, { out: (data) => send({ t: 'output', pid, stream: 'stdout', data: stripAnsi(data) }), err: (data) => send({ t: 'output', pid, stream: 'stderr', data: stripAnsi(data) }) }, ctl).then((exitCode) => {
       running.delete(pid);
       send({ t: 'exit', pid, exitCode });
     });

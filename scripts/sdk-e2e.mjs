@@ -75,7 +75,7 @@ await check('boot: a page on another site starts a box with the SDK alone', () =
     const t = performance.now();
     window.box = await BrowserBox.boot({ runtimeUrl: RUNTIME });
     if (crossOriginIsolated) throw new Error('host page should not need isolation');
-    return `v${box.version}, home=${box.home}, storage=${box.storage}, ${box.caps.length} caps, ${Math.round(performance.now() - t)} ms`;
+    return `v${box.version}, id=${box.id}, home=${box.home}, storage=${box.storage}, ${box.caps.length} caps, ${Math.round(performance.now() - t)} ms`;
   }),
 );
 
@@ -181,6 +181,68 @@ await check('permissions: network is denied by default, and each box answers for
       open.teardown();
     }
   }, dataUrl),
+);
+
+await check('boxes are separate machines: files, settings and permission grants', () =>
+  run(async (url) => {
+    const a = await BrowserBox.boot({ runtimeUrl: RUNTIME, id: 'iso-a', permissions: () => 'always' });
+    const b = await BrowserBox.boot({ runtimeUrl: RUNTIME, id: 'iso-b' });
+    try {
+      await a.fs.writeFile('secret.txt', 'only in a');
+      if (await b.fs.exists('secret.txt')) throw new Error('box b sees box a\'s file');
+      if (await box.fs.exists('secret.txt')) throw new Error('the default box sees box a\'s file');
+      // An 'always' grant is stored in box a's settings only.
+      if ((await a.exec(`curl ${url}`)).exitCode !== 0) throw new Error('box a: curl failed');
+      const inB = await b.exec(`curl ${url}`);
+      if (inB.exitCode === 0) throw new Error("box a's network grant leaked into box b");
+      if (a.id !== 'iso-a' || b.id !== 'iso-b') throw new Error(`ids: ${a.id}, ${b.id}`);
+    } finally {
+      a.teardown();
+      b.teardown();
+    }
+    // Booting the same id again reattaches to its files.
+    const again = await BrowserBox.boot({ runtimeUrl: RUNTIME, id: 'iso-a' });
+    try {
+      const text = await again.fs.readTextFile('secret.txt');
+      if (text !== 'only in a') throw new Error(`reattached box read ${text}`);
+      await again.fs.rm('secret.txt');
+    } finally {
+      again.teardown();
+    }
+    return 'a ≠ b ≠ default; grants per box; reboot of a keeps its files';
+  }, dataUrl),
+);
+
+await check('in-memory boxes: own fresh id, nothing written to disk', () =>
+  run(async () => {
+    const m = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' });
+    const n = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' });
+    try {
+      if (m.storage !== 'memory' || !m.id.startsWith('mem-') || m.id === n.id) throw new Error(JSON.stringify({ id: m.id, storage: m.storage, other: n.id }));
+      await m.fs.writeFile('scratch.txt', 'temp');
+      if (await n.fs.exists('scratch.txt')) throw new Error('two memory boxes share files');
+      const cat = await m.exec('cat scratch.txt');
+      const ls = await m.exec('ls /');
+      if (cat.stdout !== 'temp') throw new Error(JSON.stringify(cat));
+      if (/\x1b/.test(ls.stdout)) throw new Error(`colour codes in exec output: ${JSON.stringify(ls.stdout)}`);
+      return `${m.id.slice(0, 12)}… and ${n.id.slice(0, 12)}…; ls / → ${ls.stdout.trim().replace(/\s+/g, ' ')}`;
+    } finally {
+      m.teardown();
+      n.teardown();
+    }
+  }),
+);
+
+await check('invalid box ids are refused before anything loads', () =>
+  run(async () => {
+    try {
+      await BrowserBox.boot({ runtimeUrl: RUNTIME, id: '../escape' });
+      throw new Error('booted');
+    } catch (err) {
+      if (!(err instanceof BoxError)) throw err;
+      return err.message;
+    }
+  }),
 );
 
 await check('teardown removes the frame and fails later calls', () =>
