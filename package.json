@@ -1,9 +1,43 @@
 {
-  "name": "agent-browserbox",
+  "name": "@jeevanand/browserbox",
   "version": "0.1.0",
-  "private": true,
+  "description": "An operating system for AI agents that runs entirely in the browser, with no backend. Run it with: npx @jeevanand/browserbox",
   "type": "module",
-  "description": "A sandboxed agent OS that runs entirely in the browser",
+  "bin": {
+    "browserbox": "bin/browserbox.mjs"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "keywords": [
+    "ai-agent",
+    "agent",
+    "browser",
+    "operating-system",
+    "sandbox",
+    "webcontainer",
+    "sharedworker",
+    "wasm",
+    "claude",
+    "llm"
+  ],
+  "homepage": "https://jeevanandmaurya.github.io/agent-browserbox/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -11,23 +45,22 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs"
+    "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs",
+    "prepack": "npm run build"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@mlc-ai/web-llm": "^0.2.88",
     "@types/sql.js": "^1.4.11",
+    "@webcontainer/api": "^1.6.4",
     "@webgpu/types": "^0.1.74",
+    "buffer": "^6.0.3",
     "esbuild-wasm": "^0.25.5",
+    "fflate": "^0.8.3",
+    "isomorphic-git": "^1.44.15",
+    "sql.js": "^1.16.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0",
-    "@mlc-ai/web-llm": "^0.2.88",
-    "@webcontainer/api": "^1.6.4",
-    "buffer": "^6.0.3",
-    "fflate": "^0.8.3",
-    "isomorphic-git": "^1.44.15",
-    "sql.js": "^1.16.0"
   }
 }

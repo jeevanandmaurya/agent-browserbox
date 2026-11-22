@@ -15,6 +15,29 @@ agent window and its session carries on; open it again and it reattaches.
 Close the desktop and nothing is lost — it is only a view. Any other frontend
 can replace it by speaking the same protocol (`src/kernel/api.ts`).
 
+## Run it
+
+```
+npx @jeevanand/browserbox
+```
+
+This serves the prebuilt app at `http://127.0.0.1:4173/agent/` and opens it.
+The kernel, desktop and docs are on the same origin, with the cross-origin
+isolation headers that SharedArrayBuffer and WebContainers need.
+
+```
+--port <n>     port to listen on (default 4173, or the next free one)
+--host <addr>  address to bind (default 127.0.0.1; use 0.0.0.0 for your LAN)
+--no-open      don't open a browser window
+--dir          print the path of the built site (to host it elsewhere) and exit
+```
+
+`browserbox --dir` prints the folder to point a static host at if you would
+rather not use the built-in server. The app's service worker adds the same
+headers there; keep `agent/`, `os/`, `docs/`, `kernel/` and `assets/` together.
+
+## Development
+
 ```
 npm install
 npm run dev        # http://localhost:5173/agent/  (desktop: /os/)
@@ -416,3 +439,7 @@ your browser supports.
 
 `src/kernel/kcore.wasm` is checked in. To rebuild:
 `rustup target add wasm32-unknown-unknown && npm run build:wasm`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
