@@ -1,5 +1,6 @@
 import type { ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
 import type { KernelCore } from '@/kernel/kernel';
+import type { Prompter } from '@/kernel/perms';
 import { registerCommands } from './index';
 import { Shell } from './shell';
 
@@ -9,7 +10,7 @@ export class ShellManager implements ShellsApi {
 
   constructor(private os: KernelCore) {}
 
-  async open(opts: { cwd?: string; ppid?: number } = {}): Promise<ShellHandle> {
+  async open(opts: { cwd?: string; ppid?: number; confined?: boolean; prompter?: Prompter } = {}): Promise<ShellHandle> {
     const os = this.os;
     let reader: ((prompt: string, secret: boolean) => Promise<string | null>) | null = null;
     let clear: (() => void) | null = null;
@@ -20,6 +21,8 @@ export class ShellManager implements ShellsApi {
       new Shell(os, {
         cwd: opts.cwd,
         ppid: proc.pid,
+        confined: opts.confined,
+        prompter: opts.prompter,
         tty: { readLine: (prompt, o) => (reader ? reader(prompt, o?.secret ?? false) : Promise.resolve(null)), clear: () => clear?.() },
       }),
     );

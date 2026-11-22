@@ -38,3 +38,16 @@ export const ALLOWED_ORIGINS: string[] = (env.VITE_ALLOWED_ORIGINS || '')
   .filter(Boolean);
 
 export const kernelOrigin = () => new URL(KERNEL_URL).origin;
+
+/**
+ * Origins allowed to drive the SDK runtime (embed/) from a page of their own.
+ * Default: any origin. That is safe because browsers partition a cross-site
+ * frame's storage and workers by the top-level site, so each embedding site
+ * gets its own box and never sees another site's files or the app's own data.
+ * Restrict it with VITE_EMBED_ORIGINS=https://a.example,https://b.example.
+ */
+export const EMBED_ORIGINS: '*' | string[] = env.VITE_EMBED_ORIGINS
+  ? env.VITE_EMBED_ORIGINS.split(',').map((s: string) => s.trim()).filter(Boolean)
+  : ALLOWED_ORIGINS.length
+    ? ALLOWED_ORIGINS
+    : '*';

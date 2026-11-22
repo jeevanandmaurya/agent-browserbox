@@ -1,0 +1,53 @@
+{
+  "name": "@jeevanand/agent-browserbox-runtime",
+  "version": "0.1.0",
+  "description": "The self-hostable runtime for @jeevanand/agent-browserbox: static files (kernel, filesystem, shell, sandboxes) to serve from your own origin.",
+  "type": "module",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    }
+  },
+  "bin": {
+    "agent-browserbox-runtime": "bin/serve.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "keywords": [
+    "sandbox",
+    "ai-agent",
+    "browser",
+    "vm",
+    "runtime",
+    "wasm"
+  ],
+  "homepage": "https://github.com/jeevanandmaurya/agent-browserbox/tree/main/packages/runtime#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd ../.. && BBX_TARGET=runtime vite build",
+    "prepack": "npm run build"
+  }
+}

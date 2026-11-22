@@ -1,8 +1,12 @@
 name: Release to npm
 
+# Tags pick what is released:
+#   v1.2.3      the app, @jeevanand/browserbox (root package.json)
+#   sdk-v1.2.3  the SDK and its runtime, @jeevanand/agent-browserbox and
+#               @jeevanand/agent-browserbox-runtime (always the same version)
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'sdk-v*']
 
 permissions:
   contents: write
@@ -20,29 +24,56 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Check that the tag matches package.json
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
-
       - name: Check that NPM_TOKEN is configured
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish @jeevanand/browserbox."
+            echo "::error::Add an NPM_TOKEN repository secret: an npm automation token that can publish under @jeevanand."
             exit 1
+          fi
+
+      - name: Check that the tag matches the package versions
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [[ "$tag" == sdk-v* ]]; then
+            want="${tag#sdk-v}"
+            for p in packages/sdk packages/runtime; do
+              have=$(node -p "require('./$p/package.json').version")
+              if [ "$have" != "$want" ]; then
+                echo "::error::$tag does not match $p/package.json version $have"
+                exit 1
+              fi
+            done
+          else
+            have=$(node -p "require('./package.json').version")
+            if [ "v$have" != "$tag" ]; then
+              echo "::error::tag $tag does not match package.json version $have"
+              exit 1
+            fi
           fi
 
       - run: npm ci
       - run: npm test
-      - run: npm run build
 
-      - name: Publish to npm
+      - name: Publish the app
+        if: ${{ !startsWith(github.ref_name, 'sdk-v') }}
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Test the SDK against the runtime
+        if: ${{ startsWith(github.ref_name, 'sdk-v') }}
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          npm run build:sdk && npm run build:runtime && node scripts/sdk-e2e.mjs
+
+      - name: Publish the SDK and the runtime
+        if: ${{ startsWith(github.ref_name, 'sdk-v') }}
+        run: |
+          npm publish --provenance --access public -w @jeevanand/agent-browserbox-runtime
+          npm publish --provenance --access public -w @jeevanand/agent-browserbox
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

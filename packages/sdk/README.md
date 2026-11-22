@@ -1,0 +1,101 @@
+# @jeevanand/agent-browserbox
+
+A sandboxed computer in the browser, for AI agents and anything else that
+must run untrusted code: a filesystem, a shell, and JavaScript, Python and
+WebAssembly runtimes. It runs entirely on the user's device, with no backend
+and no VM service, isolated in its own origin.
+
+The SDK is 3 kB (gzip) with no dependencies. The runtime it drives is loaded
+in a hidden frame from another origin, so your page needs no special headers
+and nothing in the box can touch your page.
+
+```sh
+npm install @jeevanand/agent-browserbox
+```
+
+```ts
+import { BrowserBox } from '@jeevanand/agent-browserbox';
+
+const box = await BrowserBox.boot();
+
+await box.fs.writeFile('main.js', 'print(6 * 7)');
+const { exitCode, stdout } = await box.exec('js main.js'); // 0, "42\n"
+
+const p = await box.spawn('echo building && sleep 1 && echo done');
+for await (const chunk of p.output) console.log(chunk); // as it happens
+await p.exit; // 0
+
+box.teardown();
+```
+
+## API
+
+### `BrowserBox.boot(options?)`
+
+| Option | Default | |
+|---|---|---|
+| `runtimeUrl` | the hosted runtime | Base URL of the runtime. Self-host it with [`@jeevanand/agent-browserbox-runtime`](../runtime). |
+| `permissions` | `'deny'` | What to answer when code in the box asks for a capability (today: network access from `curl` and `js --net`). `'deny'`, `'allow'`, or `(request) => 'once' \| 'always' \| 'deny'`. |
+| `container` | `document.body` | Where the hidden frame goes. |
+| `timeoutMs` | `30000` | Give up booting after this long. |
+
+The box has `version`, `home` (the default working directory), `caps` (platform
+features available) and `storage` (`'opfs'`: files persist across reloads,
+`'memory'`: they do not).
+
+### Files: `box.fs`
+
+`readFile(path)` → `Uint8Array` · `readTextFile(path)` · `writeFile(path, string | Uint8Array)` ·
+`mkdir(path)` · `readdir(path)` → `FileStat[]` · `stat(path)` → `FileStat | null` ·
+`exists(path)` · `rm(path, { recursive })` · `rename(from, to)` · `cp(from, to)`
+
+Relative paths resolve against `box.home`. Parent folders are created as needed.
+Errors are `BoxError`s with a `code` (`ENOENT`, `EEXIST`, `ENOTDIR`, …).
+
+### Commands
+
+- `box.exec(command, { cwd, env, timeoutMs })` → `{ exitCode, stdout, stderr }`
+- `box.spawn(command, { cwd, env, timeoutMs })` → a process with `output`,
+  `stdout` and `stderr` (`ReadableStream<string>`), `exit` (a promise of the exit
+  code) and `kill()`.
+
+Exit code 124 means the command timed out, 130 that it was killed.
+
+Commands run in BrowserBox's shell (`help` lists them): files and text (`ls`,
+`cat`, `grep`, `find`, `sort`, …), `js` (JavaScript in a sandboxed worker),
+`wasm` (WASI programs), `curl`, `gzip`, `npm` (records dependencies; packages
+load from esm.sh) and `pkg install python|git|sqlite|zip|esbuild` for more.
+It is not bash, and there is no Node.js.
+
+### `box.teardown()`
+
+Removes the frame and fails any call still pending.
+
+## Isolation, and what to know
+
+- **The box runs on the runtime's origin**, in a frame with no access to your
+  page, and your page has no access to it except through this API. Code inside
+  runs in further sandboxed frames and workers with an opaque origin.
+- **Network access needs permission.** `curl` and `js --net` ask, and the
+  answer comes from your `permissions` option (deny by default). Installing
+  packages (`pkg`, `npm`) fetches from fixed registries without asking.
+- **Storage is per embedding site.** Browsers partition a cross-site frame's
+  storage by the top-level site, so your box never sees another site's files.
+  Two boxes on the same page currently share one filesystem; separate
+  instances are planned.
+
+## Self-hosting
+
+The default runtime is hosted on GitHub Pages. To serve it yourself:
+
+```sh
+npx @jeevanand/agent-browserbox-runtime      # http://127.0.0.1:4180/
+```
+
+or copy its files into your site (`npx @jeevanand/agent-browserbox-runtime --dir`
+prints where they are) and pass that URL as `runtimeUrl`. Use the same version
+of the SDK and the runtime.
+
+## License
+
+MIT

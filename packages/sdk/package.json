@@ -1,0 +1,56 @@
+{
+  "name": "@jeevanand/agent-browserbox",
+  "version": "0.1.0",
+  "description": "A sandboxed computer in the browser for AI agents: filesystem, shell, JavaScript, Python and WebAssembly, isolated in its own origin. No backend.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "sandbox",
+    "ai-agent",
+    "agent",
+    "browser",
+    "vm",
+    "virtual-machine",
+    "filesystem",
+    "shell",
+    "wasm",
+    "python",
+    "llm"
+  ],
+  "homepage": "https://github.com/jeevanandmaurya/agent-browserbox/tree/main/packages/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeevanandmaurya/agent-browserbox.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/jeevanandmaurya/agent-browserbox/issues"
+  },
+  "author": "Jeevanand Maurya",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  }
+}

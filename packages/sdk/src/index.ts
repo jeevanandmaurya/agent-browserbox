@@ -1,0 +1,296 @@
+import {
+  PROTOCOL_VERSION,
+  type ExecOptions,
+  type ExecResult,
+  type FileStat,
+  type FromRuntime,
+  type Hello,
+  type Method,
+  type Methods,
+  type PermissionDecision,
+  type PermissionRequest,
+  type ToRuntime,
+} from './protocol.js';
+
+export type { ExecOptions, ExecResult, FileStat, PermissionDecision, PermissionRequest };
+export { PROTOCOL_VERSION };
+
+/** Where the hosted runtime lives. Self-host it with @jeevanand/agent-browserbox-runtime. */
+export const DEFAULT_RUNTIME_URL = 'https://jeevanandmaurya.github.io/agent-browserbox/runtime/';
+
+export type PermissionHandler = (request: PermissionRequest) => PermissionDecision | Promise<PermissionDecision>;
+
+export interface BootOptions {
+  /** Base URL of the runtime (the folder holding embed/, kernel/, assets/). Default: the hosted runtime. */
+  runtimeUrl?: string;
+  /** Element the hidden runtime frame is added to. Default: document.body. */
+  container?: HTMLElement;
+  /**
+   * What to answer when code in the box asks for a capability (network access,
+   * …). 'deny' (default), 'allow', or a function deciding per request.
+   */
+  permissions?: 'deny' | 'allow' | PermissionHandler;
+  /** Give up booting after this many ms. Default 30000. */
+  timeoutMs?: number;
+}
+
+/** An error from the box. `code` is set for filesystem errors (ENOENT, EEXIST, …). */
+export class BoxError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'BoxError';
+  }
+}
+
+interface Sink {
+  out: ReadableStreamDefaultController<string>[];
+  stdout: ReadableStreamDefaultController<string>[];
+  stderr: ReadableStreamDefaultController<string>[];
+  exit(code: number): void;
+}
+
+type ProcEvent = { t: 'output'; stream: 'stdout' | 'stderr'; data: string } | { t: 'exit'; exitCode: number };
+
+/** A running command in the box. */
+export class BoxProcess {
+  /** stdout and stderr together, in the order they were written. */
+  readonly output: ReadableStream<string>;
+  readonly stdout: ReadableStream<string>;
+  readonly stderr: ReadableStream<string>;
+  /** Resolves with the exit code (124: timed out, 130: killed). */
+  readonly exit: Promise<number>;
+
+  /** @internal */
+  constructor(
+    readonly pid: number,
+    private box: BrowserBox,
+    attach: (sink: Sink) => void,
+  ) {
+    const sink: Sink = { out: [], stdout: [], stderr: [], exit: () => undefined };
+    const stream = (list: ReadableStreamDefaultController<string>[]) => new ReadableStream<string>({ start: (c) => void list.push(c) });
+    this.output = stream(sink.out);
+    this.stdout = stream(sink.stdout);
+    this.stderr = stream(sink.stderr);
+    this.exit = new Promise((resolve) => (sink.exit = resolve));
+    attach(sink);
+  }
+
+  /** Stops the command. Resolves false if it had already finished. */
+  kill(): Promise<boolean> {
+    return this.box.call('kill', this.pid);
+  }
+}
+
+/** The box's filesystem. Paths are absolute, or relative to the box's home. */
+export class BoxFs {
+  /** @internal */
+  constructor(private box: BrowserBox) {}
+
+  #abs(path: string): string {
+    return path.startsWith('/') ? path : `${this.box.home.replace(/\/$/, '')}/${path}`;
+  }
+
+  readFile(path: string): Promise<Uint8Array> {
+    return this.box.call('fs.readFile', this.#abs(path));
+  }
+  readTextFile(path: string): Promise<string> {
+    return this.box.call('fs.readTextFile', this.#abs(path));
+  }
+  /** Creates parent folders as needed. */
+  writeFile(path: string, data: string | Uint8Array): Promise<void> {
+    return this.box.call('fs.writeFile', this.#abs(path), data);
+  }
+  /** Creates parent folders as needed. */
+  mkdir(path: string): Promise<void> {
+    return this.box.call('fs.mkdir', this.#abs(path));
+  }
+  readdir(path = '.'): Promise<FileStat[]> {
+    return this.box.call('fs.readdir', this.#abs(path));
+  }
+  /** Null when nothing is there. */
+  stat(path: string): Promise<FileStat | null> {
+    return this.box.call('fs.stat', this.#abs(path));
+  }
+  exists(path: string): Promise<boolean> {
+    return this.box.call('fs.exists', this.#abs(path));
+  }
+  rm(path: string, opts?: { recursive?: boolean }): Promise<void> {
+    return this.box.call('fs.rm', this.#abs(path), opts);
+  }
+  rename(from: string, to: string): Promise<void> {
+    return this.box.call('fs.rename', this.#abs(from), this.#abs(to));
+  }
+  cp(from: string, to: string): Promise<void> {
+    return this.box.call('fs.cp', this.#abs(from), this.#abs(to));
+  }
+}
+
+/**
+ * A sandboxed computer in the browser: a filesystem, a shell, and JavaScript,
+ * Python and WebAssembly runtimes, all inside a hidden frame on the runtime's
+ * origin. Nothing in it can reach the embedding page.
+ *
+ *   const box = await BrowserBox.boot();
+ *   await box.fs.writeFile('hello.py', 'print(6 * 7)');
+ *   const { stdout } = await box.exec('python hello.py');
+ */
+export class BrowserBox {
+  readonly fs = new BoxFs(this);
+  /** Runtime version. */
+  readonly version: string;
+  /** Default working directory; relative paths resolve against it. */
+  readonly home: string;
+  /** Platform features the runtime has (e.g. 'opfs', 'webgpu'). */
+  readonly caps: readonly string[];
+  /** 'opfs': files persist across reloads (separately for each embedding site). 'memory': they do not. */
+  readonly storage: 'opfs' | 'memory';
+
+  #port: MessagePort;
+  #frame: HTMLIFrameElement;
+  #permissions: PermissionHandler;
+  #nextId = 1;
+  #calls = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
+  #sinks = new Map<number, Sink>();
+  /** Events for processes whose spawn() has not returned yet. */
+  #early = new Map<number, ProcEvent[]>();
+  #closed: BoxError | null = null;
+
+  private constructor(port: MessagePort, frame: HTMLIFrameElement, hello: Hello, permissions: PermissionHandler) {
+    this.#port = port;
+    this.#frame = frame;
+    this.#permissions = permissions;
+    this.version = hello.version;
+    this.home = hello.home;
+    this.caps = hello.caps;
+    this.storage = hello.storage;
+    port.onmessage = (e: MessageEvent<FromRuntime>) => this.#onMessage(e.data);
+  }
+
+  /** Starts a box: loads the runtime in a hidden frame and connects to it. */
+  static boot(opts: BootOptions = {}): Promise<BrowserBox> {
+    const base = new URL(opts.runtimeUrl ?? DEFAULT_RUNTIME_URL, globalThis.location?.href);
+    if (!base.pathname.endsWith('/')) base.pathname += '/';
+    const src = new URL('embed/', base);
+    const permissions: PermissionHandler = typeof opts.permissions === 'function' ? opts.permissions : opts.permissions === 'allow' ? () => 'once' : () => 'deny';
+
+    const frame = document.createElement('iframe');
+    frame.src = src.href;
+    frame.title = 'BrowserBox runtime';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+
+    return new Promise<BrowserBox>((resolve, reject) => {
+      const fail = (message: string) => {
+        cleanup();
+        frame.remove();
+        reject(new BoxError(message));
+      };
+      const timer = setTimeout(() => fail(`the runtime at ${src.href} did not respond within ${opts.timeoutMs ?? 30000} ms`), opts.timeoutMs ?? 30000);
+      const onWindowMessage = (e: MessageEvent) => {
+        if (e.source !== frame.contentWindow || e.origin !== src.origin || e.data?.type !== 'bbx:embed-ready') return;
+        const { port1, port2 } = new MessageChannel();
+        port1.onmessage = (m: MessageEvent<FromRuntime>) => {
+          const msg = m.data;
+          if (msg.t === 'refused') return fail(`the runtime refused to connect: ${msg.error}`);
+          if (msg.t !== 'hello') return;
+          cleanup();
+          resolve(new BrowserBox(port1, frame, msg, permissions));
+        };
+        frame.contentWindow!.postMessage({ type: 'bbx:connect', protocol: PROTOCOL_VERSION }, src.origin, [port2]);
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        removeEventListener('message', onWindowMessage);
+      };
+      addEventListener('message', onWindowMessage);
+      (opts.container ?? document.body).append(frame);
+    });
+  }
+
+  /** Runs a shell command line to completion and returns its output. */
+  exec(command: string, opts?: ExecOptions): Promise<ExecResult> {
+    return this.call('exec', command, opts);
+  }
+
+  /** Starts a shell command line and streams its output. */
+  async spawn(command: string, opts?: ExecOptions): Promise<BoxProcess> {
+    const pid = await this.call('spawn', command, opts);
+    return new BoxProcess(pid, this, (sink) => {
+      this.#sinks.set(pid, sink);
+      for (const ev of this.#early.get(pid) ?? []) this.#deliver(pid, ev);
+      this.#early.delete(pid);
+    });
+  }
+
+  /** Shuts the box down: removes its frame and fails anything still pending. */
+  teardown(): void {
+    if (this.#closed) return;
+    this.#closed = new BoxError('the box was torn down');
+    for (const c of this.#calls.values()) c.reject(this.#closed);
+    this.#calls.clear();
+    for (const pid of [...this.#sinks.keys()]) this.#deliver(pid, { t: 'exit', exitCode: 130 });
+    this.#port.close();
+    this.#frame.remove();
+  }
+
+  /** @internal Low-level call into the runtime. */
+  call<M extends Method>(method: M, ...args: Parameters<Methods[M]>): Promise<ReturnType<Methods[M]>> {
+    if (this.#closed) return Promise.reject(this.#closed);
+    const id = this.#nextId++;
+    return new Promise((resolve, reject) => {
+      this.#calls.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      this.#port.postMessage({ t: 'call', id, method, args } satisfies ToRuntime);
+    });
+  }
+
+  #onMessage(msg: FromRuntime): void {
+    switch (msg.t) {
+      case 'result': {
+        const c = this.#calls.get(msg.id);
+        this.#calls.delete(msg.id);
+        if (msg.ok) c?.resolve(msg.value);
+        else c?.reject(new BoxError(msg.error, msg.code));
+        return;
+      }
+      case 'output':
+        return this.#route(msg.pid, { t: 'output', stream: msg.stream, data: msg.data });
+      case 'exit':
+        return this.#route(msg.pid, { t: 'exit', exitCode: msg.exitCode });
+      case 'permission':
+        void Promise.resolve()
+          .then(() => this.#permissions(msg.request))
+          .catch((): PermissionDecision => 'deny')
+          .then((decision) => this.#port.postMessage({ t: 'permission-answer', id: msg.id, decision } satisfies ToRuntime));
+        return;
+    }
+  }
+
+  #route(pid: number, ev: ProcEvent): void {
+    if (this.#sinks.has(pid)) return this.#deliver(pid, ev);
+    const list = this.#early.get(pid) ?? [];
+    list.push(ev);
+    this.#early.set(pid, list);
+  }
+
+  #deliver(pid: number, ev: ProcEvent): void {
+    const sink = this.#sinks.get(pid);
+    if (!sink) return;
+    // A stream the reader cancelled throws on enqueue/close; that reader just stops getting data.
+    const each = (list: ReadableStreamDefaultController<string>[], fn: (c: ReadableStreamDefaultController<string>) => void) => {
+      for (const c of list) {
+        try {
+          fn(c);
+        } catch {
+          /* cancelled */
+        }
+      }
+    };
+    if (ev.t === 'output') return each([...sink.out, ...sink[ev.stream]], (c) => c.enqueue(ev.data));
+    each([...sink.out, ...sink.stdout, ...sink.stderr], (c) => c.close());
+    this.#sinks.delete(pid);
+    sink.exit(ev.exitCode);
+  }
+}

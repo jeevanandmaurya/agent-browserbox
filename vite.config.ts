@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -21,6 +21,7 @@ const kernelChain = () => ({
     writeFileSync(`${dir}/kernel/packages.json`, JSON.stringify(packageFiles(dir)));
     for (const page of ['agent/index.html', 'os/index.html', 'embed/index.html']) {
       const path = `${dir}/${page}`;
+      if (!existsSync(path)) continue; // the runtime build has only embed/
       writeFileSync(path, readFileSync(path, 'utf8').replace('  </head>', `${links}\n  </head>`));
     }
   },
@@ -63,14 +64,28 @@ function packageFiles(dir: string): Record<string, Array<{ url: string; bytes: n
   return out;
 }
 
+/**
+ * Two builds from one source:
+ *  - the app (default): agent window, desktop, docs, kernel and the SDK runtime → dist/
+ *  - the SDK runtime (BBX_TARGET=runtime): only the UI-less embed page and the
+ *    kernel it drives → packages/runtime/dist/ (or BBX_OUT), for
+ *    @jeevanand/agent-browserbox-runtime and the hosted copy at /runtime/.
+ */
+const runtimeOnly = process.env.BBX_TARGET === 'runtime';
+const input = runtimeOnly
+  ? { bridge: 'kernel/bridge.html', embed: 'embed/index.html' }
+  : { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html', embed: 'embed/index.html' };
+
 export default defineConfig({
   plugins: [kernelChain()],
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {
     target: 'es2022',
+    outDir: runtimeOnly ? (process.env.BBX_OUT ?? 'packages/runtime/dist') : 'dist',
+    emptyOutDir: true,
     // One entry per part: redirect, agent window, desktop GUI, kernel bridge, UI-less runtime.
-    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html', embed: 'embed/index.html' } },
+    rollupOptions: { input },
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 7000,
   },

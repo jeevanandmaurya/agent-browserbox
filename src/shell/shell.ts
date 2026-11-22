@@ -1,3 +1,4 @@
+import type { Prompter } from '@/kernel/perms';
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { AGENT_HOME, HOME } from '@/kernel/paths';
 import { resolve } from '@/kernel/vfs/path';
@@ -67,12 +68,22 @@ export class Shell {
   tty?: Tty;
   /** Pid that child processes (sandboxes, agents) are attributed to. */
   ppid = 0;
+  /**
+   * A confined shell runs code on someone else's behalf (the SDK runtime):
+   * network access from it needs a permission grant. A person's own terminal is
+   * not confined.
+   */
+  readonly confined: boolean;
+  /** Who answers this shell's permission requests. Default: the kernel's (every window). */
+  readonly prompter?: Prompter;
 
   constructor(
     readonly os: Kernel,
-    opts: { cwd?: string; tty?: Tty; ppid?: number } = {},
+    opts: { cwd?: string; tty?: Tty; ppid?: number; confined?: boolean; prompter?: Prompter } = {},
   ) {
     this.cwd = opts.cwd ?? HOME;
+    this.confined = opts.confined ?? false;
+    this.prompter = opts.prompter;
     this.tty = opts.tty;
     this.ppid = opts.ppid ?? 0;
     // Variables from Settings → Environment are present in every shell.
@@ -207,4 +218,11 @@ declare module '@/kernel/package-types' {
   interface PackageModule {
     commands?: Command[];
   }
+}
+
+/** In a confined shell, asks for network access first; throws when it is refused. */
+export async function requireNetwork(ctx: CommandContext, who: string, detail: string): Promise<void> {
+  if (!ctx.shell.confined) return;
+  const ok = await ctx.os.perms.request({ cap: 'net', actor: who, title: 'Network access', detail }, ctx.shell.prompter);
+  if (!ok) throw new Error(`network access to ${detail} was not allowed`);
 }

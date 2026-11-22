@@ -1,6 +1,6 @@
 import { gpuCompute } from '@/sandbox/gpu';
 import { runJs, runWasm, type RunResult } from '@/sandbox/sandbox';
-import { flags, type Command, type CommandContext } from '../shell';
+import { flags, requireNetwork, type Command, type CommandContext } from '../shell';
 
 /** A shell's environment as a program sees it (without `?`, the last exit code). */
 export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
@@ -27,6 +27,7 @@ export const execCommands: Command[] = [
     async run(ctx) {
       const { opts, rest } = flags(ctx.args);
       const { code, args } = await source(ctx, rest, opts);
+      if (opts.has('net')) await requireNetwork(ctx, 'js', 'network access for a JavaScript program');
       return finish(ctx, await runJs(ctx.os, code, { cwd: ctx.shell.cwd, env: userEnv(ctx.shell.env), args, network: opts.has('net'), signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, timeoutMs: 120000 }));
     },
   },
@@ -80,6 +81,7 @@ export const execCommands: Command[] = [
       }
       if (!url) throw new Error('usage: curl [options] url');
       if (!/^[a-z]+:\/\//i.test(url)) url = 'https://' + url;
+      await requireNetwork(ctx, 'curl', url);
       let res: Response;
       try {
         res = await fetch(url, init);

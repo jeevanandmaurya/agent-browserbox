@@ -2,7 +2,7 @@ import type { Bus } from './bus';
 import type { DevApi } from './dev/types';
 import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
-import type { Permissions } from './perms';
+import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
 import type { KernelEvents, Notice } from './types';
 import type { Stat } from './vfs/types';
@@ -112,5 +112,9 @@ export interface ShellHandle {
 }
 
 export interface ShellsApi {
-  open(opts?: { cwd?: string; ppid?: number }): Promise<ShellHandle>;
+  /**
+   * `confined`: the shell runs code for someone else (the SDK runtime), so network access needs a permission grant.
+   * `prompter`: who answers its permission requests (kernel side only; it cannot cross RPC).
+   */
+  open(opts?: { cwd?: string; ppid?: number; confined?: boolean; prompter?: Prompter }): Promise<ShellHandle>;
 }

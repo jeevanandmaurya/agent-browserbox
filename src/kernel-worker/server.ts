@@ -246,8 +246,10 @@ export class KernelServer {
       },
 
       // Shells
-      'shell.open': async (opts?: { cwd?: string; ppid?: number }) => {
-        const h = await os.shells.open(opts);
+      'shell.open': async (opts?: { cwd?: string; ppid?: number; confined?: boolean }) => {
+        // A confined shell's permission questions go to the window that opened it, not to every window.
+        const prompter = opts?.confined ? (req: PermRequest, signal?: AbortSignal) => this.#ask<PermDecision>({ kind: 'perm', payload: req }, signal, client).catch(() => 'deny' as const) : undefined;
+        const h = await os.shells.open({ ...opts, prompter });
         client.shells.set(h.id, h);
         h.onReadLine((prompt, secret) => this.#ask<string | null>({ kind: 'tty', shellId: h.id, payload: { prompt, secret } }, undefined, client));
         h.onClear(() => peer.emit('shell:clear', h.id));

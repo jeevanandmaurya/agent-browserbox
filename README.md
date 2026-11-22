@@ -9,11 +9,34 @@ browser**, with no backend. It is split into independent parts:
 | **Agent** | `/agent/` | The complete app: chat, built-in workbench (preview, files, editor, terminal, processes…) and settings, in one browser window. This is the default entry point. |
 | **Desktop** | `/os/` | An optional GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar): a windowed desktop on wide screens, a phone home screen on phones. |
 | **Docs** | `/docs/` | The user guide, a page of its own (no kernel; deep links like `/docs/#shipping`). The same docs open inside the app from ⋮ → **Help & docs**, the Help workbench tab, `/docs [topic]`, or the Help app on the desktop. Sources: `src/apps/help/docs/*.md`. |
+| **Runtime** | `/embed/` (and `/runtime/` on the hosted site) | UI-less: the page the SDK loads in a hidden frame to drive a kernel from another site. |
 
 The kernel keeps running as long as any BrowserBox window is open. Close the
 agent window and its session carries on; open it again and it reattaches.
 Close the desktop and nothing is lost — it is only a view. Any other frontend
 can replace it by speaking the same protocol (`src/kernel/api.ts`).
+
+## Use it as a library (SDK)
+
+BrowserBox is also a sandbox you can embed: a filesystem, a shell, and
+JavaScript, Python and WebAssembly runtimes for agents or any untrusted code,
+running on the user's device.
+
+| Package | What it is |
+|---|---|
+| [`@jeevanand/agent-browserbox`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
+| [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
+| `@jeevanand/browserbox` | This app, with the CLI below. |
+
+```ts
+import { BrowserBox } from '@jeevanand/agent-browserbox';
+const box = await BrowserBox.boot();
+const { stdout } = await box.exec('echo hello from the box');
+```
+
+The SDK and the runtime are built from this repository (`packages/sdk`,
+`embed/`, and the kernel in `src/`): `npm run build:sdk`, `npm run build:runtime`,
+and `npm run e2e:sdk` tests them together across two origins in headless Chromium.
 
 ## Run it
 
