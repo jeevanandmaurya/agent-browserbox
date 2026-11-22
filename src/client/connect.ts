@@ -1,4 +1,9 @@
-import { KERNEL_URL, kernelOrigin } from '@/config/origins';
+import { KERNEL_URL } from '@/config/origins';
+
+export interface ConnectOptions {
+  /** Where the kernel is served. Defaults to the build-time KERNEL_URL. */
+  kernelUrl?: string;
+}
 
 export interface KernelLink {
   port: MessagePort;
@@ -14,9 +19,12 @@ export interface KernelLink {
  * Going through a frame is what lets the window live on a different origin
  * from the kernel: it never touches the kernel's storage, only this port.
  */
-export function connectKernel(): Promise<KernelLink> {
+export function connectKernel(opts: ConnectOptions = {}): Promise<KernelLink> {
+  const kernelUrl = opts.kernelUrl ?? KERNEL_URL;
+  const base = kernelUrl.endsWith('/') ? kernelUrl : `${kernelUrl}/`;
+  const origin = new URL(base).origin;
   return new Promise((resolve, reject) => {
-    const src = new URL('bridge.html', KERNEL_URL).href;
+    const src = new URL('bridge.html', base).href;
     // The page's HTML normally pre-starts the bridge so the kernel boots in parallel with our script.
     const early = document.getElementById('bbx-bridge') as HTMLIFrameElement | null;
     const frame = early?.src === src ? early : document.createElement('iframe');
@@ -26,8 +34,7 @@ export function connectKernel(): Promise<KernelLink> {
       frame.setAttribute('aria-hidden', 'true');
       frame.hidden = true;
     }
-    const origin = kernelOrigin();
-    const timer = setTimeout(() => reject(new Error(`The kernel at ${KERNEL_URL} did not respond.`)), 20000);
+    const timer = setTimeout(() => reject(new Error(`The kernel at ${base} did not respond.`)), 20000);
     addEventListener('message', function onMessage(e: MessageEvent) {
       if (e.source !== frame.contentWindow || e.origin !== origin) return;
       if (e.data?.type === 'bbx:ready') frame.contentWindow!.postMessage({ type: 'bbx:connect' }, origin);

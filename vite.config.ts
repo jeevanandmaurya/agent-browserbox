@@ -19,7 +19,7 @@ const kernelChain = () => ({
     for (const f of readdirSync(`${dir}/assets`)) if (/^main-[\w-]+\.js$/.test(f)) files.add(`assets/${f}`); // the kernel worker
     const links = [...files].map((f) => `    <link rel="modulepreload" href="${base}${f}" />`).join('\n');
     writeFileSync(`${dir}/kernel/packages.json`, JSON.stringify(packageFiles(dir)));
-    for (const page of ['agent/index.html', 'os/index.html']) {
+    for (const page of ['agent/index.html', 'os/index.html', 'embed/index.html']) {
       const path = `${dir}/${page}`;
       writeFileSync(path, readFileSync(path, 'utf8').replace('  </head>', `${links}\n  </head>`));
     }
@@ -69,8 +69,8 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {
     target: 'es2022',
-    // One entry per part: redirect, agent window, desktop GUI, kernel bridge.
-    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html' } },
+    // One entry per part: redirect, agent window, desktop GUI, kernel bridge, UI-less runtime.
+    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html', embed: 'embed/index.html' } },
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 7000,
   },
