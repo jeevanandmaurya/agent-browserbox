@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/browser-sandbox-agent-os-lkugzn]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
