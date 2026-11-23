@@ -3,6 +3,29 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
+## 0.3.1
+
+Fixes from a review of the agent:
+
+- Edits are no longer run at the same time: two edit_file calls on one file
+  in a turn could each start from the original, and the second undid the
+  first. Only tools that change nothing run in parallel now.
+- The system prompt follows changes to the model kind, web tools and extra
+  instructions instead of keeping the first one for the whole session.
+  /compact works on a resumed session.
+- Plan mode stays read-only: http_fetch may only GET, without save_to.
+- http_fetch's save_to writes only inside the workspace or /tmp (network
+  permission was enough to overwrite any file), and is covered by undo.
+- Deleting the workspace itself, /tmp, or the agent's saved chats, skills,
+  agents, commands and memory asks first. Undo says when a deleted folder was
+  too large to keep, instead of restoring part of it quietly.
+- run_js asks for permission to run code (network is asked for separately),
+  and its description states the real time limit (2 minutes).
+- OpenAI-compatible APIs: token counts are requested and read (they were
+  always 0, so the context meter and auto-compaction ran on estimates); a
+  reply cut off by the output limit no longer runs its half-written tool
+  call; tool calls sent without an index are no longer dropped.
+
 ## 0.3.0
 
 Models come from three general sources instead of a special case for each

@@ -4,7 +4,19 @@ import { clip, obj, tool, type ToolContext, type ToolDef } from './types.js';
 import { imageRef } from '../images.js';
 
 /** Writes inside the agent's workspace and /tmp are free; anywhere else needs a grant. */
-const writeCap = (paths: string[], tc: ToolContext) => (paths.every((p) => isInside(AGENT_HOME, tc.path(p)) || isInside('/tmp', tc.path(p))) ? null : 'fs.write');
+export const writeCap = (paths: string[], tc: ToolContext) => (paths.every((p) => isInside(AGENT_HOME, tc.path(p)) || isInside('/tmp', tc.path(p))) ? null : 'fs.write');
+
+/**
+ * Deleting is free only for things inside the workspace: never the workspace
+ * itself, /tmp itself, or the agent's own records (saved chats, skills,
+ * agents, commands, memory), which hold more than one task's work.
+ */
+const KEPT = ['.sessions', 'skills', 'agents', 'commands', 'MEMORY.md', 'AGENTS.md'].map((n) => `${AGENT_HOME}/${n}`);
+const deleteCap = (path: string, tc: ToolContext) => {
+  const p = tc.path(path);
+  if (p === AGENT_HOME || p === '/tmp' || KEPT.some((k) => isInside(p, k))) return 'fs.write';
+  return writeCap([path], tc);
+};
 
 function looksBinary(data: Uint8Array): boolean {
   const n = Math.min(data.length, 4096);
@@ -137,7 +149,7 @@ export const fsTools: ToolDef[] = [
     name: 'delete_path',
     description: 'Delete a file or a directory (recursively).',
     input_schema: obj({ path: { type: 'string' } }, ['path']),
-    cap: (i, tc) => writeCap([i.path], tc),
+    cap: (i, tc) => deleteCap(i.path, tc),
     describe: (i) => `Delete ${i.path}`,
     async run(i, tc) {
       await tc.os.fs.rm(tc.path(i.path), { recursive: true });

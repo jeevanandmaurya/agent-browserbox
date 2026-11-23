@@ -57,9 +57,15 @@ export class Checkpoints {
     for (const p of paths) {
       const st = await this.os.fs.stat(p).catch(() => null);
       if (st?.kind === 'dir') {
+        let n = 0;
         for await (const s of this.os.fs.walk(p)) {
-          if (s.kind === 'file') files.push(s.path);
-          if (files.length > MAX_DIR_FILES) break;
+          if (s.kind !== 'file') continue;
+          // Past the limit the folder cannot be fully restored: say so instead of restoring part of it quietly.
+          if (++n > MAX_DIR_FILES) {
+            if (!cp.files.some((f) => f.path === p)) cp.files.push({ path: p, before: null, skipped: true });
+            break;
+          }
+          files.push(s.path);
         }
       } else files.push(p);
     }

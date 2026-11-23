@@ -13,7 +13,7 @@ interface WireMsg {
 interface Chunk {
   model?: string;
   choices?: Array<{
-    delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }> };
+    delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> };
     finish_reason?: string | null;
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
@@ -73,25 +73,38 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
   const where = target.kind === 'local' ? 'the local server' : 'the API';
   // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
   const relay = target.kind === 'api' ? cfg.corsRelay : '';
+  let usageOption = true;
   return {
     id: target.kind === 'api' ? 'openai' : 'local',
     contextBudget: Math.floor(cfg.contextWindow * 0.75),
     contextWindow: cfg.contextWindow,
     async turn(req: TurnRequest): Promise<TurnResult> {
       if (!target.model) throw new ProviderError(`No model selected for ${where}. Pick one in Settings → Model.`);
-      let res: Response;
-      try {
-        res = await fetch(relayed(`${base}/chat/completions`, relay), {
+      const request = (withUsage: boolean) =>
+        fetch(relayed(`${base}/chat/completions`, relay), {
           method: 'POST',
           signal: req.signal,
           headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
           body: JSON.stringify({
             model: target.model,
             stream: true,
+            // Without this, OpenAI and most compatible servers send no token counts in a stream.
+            ...(withUsage && usageOption ? { stream_options: { include_usage: true } } : {}),
             messages: toWire(req.system, req.messages),
             ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) } : {}),
           }),
         });
+      let res: Response;
+      try {
+        res = await request(true);
+        // A server that rejects the option: ask again without it, and stop sending it.
+        if (res.status === 400 && usageOption) {
+          const detail = await res.clone().text().catch(() => '');
+          if (/stream_options|include_usage/i.test(detail)) {
+            usageOption = false;
+            res = await request(false);
+          }
+        }
       } catch (err) {
         if (req.signal.aborted) throw err;
         throw new ProviderError(unreachable(base, target.kind, relay), true);
@@ -130,7 +143,9 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
           req.onThinking(r);
         }
         for (const tc of d?.tool_calls ?? []) {
-          const slot = (calls[tc.index] ??= { id: '', name: '', args: '' });
+          // Some servers leave out the index: match by id, or start a new call when an id first appears.
+          const at = typeof tc.index === 'number' ? tc.index : tc.id ? (calls.findIndex((c) => c?.id === tc.id) + 1 || calls.length + 1) - 1 : Math.max(0, calls.length - 1);
+          const slot = (calls[at] ??= { id: '', name: '', args: '' });
           if (tc.id) slot.id = tc.id;
           if (tc.function?.name) slot.name += tc.function.name;
           if (tc.function?.arguments) slot.args += tc.function.arguments;
@@ -154,7 +169,8 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
         content.push({ type: 'tool_use', id: c.id || `call_${Date.now()}_${i}`, name: c.name, input, invalid });
       });
       const hasCalls = content.some((b) => b.type === 'tool_use');
-      return { content, stop: hasCalls ? 'tool_use' : finish === 'length' ? 'max_tokens' : 'end', usage, model };
+      // Cut off by the output limit: a tool call in it may be half-written, so it must not run.
+      return { content, stop: finish === 'length' ? 'max_tokens' : hasCalls ? 'tool_use' : 'end', usage, model };
     },
   };
 }

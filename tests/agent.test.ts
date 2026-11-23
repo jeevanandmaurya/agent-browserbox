@@ -307,4 +307,49 @@ describe('agent package', () => {
     // Only the ask rule and the partly-allowed command line prompted.
     expect(asked).toEqual(['curl https://x.test', 'git log; npm test']);
   });
+
+  it('runs edits one after another, so two edits of one file both land', async () => {
+    const f = `${AGENT_HOME}/a.txt`;
+    const { box, model, agent } = await setup(
+      [
+        () => ({ content: [use('1', 'edit_file', { path: 'a.txt', old_string: 'one', new_string: 'ONE' }), use('2', 'edit_file', { path: 'a.txt', old_string: 'two', new_string: 'TWO' })] }),
+        () => ({ content: [say('ok')] }),
+      ],
+      { files: { [f]: 'one two' } },
+    );
+    await agent.send('edit');
+    expect(box.files.get(f)).toBe('ONE TWO');
+    expect(resultsOf(model.requests[1]!).every((r) => !r.is_error)).toBe(true);
+  });
+
+  it('asks before deleting the workspace or its saved chats, and keeps downloads in it', async () => {
+    const asked: string[] = [];
+    const { model, agent, box } = await setup(
+      [
+        () => ({ content: [use('d', 'delete_path', { path: '.' }), use('s', 'delete_path', { path: '.sessions' }), use('f', 'delete_path', { path: 'scratch.txt' }), use('h', 'http_fetch', { url: 'https://x.test/a', save_to: '/home/user/.profile' })] }),
+        () => ({ content: [say('ok')] }),
+      ],
+      { files: { [`${AGENT_HOME}/scratch.txt`]: 'x', [`${AGENT_HOME}/.sessions/s.json`]: '{}' }, settings: { 'perms.mode': 'ask', 'perms.grants': ['net'] }, prompter: async (r) => (asked.push(r.detail), 'deny') },
+    );
+    await agent.send('clean up');
+    expect(asked).toEqual(['Delete .', 'Delete .sessions']);
+    expect(box.files.has(`${AGENT_HOME}/scratch.txt`)).toBe(false);
+    const h = resultsOf(model.requests[1]!).find((r) => r.tool_use_id === 'h')!;
+    expect(h.is_error && h.content).toMatch(/save_to must be inside/);
+  });
+
+  it('keeps plan mode read-only, http_fetch included', async () => {
+    const { model, agent } = await setup([() => ({ content: [use('p', 'http_fetch', { url: 'https://x.test/api', method: 'POST', body: '{}' })] }), () => ({ content: [say('plan')] })]);
+    await agent.send('look', { plan: true });
+    expect(resultsOf(model.requests[1]!)[0]!.content).toMatch(/Plan mode only looks/);
+  });
+
+  it('rebuilds the system prompt when the extra instructions change', async () => {
+    const { model, agent, os } = await setup([() => ({ content: [say('a')] }), () => ({ content: [say('b')] })]);
+    await agent.send('one');
+    os.settings.set('agent.config', { ...(os.settings.get('agent.config', {}) as object), instructions: 'Answer in French.' });
+    await agent.send('two');
+    expect(model.requests[0]!.system).not.toContain('Answer in French.');
+    expect(model.requests[1]!.system).toContain('Answer in French.');
+  });
 });

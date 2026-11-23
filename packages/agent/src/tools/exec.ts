@@ -69,12 +69,13 @@ export const execTools: ToolDef[] = [
       return text;
     },
   }),
-  tool<{ code: string; network?: boolean; timeout_ms?: number }>({
+  tool<{ code: string; network?: boolean }>({
     name: 'run_js',
     description:
-      'Run JavaScript in an isolated sandbox (a Worker in an opaque-origin frame; no DOM). The code is the body of an async function: use await and return a value. Globals: `fs` (async: readText, readFile, writeFile, appendFile, readdir, exists, mkdir, rm, glob — paths relative to the working directory), `print(...)`, `console`. fetch only works when network is true, and then only for CORS-enabled URLs. Good for computation, data processing and generating files.',
-    input_schema: obj({ code: { type: 'string' }, network: { type: 'boolean', description: 'allow outbound network (asks the user)' }, timeout_ms: { type: 'integer', description: 'default 30000, max 300000' } }, ['code']),
-    cap: (i) => (i.network ? 'net' : 'exec'),
+      'Run JavaScript in an isolated sandbox (a Worker in an opaque-origin frame; no DOM). The code is the body of an async function: use await and return a value. Globals: `fs` (async: readText, readFile, writeFile, appendFile, readdir, exists, mkdir, rm, glob — paths relative to the working directory), `print(...)`, `console`. fetch only works when network is true, and then only for CORS-enabled URLs. A run is stopped after 2 minutes. Good for computation, data processing and generating files.',
+    input_schema: obj({ code: { type: 'string' }, network: { type: 'boolean', description: 'allow outbound network (asks the user separately)' } }, ['code']),
+    // Running code needs the code permission; network access is asked for on top, by the box.
+    cap: () => 'exec',
     describe: (i) => `${i.network ? '[network] ' : ''}${i.code}`,
     async run(i, tc) {
       return report(await runSource(tc, `js${i.network ? ' --net' : ''}`, i.code, 'js'));

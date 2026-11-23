@@ -7,7 +7,7 @@ import type { Proc } from './host/os.js';
 import { resolve } from './host/path.js';
 import { listApps } from './host/os.js';
 import { Shell } from './host/os.js';
-import { describeModel, loadConfig } from './config.js';
+import { describeModel, hasServerWebTools, loadConfig } from './config.js';
 import { buildSystemPrompt } from './prompt.js';
 import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
 import { decide, describeRule, loadRules } from './rules.js';
@@ -53,7 +53,15 @@ export interface AgentHost {
 }
 
 /** Tools that only look: what plan mode allows. */
-const PLAN_TOOLS = new Set(['read_file', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
+const PLAN_TOOLS = new Set(['read_file', 'view_image', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
+/**
+ * Tools that change nothing, so several can run at once. Everything else runs
+ * in order, even without a permission prompt: two edits of one file at once
+ * would each start from the original, and the second would undo the first.
+ */
+const READ_ONLY = new Set(['read_file', 'view_image', 'list_dir', 'glob', 'grep', 'system_info', 'list_processes', 'use_skill', 'preview_logs']);
+/** An http_fetch that only reads: what plan mode allows of it. */
+const readsOnly = (call: { name: string; input: Record<string, unknown> }) => call.name !== 'http_fetch' || ((call.input.method === undefined || String(call.input.method).toUpperCase() === 'GET') && call.input.save_to === undefined);
 const PLAN_NOTE =
   'Plan mode: investigate with read-only tools only, then reply with a short, numbered plan of what you would change and how you would check it (files, commands, tests). Do not make any changes yet: the user will review the plan and tell you to go ahead.';
 export { MODE_TAG } from './mode.js';
@@ -63,6 +71,7 @@ function changedPaths(call: { name: string; input: Record<string, unknown> }, pa
   const i = call.input;
   if (call.name === 'write_file' || call.name === 'edit_file' || call.name === 'delete_path') return typeof i.path === 'string' ? [path(i.path)] : [];
   if (call.name === 'move_path') return [i.copy ? null : i.from, i.to].filter((p): p is string => typeof p === 'string').map(path);
+  if ((call.name === 'http_fetch' && typeof i.save_to === 'string') || (call.name === 'gpu_compute' && typeof i.output_file === 'string')) return [path((i.save_to ?? i.output_file) as string)];
   return [];
 }
 
@@ -131,6 +140,8 @@ export class Agent {
   /** Image data read during a run, by path; dropped when the run ends. */
   #images = new Map<string, string>();
   #system: string | null = null;
+  /** What the system prompt was built for; it is rebuilt when that changes (model kind, instructions). */
+  #systemKey = '';
   #depth: number;
   #persona: Extension | null;
   #tools: ToolDef[] = [];
@@ -206,7 +217,7 @@ export class Agent {
           .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));
       let tools = (this.#tools = await toolset());
       this.#window = provider.contextWindow;
-      this.#system ??= await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
+      await this.#ensureSystem(cfg, lite);
       emit({ type: 'start', model: describeModel(cfg) });
       // Compact before taking on new work, so the new request itself is never summarised away.
       // Tiny in-browser models summarise badly; for them the oldest turns simply drop out of view (see the provider).
@@ -255,7 +266,7 @@ export class Agent {
         const results =
           result.stop === 'max_tokens'
             ? calls.map((c): ToolResult => ({ type: 'tool_result', tool_use_id: c.id, is_error: true, content: 'Your output was cut off before this tool call was complete, so it was not run. Retry with a smaller input (for example, write large files in several parts).' }))
-            : await this.#runTools(calls, tools, run.signal, emit);
+            : await this.#runTools(calls, tools, run.signal, emit, opts.plan);
         this.#push({ role: 'user', content: results });
         if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, true);
       }
@@ -345,6 +356,18 @@ export class Agent {
     return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact && !rolling ? AUTO_COMPACT_AT : 0, rolling };
   }
 
+  /**
+   * The system prompt, built once and kept while nothing it depends on changes,
+   * so the prompt cache keeps working. A different kind of model (an in-browser
+   * one gets a shorter prompt), web tools or extra instructions rebuild it.
+   */
+  async #ensureSystem(cfg: ReturnType<typeof loadConfig>, lite: boolean): Promise<void> {
+    const key = JSON.stringify([lite, hasServerWebTools(cfg), cfg.instructions]);
+    if (this.#system !== null && key === this.#systemKey) return;
+    this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
+    this.#systemKey = key;
+  }
+
   /** Summarises the conversation on request. Resolves false when there was nothing to do or it failed. */
   async compact(): Promise<boolean> {
     if (this.busy) throw new Error('the agent is busy');
@@ -355,6 +378,8 @@ export class Agent {
       const cfg = loadConfig(this.os);
       const provider = await createProvider(this.os, cfg);
       this.#window = provider.contextWindow;
+      // A resumed session has not built its system prompt yet.
+      await this.#ensureSystem(cfg, provider.id === 'webllm');
       return await this.#compact(provider, run.signal, emit, false, false);
     } catch (err) {
       if (!run.signal.aborted) emit({ type: 'error', message: err instanceof ProviderError ? err.message : `Could not compact: ${(err as Error)?.message ?? err}` });
@@ -428,7 +453,7 @@ export class Agent {
     return { ...result, stats };
   }
 
-  async #runTools(calls: ToolUse[], tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void): Promise<ToolResult[]> {
+  async #runTools(calls: ToolUse[], tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void, plan = false): Promise<ToolResult[]> {
     const tc = (id: string): ToolContext => ({
       os: this.os,
       shell: this.shell,
@@ -463,6 +488,7 @@ export class Agent {
       else {
         const problems = validate(def.input_schema, call.input);
         if (problems.length) out = fail(`Invalid input for ${call.name}: ${problems.join('; ')}`);
+        else if (plan && !readsOnly(call)) out = fail('Plan mode only looks: http_fetch may only GET, without save_to. Put the change in your plan instead.');
         else {
           const ctx = tc(call.id);
           summary = def.describe(call.input);
@@ -509,15 +535,8 @@ export class Agent {
       return out;
     };
 
-    // Harmless calls (reads, searches) run concurrently; anything gated runs in order.
-    const parallel = calls.every((c) => {
-      const def = tools.find((t) => t.name === c.name);
-      try {
-        return def !== undefined && c.invalid === undefined && def.cap(c.input, tc(c.id)) === null && !['ask_user', 'spawn_agent', 'todo_write'].includes(c.name);
-      } catch {
-        return false;
-      }
-    });
+    // Calls that only read run concurrently; anything that changes something runs in order.
+    const parallel = calls.length > 1 && calls.every((c) => READ_ONLY.has(c.name) && c.invalid === undefined && tools.some((t) => t.name === c.name));
     if (parallel) return Promise.all(calls.map(one));
     const results: ToolResult[] = [];
     for (const c of calls) results.push(await one(c));
