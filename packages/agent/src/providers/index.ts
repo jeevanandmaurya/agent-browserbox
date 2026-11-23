@@ -7,7 +7,7 @@ export async function createProvider(os: Kernel, cfg: AgentConfig): Promise<Prov
   const custom = os.customProvider();
   if (custom) return custom;
   if (cfg.provider === 'api') {
-    const key = await apiKeyFor(os.secrets, cfg.apiBaseUrl);
+    const key = await apiKeyFor(os.secrets, cfg.apiBaseUrl, cfg.legacyKeyHost);
     if (!key) throw new ProviderError('No API key yet. Add one in Settings → Model, or choose a local server or an in-browser model there.');
     if (protocolOf(cfg.apiBaseUrl) === 'anthropic') return (await import('./anthropic.js')).createAnthropicProvider(cfg, key, await os.mcp.relayed());
     return (await import('./openai.js')).createOpenAiProvider(cfg, { kind: 'api', baseUrl: cfg.apiBaseUrl, model: cfg.apiModel }, key);

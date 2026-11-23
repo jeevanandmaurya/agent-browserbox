@@ -69,14 +69,17 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
           class: 'btn small',
           type: 'button',
           onclick: () => {
+            // Another service: the old model id means nothing there, so start from its default (or none).
+            const other = p !== lastPreset;
             baseUrl.value = p.baseUrl;
             saveBase();
-            // A preset with a known default model fills it in when the model is empty or belongs to another service.
-            if ('model' in p && (!model.value.trim() || (lastPreset && lastPreset !== p))) {
-              model.value = p.model;
+            if (other || !model.value.trim()) {
+              model.value = 'model' in p ? p.model : '';
               saveModel();
+              found.hidden = true;
+              datalist.replaceChildren();
+              probeStatus.textContent = '';
             }
-            lastPreset = p;
           },
         },
         p.label,
@@ -97,6 +100,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     };
     const saveBase = () => {
       const v = baseUrl.value.trim();
+      lastPreset = presets.find((p) => p.baseUrl === v.replace(/\/+$/, ''));
       syncHint();
       if (v && v !== get().url) {
         put({ url: v });

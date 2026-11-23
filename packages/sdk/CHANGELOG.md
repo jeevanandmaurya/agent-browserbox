@@ -5,6 +5,11 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.2.1
+
+- The welcome file a new BrowserBox site writes lists every kind of model,
+  not just Claude.
+
 ## 0.2.0
 
 New, all backward compatible:

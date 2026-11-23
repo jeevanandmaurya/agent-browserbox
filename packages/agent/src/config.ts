@@ -32,6 +32,8 @@ export interface AgentConfig {
    * e.g. ollama.com. Requests go to `<relay>/<full API URL>`; see relay/worker.js.
    */
   corsRelay: string;
+  /** The host an API key saved before 0.3 (one key for every OpenAI-compatible API) belongs to. */
+  legacyKeyHost?: string;
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -92,16 +94,40 @@ export function protocolOf(baseUrl: string): Protocol {
 interface SecretStore {
   get(name: string): Promise<string | null>;
   set(name: string, value: string): Promise<void>;
+  delete?(name: string): Promise<void>;
 }
 
-/** The API key for an API, moving a key saved under an older name across. */
-export async function apiKeyFor(secrets: SecretStore, baseUrl: string): Promise<string | null> {
+/** The old key name that belongs to this API, if any: never a key saved for another host. */
+function legacyName(baseUrl: string, legacyHost = 'api.openai.com'): string | null {
+  const host = hostOf(baseUrl);
+  if (host === 'api.anthropic.com') return LEGACY_KEY.anthropic;
+  return host === legacyHost ? LEGACY_KEY.openai : null;
+}
+
+/** The API key for an API, moving a key saved under its older name across. */
+export async function apiKeyFor(secrets: SecretStore, baseUrl: string, legacyHost?: string): Promise<string | null> {
   const name = SECRET.api(baseUrl);
   const key = await secrets.get(name);
   if (key) return key;
-  const legacy = await secrets.get(protocolOf(baseUrl) === 'anthropic' ? LEGACY_KEY.anthropic : LEGACY_KEY.openai);
+  const old = legacyName(baseUrl, legacyHost);
+  const legacy = old ? await secrets.get(old) : null;
   if (legacy) await secrets.set(name, legacy);
   return legacy;
+}
+
+/** Moves keys saved before 0.3 to their per-host names and deletes the old names. */
+export async function migrateKeys(os: WithSettings & { secrets: SecretStore }): Promise<void> {
+  const cfg = loadConfig(os);
+  const moves: Array<[string, string]> = [
+    [LEGACY_KEY.anthropic, 'https://api.anthropic.com/v1'],
+    [LEGACY_KEY.openai, `https://${cfg.legacyKeyHost ?? 'api.openai.com'}/v1`],
+  ];
+  for (const [old, url] of moves) {
+    const value = await os.secrets.get(old);
+    if (!value) continue;
+    if (!(await os.secrets.get(SECRET.api(url)))) await os.secrets.set(SECRET.api(url), value);
+    await os.secrets.delete?.(old);
+  }
 }
 
 /** Whether the model can use the API's own server-side web search and fetch. */
@@ -145,6 +171,8 @@ export function migrate(stored: Record<string, unknown>): AgentConfig {
     else Object.assign(cfg, { provider: 'api', apiBaseUrl: url, apiModel: str('openaiModel') ?? '' });
   }
   if (!['api', 'local', 'webgpu'].includes(cfg.provider)) cfg.provider = DEFAULT_CONFIG.provider;
+  const keyHost = str('legacyKeyHost') ?? (str('openaiBaseUrl') ? hostOf(str('openaiBaseUrl')!) : undefined);
+  if (keyHost) cfg.legacyKeyHost = keyHost;
   return cfg;
 }
 

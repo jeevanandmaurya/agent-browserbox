@@ -17,12 +17,12 @@ const FILE_BLOCK = /\n*<file path="([^"]+)"[^>]*?(?:\/>|>[\s\S]*?<\/file>)/g;
 const UPLOADS = /\n*Attached files:\n((?:- [^\n]+\n?)+)\s*$/;
 
 /** What a user message looks like in the chat: without hidden instructions and attached file contents. */
-export function forDisplay(text: string): { text: string; files: string[]; plan: boolean } {
+export function forDisplay(text: string): { text: string; files: string[]; uploads: string[]; plan: boolean } {
   const plan = MODE_TAG.test(text);
   text = text.replace(MODE_TAG, '');
   const uploads = text.match(UPLOADS)?.[1]?.split('\n').flatMap((l) => (l.startsWith('- ') ? [l.slice(2).trim()] : [])) ?? [];
   const files = [...[...text.matchAll(FILE_BLOCK)].map((m) => m[1]!), ...uploads];
-  return { text: text.replace(UPLOADS, '').replace(FILE_BLOCK, '').trim(), files, plan };
+  return { text: text.replace(UPLOADS, '').replace(FILE_BLOCK, '').trim(), files, uploads, plan };
 }
 
 export { renderTodos } from './cards';
@@ -169,7 +169,9 @@ export class Transcript {
   }
 
   #userMsg(raw: string): HTMLElement {
-    const { text, files, plan } = forDisplay(raw);
+    const { text, files, uploads, plan } = forDisplay(raw);
+    // Editing keeps the uploads: they go back into the message as the composer wrote them.
+    const editable = uploads.length ? `${text}\n\nAttached files:\n${uploads.map((u) => `- ${u}`).join('\n')}` : text;
     const el = h(
       'div',
       { class: 'ag-msg user' },
@@ -178,7 +180,7 @@ export class Transcript {
       files.length ? h('div', { class: 'ag-attach' }, files.map((f) => (isImagePath(f) ? this.#thumb(f) : h('span', { class: 'ag-file-chip', title: f }, icon('file', 13), f.split('/').pop())))) : null,
     );
     const copyBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Copy', 'aria-label': 'Copy message', onclick: () => void navigator.clipboard?.writeText(text) }, icon('copy', 15));
-    const editBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Edit and resend from here', 'aria-label': 'Edit message', onclick: () => this.onEdit?.([...this.el.querySelectorAll('.ag-msg.user')].indexOf(el), text) }, icon('edit', 15));
+    const editBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Edit and resend from here', 'aria-label': 'Edit message', onclick: () => this.onEdit?.([...this.el.querySelectorAll('.ag-msg.user')].indexOf(el), editable) }, icon('edit', 15));
     el.append(h('div', { class: 'ag-user-actions' }, editBtn, copyBtn));
     return el;
   }

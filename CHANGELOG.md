@@ -5,7 +5,7 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
-## Unreleased
+## 0.3.0
 
 - **Settings → Model** has three choices: **API** (Anthropic, OpenAI,
   OpenRouter, Groq and others, each with its own key), **Local server** and

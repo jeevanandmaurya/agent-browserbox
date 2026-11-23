@@ -31,8 +31,9 @@ browser tab. Nothing leaves your machine except the model requests you configure
 - **Terminal** — a shell. Try \`help\`, \`ls /proc\`, \`agent "summarise this folder"\`.
 - **Files / Editor** — browse and edit the persistent filesystem (OPFS).
 - **Task Manager** — watch and kill processes, including running agents.
-- **Settings** — pick a model: Claude, a local server (Ollama, LM Studio,
-  llama.cpp) or a model running in this tab on WebGPU.
+- **Settings** — pick a model: a hosted API (Anthropic, OpenAI, OpenRouter…),
+  a local server (Ollama, LM Studio, llama.cpp) or a model running in this tab
+  on WebGPU.
 
 The agent works in \`/home/agent\`. Files there survive reloads.
 `;

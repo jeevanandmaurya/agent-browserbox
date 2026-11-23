@@ -2,7 +2,7 @@ import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from './api.js'
 import type { KernelCore } from './host/os.js';
 import type { Prompter } from './host/perms.js';
 import { Agent, type AgentEvent } from './agent.js';
-import { apiKeyFor, loadConfig, probeModels, SECRET } from './config.js';
+import { apiKeyFor, loadConfig, migrateKeys, probeModels, SECRET } from './config.js';
 import { loadSession, saveSession, titleFrom } from './session.js';
 
 interface Session {
@@ -26,6 +26,8 @@ export class AgentManager implements AgentsApi {
   #sessions = new Map<string, Session>();
 
   constructor(private os: KernelCore) {
+    // Keys saved before 0.3 move to their per-service names, so Settings shows them where they belong.
+    void migrateKeys(os).catch(() => undefined);
     os.procs.onExit((pid) => {
       for (const [sid, s] of this.#sessions) if (s.agent.proc.pid === pid) this.#sessions.delete(sid);
     });
@@ -82,7 +84,7 @@ export class AgentManager implements AgentsApi {
   }
 
   async probeModels(baseUrl: string, kind: 'local' | 'api' = 'local'): Promise<string[]> {
-    const key = kind === 'local' ? await this.os.secrets.get(SECRET.local) : await apiKeyFor(this.os.secrets, baseUrl);
+    const key = kind === 'local' ? await this.os.secrets.get(SECRET.local) : await apiKeyFor(this.os.secrets, baseUrl, loadConfig(this.os).legacyKeyHost);
     return probeModels(baseUrl, key, undefined, { kind, relay: kind === 'api' ? loadConfig(this.os).corsRelay : '' });
   }
 
