@@ -129,6 +129,17 @@ await check('kernel processes exist without any GUI', () =>
     return names.join(' ');
   }),
 );
+await check('service worker installs and precaches the app and its runtime', () =>
+  agent.evaluate(async () => {
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('no service worker within 20 s')), 20000))]);
+    if (!reg.active) throw new Error('not active');
+    const name = (await caches.keys()).find((k) => /^bbx-v\d+$/.test(k));
+    const cached = (await (await caches.open(name)).keys()).map((r) => new URL(r.url).pathname.replace(/^.*?\/(?=agent\/|os\/|docs\/|runtime\/|preview\/|$)/, '/'));
+    const runtime = cached.filter((p) => p.includes('/runtime/'));
+    if (runtime.length < 4 || !cached.includes('/agent/')) throw new Error(`cached: ${cached.join(' ')}`);
+    return `${name}: ${cached.length} pages, ${runtime.length} from the runtime`;
+  }),
+);
 await check('filesystem over RPC', () =>
   agent.evaluate(async () => {
     await bbx.fs.writeFile('/tmp/a/b.txt', 'hello');

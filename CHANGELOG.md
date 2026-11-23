@@ -15,6 +15,9 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   model); the chat shows thumbnails. The agent can also look at image files.
 - **Permission rules** in Settings → Permissions: allow, always ask or never
   allow particular commands (`git *`, `rm -rf *`), paths, URLs or tools.
+- Fixed: the service worker failed to install (it pre-cached kernel pages at
+  their old address, now inside the runtime), so the app did not start
+  offline or instantly from cache.
 - **Profiles**: several people can use BrowserBox in one browser, each with
   their own files, settings, keys and chats (sidebar → your name, or Settings →
   Profile). Your existing data becomes the first profile. A profile can have

@@ -6,7 +6,11 @@
 // static hosts such as GitHub Pages cannot send the COOP/COEP headers that
 // SharedArrayBuffer, WebAssembly threads and in-browser Node.js need, so the
 // worker adds them to the responses it serves.
-const CACHE = 'bbx-v3';
+const CACHE = 'bbx-v4';
+// The runtime this build ships (runtime/<version>/): the build writes it in.
+const RUNTIME = '__BBX_RUNTIME__';
+// Pages to have before the first visit ends, so the next start works offline and at once.
+const PRECACHE = ['./', './agent/', './os/', './docs/', './preview/frame.html', ...['embed/', 'kernel/bridge.html', 'kernel/sandbox.html', 'kernel/sandbox-net.html'].map((p) => `./${RUNTIME}${p}`)];
 // Only the app's own old caches are cleared on update. Installed packages
 // (bbx-packs), npm modules (bbx-npm), in-browser models (webllm/*) and flags stay.
 const OWN = /^bbx-v\d+$/;
@@ -15,7 +19,13 @@ const FLAGS = 'bbx-flags';
 const COI_KEY = 'https://flags.browserbox.local/coi';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './agent/', './os/', './docs/', './kernel/bridge.html', './kernel/sandbox.html', './kernel/sandbox-net.html', './preview/frame.html'])).then(() => self.skipWaiting()));
+  // One by one: a page that fails to load is fetched on first use instead, and never stops the update.
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(u))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (e) => {

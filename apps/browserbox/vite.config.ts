@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync, statSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
@@ -26,7 +26,11 @@ async function builtRuntime(): Promise<string> {
 const shipRuntime = () => ({
   name: 'bbx-ship-runtime',
   async writeBundle(options: { dir?: string }) {
-    cpSync(await builtRuntime(), `${options.dir ?? 'dist'}/runtime/${RUNTIME_VERSION}`, { recursive: true });
+    const dir = options.dir ?? 'dist';
+    cpSync(await builtRuntime(), `${dir}/runtime/${RUNTIME_VERSION}`, { recursive: true });
+    // The service worker precaches this runtime's pages.
+    const sw = `${dir}/sw.js`;
+    if (existsSync(sw)) writeFileSync(sw, readFileSync(sw, 'utf8').replace('__BBX_RUNTIME__', `runtime/${RUNTIME_VERSION}/`));
   },
   // The dev server serves the built runtime package at the same path.
   async configureServer(server: { middlewares: { use: (fn: (req: { url?: string }, res: any, next: () => void) => void) => void } }) {
