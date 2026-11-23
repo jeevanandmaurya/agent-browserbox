@@ -249,9 +249,14 @@ export class KernelServer {
         const prompter = opts?.confined ? (req: PermRequest, signal?: AbortSignal) => this.#ask<PermDecision>({ kind: 'perm', payload: req }, signal, client).catch(() => 'deny' as const) : undefined;
         const h = await os.shells.open({ ...opts, prompter });
         client.shells.set(h.id, h);
-        h.onReadLine((prompt, secret) => this.#ask<string | null>({ kind: 'tty', shellId: h.id, payload: { prompt, secret } }, undefined, client));
+        // Prompts reach the client only once it shows the shell in a terminal ('shell.attach'):
+        // until then nobody is there to answer, and commands for people only (profile changes) refuse.
         h.onClear(() => peer.emit('shell:clear', h.id));
+        h.onAction?.((a) => peer.emit('shell:action', { id: h.id, a }));
         return { id: h.id, cwd: h.cwd, home: h.home };
+      },
+      'shell.attach': (id: string) => {
+        shell(id).onReadLine((prompt, secret) => this.#ask<string | null>({ kind: 'tty', shellId: id, payload: { prompt, secret } }, undefined, client));
       },
       'shell.run': async (id: string, runId: number, line: string) => {
         const h = shell(id);

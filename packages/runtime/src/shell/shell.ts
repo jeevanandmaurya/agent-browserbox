@@ -1,4 +1,5 @@
 import type { Prompter } from '../kernel/perms';
+import type { ShellAction } from '../kernel/types';
 import type { KernelCore as Kernel } from '../kernel/kernel';
 import { AGENT_HOME, HOME } from '../kernel/paths';
 import { resolve } from '../kernel/vfs/path';
@@ -11,6 +12,10 @@ export interface Tty {
   /** `secret` hides what is typed (API keys). */
   readLine(prompt: string, opts?: { secret?: boolean }): Promise<string | null>;
   clear(): void;
+  /** Asks the window showing this terminal to act (close it, open another profile). */
+  action?(a: ShellAction): void;
+  /** True when a person is at this terminal (a window answers its prompts), not a program or the agent. */
+  readonly interactive?: boolean;
 }
 
 export interface CommandContext {

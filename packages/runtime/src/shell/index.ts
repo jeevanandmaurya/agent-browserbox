@@ -7,6 +7,7 @@ import { sysCommands } from './commands/sys';
 import { textCommands } from './commands/text';
 import { contribute } from './contrib';
 import type { Command, Shell } from './shell';
+import { profileCommands } from './commands/profile';
 
 /**
  * Adds commands to every shell (see contrib.ts): how others offer commands
@@ -18,7 +19,7 @@ export function contributeCommands(...cmds: Command[]): void {
 
 /** Installs the standard command set. Add a command by adding it to one of these lists; contributed ones are looked up live. */
 export function registerCommands(shell: Shell): Shell {
-  return shell.register(...fsCommands, ...textCommands, ...sysCommands, ...execCommands, pkgCommand, dmesgCommand, serveCommand, npmCommand, npxCommand, buildCommand);
+  return shell.register(...fsCommands, ...textCommands, ...sysCommands, ...execCommands, pkgCommand, dmesgCommand, serveCommand, npmCommand, npxCommand, buildCommand, ...profileCommands);
 }
 
 export { Shell } from './shell';

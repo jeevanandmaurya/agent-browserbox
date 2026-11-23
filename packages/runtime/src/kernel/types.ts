@@ -23,6 +23,12 @@ export interface Notice {
 /** A profile's password lock: 'open' (no password), 'locked' (signed out) or 'unlocked' (signed in). */
 export type LockState = 'open' | 'locked' | 'unlocked';
 
+/**
+ * Something a command asks of the terminal it runs in, which only the window
+ * showing that terminal can do: close it (`exit`), or open another profile.
+ */
+export type ShellAction = { kind: 'exit'; code: number } | { kind: 'profile'; id: string };
+
 export interface KernelEvents extends Record<string, unknown> {
   'fs:change': FsChange;
   'proc:spawn': Proc;

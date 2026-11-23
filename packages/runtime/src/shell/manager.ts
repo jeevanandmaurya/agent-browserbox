@@ -1,3 +1,4 @@
+import type { ShellAction } from '../kernel/types';
 import type { ContributedCommand, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
 import { contribute, withdraw } from './contrib';
 import type { Command } from './shell';
@@ -36,6 +37,7 @@ export class ShellManager implements ShellsApi {
     const os = this.os;
     let reader: ((prompt: string, secret: boolean) => Promise<string | null>) | null = null;
     let clear: (() => void) | null = null;
+    let action: ((a: ShellAction) => void) | null = null;
     let running: AbortController | null = null;
     const proc = os.procs.spawn({ name: 'bbsh', kind: 'shell', ppid: opts.ppid, onKill: () => running?.abort() });
     os.procs.update(proc.pid, { state: 'idle' });
@@ -45,7 +47,14 @@ export class ShellManager implements ShellsApi {
         ppid: proc.pid,
         confined: opts.confined,
         prompter: opts.prompter,
-        tty: { readLine: (prompt, o) => (reader ? reader(prompt, o?.secret ?? false) : Promise.resolve(null)), clear: () => clear?.() },
+        tty: {
+          readLine: (prompt, o) => (reader ? reader(prompt, o?.secret ?? false) : Promise.resolve(null)),
+          clear: () => clear?.(),
+          action: (a) => action?.(a),
+          get interactive() {
+            return reader !== null;
+          },
+        },
       }),
     );
     const handle: ShellHandle = {
@@ -76,6 +85,9 @@ export class ShellManager implements ShellsApi {
       },
       onClear(fn) {
         clear = fn;
+      },
+      onAction(fn) {
+        action = fn;
       },
       close: () => os.procs.exit(proc.pid),
     };

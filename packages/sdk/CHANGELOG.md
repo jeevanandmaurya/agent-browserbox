@@ -5,6 +5,18 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.3.1
+
+New, all backward compatible:
+
+- **Terminal commands for profiles**: `profile` (show, `list`, `new`,
+  `switch`, `rename`, `delete`), `passwd`, `signout`/`logout`, and `exit`.
+  Only a person at a terminal can change profiles: a shell counts as one once
+  a window shows it in a terminal (`onReadLine`); the agent's and SDK shells
+  never do.
+- **Terminal actions**: `ShellHandle.onAction` tells the window showing a
+  terminal what a command asks of it (`exit`, open another profile).
+
 ## 0.3.0
 
 New, all backward compatible:

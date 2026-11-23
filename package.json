@@ -1,6 +1,6 @@
 {
   "name": "agent-browserbox",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "BrowserBox: the agent-browserbox SDK, runtime and agent packages, and the BrowserBox app built on them.",
   "type": "module",

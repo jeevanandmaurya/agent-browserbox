@@ -5,6 +5,13 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.3.1
+
+- **Profiles in the Terminal**: `profile`, `profile list | new | switch |
+  rename | delete`, `passwd`, `signout` (or `logout`), and `exit` to close
+  the terminal. The prompt shows your profile (`jeevan@bbx`). Only you, typing
+  in a terminal, can change profiles; the agent cannot.
+
 ## 0.3.0
 
 - **Settings → Model** has three choices: **API** (Anthropic, OpenAI,

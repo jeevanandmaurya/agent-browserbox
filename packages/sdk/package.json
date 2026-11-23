@@ -1,6 +1,6 @@
 {
   "name": "@jeevanand/agent-browserbox-sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A sandboxed computer in the browser for AI agents: filesystem, shell, JavaScript, Python and WebAssembly, isolated in its own origin. No backend.",
   "type": "module",
   "main": "./dist/index.js",

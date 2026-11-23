@@ -20,6 +20,22 @@ Typing a command from a package that is not installed tells you which package to
 | esbuild | the bundler behind `serve` and `build` (installed when first needed) |
 | node | real Node.js and npm (see [Advanced](advanced)) |
 
+## Profiles
+
+| Command | Does |
+| --- | --- |
+| `profile` | who you are: the profile, and whether it has a password |
+| `profile list` | every profile (`*` marks yours) |
+| `profile new <name>` | make a profile |
+| `profile switch <name>` | open another profile in this window |
+| `profile rename <name>` | rename yours |
+| `profile delete <name>` | delete another profile with its files, keys and chats (asks you to type its name) |
+| `passwd`, `passwd -d` | set or change, or remove, your password |
+| `signout` (or `logout`) | lock your API keys until the password is entered |
+| `exit` | close this terminal |
+
+Only a person typing in a terminal can change profiles: the agent and scripts can see who you are, but not switch, create, rename, delete, change the password or sign out.
+
 ## Python and pip
 
 `python script.py`, `python -c "…"`, `python -m pip …`. `pip install` adds pure-Python packages from PyPI and the packages Pyodide builds for the browser (numpy, pandas, scipy, matplotlib, scikit-learn and more). Packages with other compiled code cannot install. Installed packages are remembered and reinstalled when Python restarts.

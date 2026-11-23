@@ -59,6 +59,7 @@ function respond(r) {
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
   if (system.includes('Your role: explorer')) return text('EXPLORER REPORT: nothing to see');
   if (lastUser.includes('weather please')) return call('mcp__weather__forecast', { city: 'Pune' });
+  if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
   return text(`echo: ${lastUser.slice(0, 120)}`);
 }
@@ -827,6 +828,55 @@ if (errors.length) {
   failed++;
   console.log('page errors:\n  ' + errors.join('\n  '));
 }
+await check('profile commands: a person can switch and exit in the terminal; the agent cannot change profiles', async () => {
+  // Auto mode: no approval prompt, so only the profile rule itself can stop the agent.
+  const mode = await page.evaluate(() => bbx.perms.mode);
+  await page.evaluate(() => (bbx.perms.mode = 'auto'));
+  const sent = await send('make yourself a profile', 'Tool said:').finally(() => page.evaluate((m) => (bbx.perms.mode = m), mode));
+  const refused = sent.flatMap((r) => r.messages).findLast((m) => m.role === 'tool')?.content ?? '';
+  if (!refused.includes('must be typed by a person')) throw new Error(`the agent was not refused: ${refused}`);
+
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  const p = await ctx.newPage();
+  const setup = async () => {
+    for (const a of ['', '', '']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+  };
+  const type = async (cmd, waitFor) => {
+    const input = p.locator('.term-input').last();
+    await input.fill(cmd);
+    await input.press('Enter');
+    if (waitFor)
+      await p.waitForFunction((t) => [...document.querySelectorAll('.term-out')].at(-1)?.textContent.includes(t), waitFor, { timeout: 30000 }).catch(async () => {
+        throw new Error(`"${cmd}" did not print "${waitFor}": ${JSON.stringify((await p.locator('.term-out').last().textContent().catch(() => '')).slice(-200))}`);
+      });
+  };
+  try {
+    await p.goto(base + 'agent/');
+    await setup();
+    await p.evaluate(() => bbx.openApp('terminal'));
+    await p.waitForSelector('.term-input');
+    await type('profile', 'no password');
+    await type('profile new Ana', 'Created Ana');
+    await Promise.all([p.waitForEvent('load'), type('profile switch Ana')]);
+    await setup();
+    await p.evaluate(() => bbx.openApp('terminal'));
+    await p.waitForSelector('.term-input');
+    await type('profile', 'Ana');
+    const prompt = await p.locator('.term-out').last().textContent();
+    if (!prompt.includes('ana@bbx')) throw new Error(`prompt: ${prompt.slice(-80)}`);
+    await type('exit');
+    await p.waitForSelector('.term-input', { state: 'detached', timeout: 10000 });
+    return 'agent refused; profile new, switch (window reopened as Ana, prompt ana@bbx) and exit (terminal closed) work';
+  } finally {
+    await ctx.close();
+  }
+});
+
 await check('profiles: a second profile is separate; a password locks keys until sign-in', async () => {
   // A context of its own: switching profiles reloads the page.
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });

@@ -1,5 +1,7 @@
 import './style.css';
 import type { AppModule } from '@/ui/apps';
+import { getProfile } from '@jeevanand/agent-browserbox-runtime/client';
+import { PROFILE, switchProfile } from '@/app/boot';
 import { Terminal } from '@/ui/terminal';
 
 /** The Terminal app: a Terminal component running an interactive loop on a kernel shell. */
@@ -15,10 +17,21 @@ const app: AppModule = {
     });
     term.attach(shell);
     root.append(term.el);
+    // exit closes this terminal; profile switch opens another profile in this window.
+    term.onAction = (a) => (a.kind === 'exit' ? win.close() : void switchProfile(a.id));
+
+    // The prompt names the profile: "jeevan@bbx".
+    const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'user';
+    let user = 'user';
+    const showUser = async () => {
+      user = slug((await getProfile(await PROFILE).catch(() => null))?.name ?? 'user');
+    };
+    await showUser();
+    ctx.on('settings:change', ({ key }) => key === 'profile.name' && void showUser());
 
     const prompt = () => {
       const cwd = shell.cwd === shell.home ? '~' : shell.cwd.startsWith(shell.home + '/') ? '~' + shell.cwd.slice(shell.home.length) : shell.cwd;
-      return `\x1b[32muser@bbx\x1b[0m \x1b[34m${cwd}\x1b[0m ❯ `;
+      return `\x1b[32m${user}@bbx\x1b[0m \x1b[34m${cwd}\x1b[0m ❯ `;
     };
     const exec = async (line: string) => {
       os.procs.update(proc.pid, { state: 'running', detail: line.slice(0, 60) });

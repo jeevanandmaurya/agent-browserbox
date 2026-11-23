@@ -6,7 +6,7 @@ import { KCore } from '../kernel/kcore';
 import { Permissions, type PermRequest, type Prompter } from '../kernel/perms';
 import type { Proc, SpawnOptions } from '../kernel/proc';
 import { Settings } from '../kernel/settings';
-import type { KernelEvents, KernelLogLine, Notice } from '../kernel/types';
+import type { KernelEvents, KernelLogLine, Notice, ShellAction } from '../kernel/types';
 import { normalize } from '../kernel/vfs/path';
 import type { Stat } from '../kernel/vfs/types';
 import type { Ask, Hello, WireProc } from '../kernel-worker/wire';
@@ -51,7 +51,7 @@ export class RemoteKernel implements Kernel {
   #owned = new Map<number, Owned>();
   #nextPid = 0;
   #mounts: MountInfo[] = [];
-  #shells = new Map<string, { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void }>();
+  #shells = new Map<string, { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void; action?: (a: ShellAction) => void }>();
   #runs = new Map<number, ShellIo>();
   #nextRun = 1;
   #asking = new Map<number, AbortController>();
@@ -127,6 +127,7 @@ export class RemoteKernel implements Kernel {
       (s === 'o' ? io?.out : io?.err)?.(t);
     });
     peer.on<string>('shell:clear', (id) => this.#shells.get(id)?.clear?.());
+    peer.on<{ id: string; a: ShellAction }>('shell:action', ({ id, a }) => this.#shells.get(id)?.action?.(a));
     peer.on<Ask>('ask', (ask) => void this.#answer(peer, ask));
     peer.on<number>('ask:done', (askId) => {
       this.#asking.get(askId)?.abort();
@@ -264,7 +265,7 @@ export class RemoteKernel implements Kernel {
   readonly shells: ShellsApi = {
     open: async (opts) => {
       const info = await this.call<{ id: string; cwd: string; home: string }>('shell.open', opts);
-      const local: { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void } = {};
+      const local: { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void; action?: (a: ShellAction) => void } = {};
       this.#shells.set(info.id, local);
       const handle: ShellHandle = {
         id: info.id,
@@ -286,10 +287,15 @@ export class RemoteKernel implements Kernel {
         },
         complete: (line) => this.call('shell.complete', info.id, line),
         onReadLine: (fn) => {
+          // Tells the kernel a person is at this shell now: its prompts come here.
+          if (!local.reader) void this.call('shell.attach', info.id).catch(() => undefined);
           local.reader = fn;
         },
         onClear: (fn) => {
           local.clear = fn;
+        },
+        onAction: (fn) => {
+          local.action = fn;
         },
         close: () => {
           this.#shells.delete(info.id);

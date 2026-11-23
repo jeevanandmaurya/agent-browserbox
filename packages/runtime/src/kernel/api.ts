@@ -4,7 +4,7 @@ import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
 import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
-import type { KernelEvents, LockState, Notice } from './types';
+import type { KernelEvents, LockState, Notice, ShellAction } from './types';
 import type { Stat } from './vfs/types';
 
 /**
@@ -116,6 +116,8 @@ export interface ShellHandle {
   /** Supplies interactive input when a command reads from the terminal. */
   onReadLine(fn: (prompt: string, secret: boolean) => Promise<string | null>): void;
   onClear(fn: () => void): void;
+  /** What commands ask of the terminal: close it, open another profile. */
+  onAction?(fn: (action: ShellAction) => void): void;
   close(): void;
 }
 

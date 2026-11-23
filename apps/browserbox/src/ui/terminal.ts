@@ -1,4 +1,4 @@
-import type { ShellHandle } from '@jeevanand/agent-browserbox-runtime/client';
+import type { ShellAction, ShellHandle } from '@jeevanand/agent-browserbox-runtime/client';
 import { AnsiView } from './ansi-view';
 import { h } from './dom';
 
@@ -92,7 +92,11 @@ export class Terminal {
   attach(shell: ShellHandle): void {
     shell.onReadLine((prompt, secret) => this.readLine(prompt, { secret }));
     shell.onClear(() => this.clear());
+    shell.onAction?.((a) => this.onAction?.(a));
   }
+
+  /** What commands ask of the window showing this terminal (`exit`, `profile switch`). */
+  onAction: ((action: ShellAction) => void) | null = null;
 
   /** Runs a command line in `shell`, streaming its output here. ^C interrupts it. */
   async run(shell: ShellHandle, line: string): Promise<number> {
