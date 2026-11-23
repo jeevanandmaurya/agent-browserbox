@@ -1,6 +1,6 @@
 {
   "name": "@jeevanand/agent-browserbox-runtime",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The runtime for @jeevanand/agent-browserbox-sdk: static files to serve (kernel, filesystem, shell, sandboxes), and a client library for app UIs that drive its kernel (/client).",
   "type": "module",
   "main": "./index.js",

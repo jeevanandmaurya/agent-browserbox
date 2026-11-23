@@ -1,7 +1,7 @@
 import type { PermDecision, PermRequest } from '@jeevanand/agent-browserbox-runtime/client';
 import { h } from './dom';
 
-function modal(content: HTMLElement, onDismiss: () => void): () => void {
+export function modal(content: HTMLElement, onDismiss: () => void): () => void {
   const overlay = h('div', { class: 'modal-overlay' }, content);
   const key = (e: KeyboardEvent) => {
     if (e.key === 'Escape') onDismiss();

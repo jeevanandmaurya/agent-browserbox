@@ -11,7 +11,7 @@ export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCo
 // The agent's view of a box, and what the app supplies.
 export { AgentOs, Settings, Shell, type FilesLike, type WithFiles, type WithSettings, type ProcTable, type AgentOsOptions, type AgentUi, type AppInfo, type Notice, type SecretsApi, type SettingsApi } from './host/os.js';
 export type { Capability, PermDecision, PermRequest, Prompter } from './host/perms.js';
-export { BrowserSecrets } from './host/secrets.js';
+export { BrowserSecrets, SecretsLockedError } from './host/secrets.js';
 export { AGENT_HOME, HOME } from './host/paths.js';
 
 // The agent and its sessions.

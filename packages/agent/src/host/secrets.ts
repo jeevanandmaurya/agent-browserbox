@@ -26,6 +26,14 @@ function tx<T>(db: IDBDatabase, mode: IDBTransactionMode, fn: (s: IDBObjectStore
   });
 }
 
+/** The profile is signed out: its keys stay encrypted until the user signs in again. */
+export class SecretsLockedError extends Error {
+  constructor() {
+    super('This profile is signed out: its API keys are locked until you sign in.');
+    this.name = 'SecretsLockedError';
+  }
+}
+
 /**
  * API keys kept encrypted in this origin's IndexedDB, under a non-extractable
  * key: the same store (and scheme) BrowserBox's kernel uses, so an app on the
@@ -44,6 +52,10 @@ export class BrowserSecrets implements SecretsApi {
   }
 
   async #key(db: IDBDatabase): Promise<CryptoKey> {
+    // A profile with a password: usable only while signed in (see the runtime's key store).
+    const session = await tx<CryptoKey | undefined>(db, 'readonly', (s) => s.get('#session'));
+    if (session) return session;
+    if (await tx<unknown>(db, 'readonly', (s) => s.get('#wrapped'))) throw new SecretsLockedError();
     const existing = await tx<CryptoKey | undefined>(db, 'readonly', (s) => s.get('#master'));
     if (existing) return existing;
     const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
@@ -58,7 +70,8 @@ export class BrowserSecrets implements SecretsApi {
       if (!rec) return this.#mem.get(name) ?? null;
       const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: rec.iv }, await this.#key(db), rec.data);
       return new TextDecoder().decode(plain);
-    } catch {
+    } catch (err) {
+      if (err instanceof SecretsLockedError) throw err;
       return this.#mem.get(name) ?? null;
     }
   }
@@ -70,7 +83,8 @@ export class BrowserSecrets implements SecretsApi {
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await this.#key(db), new TextEncoder().encode(value));
       await tx(db, 'readwrite', (s) => s.put({ iv, data }, name));
-    } catch {
+    } catch (err) {
+      if (err instanceof SecretsLockedError) throw err;
       this.#mem.set(name, value); // IndexedDB unavailable: keep for this session only
     }
   }

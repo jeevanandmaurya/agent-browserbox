@@ -10,7 +10,7 @@ import { Permissions } from './perms';
 import { ProcTable } from './proc';
 import { ProcFs } from './procfs';
 import { Secrets, SECRETS_DB } from './secrets';
-import { APP_KERNEL, dbName, type KernelInstance } from './instance';
+import { APP_KERNEL, dbName, HIDDEN_FOLDERS, type KernelInstance } from './instance';
 import { loadSettings, persistSetting, Settings, SETTINGS_DB } from './settings';
 import type { KernelEvents, KernelLogLine, Notice } from './types';
 import { HandleFs } from './vfs/handlefs';
@@ -118,15 +118,19 @@ export class KernelCore implements Kernel {
     this.log('settings', `${this.settings.keys().length} keys loaded`);
 
     const box = this.instance.box;
+    const profile = this.instance.profile ?? null;
     if (box !== null) this.log('kernel', `box ${box} (${this.instance.storage})`);
+    if (profile !== null) this.log('kernel', `profile ${profile}`);
     try {
       if (this.instance.storage === 'memory') throw new Error('in-memory box');
       let root = await navigator.storage.getDirectory();
-      // Each box keeps its files in its own folder; the app's kernel owns the rest.
-      if (box !== null) root = await (await root.getDirectoryHandle('boxes', { create: true })).getDirectoryHandle(box, { create: true });
-      this.fs.mount('/', new HandleFs(root, 'opfs'));
+      // Each box and each profile keeps its files in a folder of its own; the
+      // first profile owns the rest, without seeing the others' folders.
+      const folder = box !== null ? ['boxes', box] : profile !== null ? ['profiles', profile] : null;
+      if (folder) root = await (await root.getDirectoryHandle(folder[0]!, { create: true })).getDirectoryHandle(folder[1]!, { create: true });
+      this.fs.mount('/', new HandleFs(root, 'opfs', folder ? [] : HIDDEN_FOLDERS));
       this.rootKind = 'opfs';
-      this.log('vfs', `mounted opfs${box !== null ? ` boxes/${box}` : ''} on / (persistent)`);
+      this.log('vfs', `mounted opfs${folder ? ` ${folder.join('/')}` : ''} on / (persistent)`);
     } catch (err) {
       this.fs.mount('/', new MemFs());
       this.log('vfs', this.instance.storage === 'memory' ? 'mounted memfs on / (in-memory box)' : `OPFS unavailable (${(err as Error).message}): mounted memfs on / (not persistent)`);

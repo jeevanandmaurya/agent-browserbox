@@ -229,3 +229,27 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 .menu-point { position: fixed; width: 1px; height: 1px; pointer-events: none; outline: none; }
 
 .win-page { flex: 1; width: 100%; min-height: 0; border: 0; background: var(--panel); }
+
+/* Profiles: avatars, the chooser, the sign-in screen */
+.pf-avatar { display: inline-grid; place-items: center; flex: none; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-weight: 600; line-height: 1; }
+.sb-avatar { display: inline-grid; width: 22px; flex: none; }
+.pf-chooser { display: grid; gap: 10px; }
+.pf-list { display: grid; gap: 4px; }
+.pf-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pf-item:hover, .pf-item:focus-visible { background: var(--panel-2); }
+.pf-item.current { border-color: var(--accent, #4a7); }
+.pf-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-here { font-size: 12px; }
+.pf-new { display: flex; gap: 6px; }
+.pf-new .input { flex: 1; min-width: 0; }
+.pf-modal { width: min(420px, calc(100vw - 32px)); }
+.pf-delete { display: grid; gap: 6px; margin-top: 12px; }
+.pf-delete .row { display: flex; align-items: center; gap: 8px; }
+.pf-signin { display: grid; place-items: center; min-height: 100%; padding: 24px 16px; box-sizing: border-box; background: var(--bg); color: var(--text); }
+.pf-card { display: grid; justify-items: center; gap: 12px; width: min(360px, 100%); text-align: center; }
+.pf-card h2 { margin: 0; }
+.pf-card p { margin: 0; }
+.pf-signin-form { display: flex; gap: 6px; width: 100%; }
+.pf-signin-form .input { flex: 1; min-width: 0; }
+.pf-others { width: 100%; text-align: left; }
+.btn.link { border: 0; background: none; color: var(--muted); text-decoration: underline; }

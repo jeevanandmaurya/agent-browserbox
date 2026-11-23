@@ -94,7 +94,7 @@ await sh.exec('pwd && echo $MODE'); // "…/project/src", "dev"; sh.cwd follows
 - `box.dev.start('site')` → `{ port, url, root }` · `box.dev.logs(port)` · `box.dev.list()` · `box.dev.stop(port)`
 - `box.processes()` → the process table · `box.killProcess(pid)`
 - `box.share()` → a port for a worker, which calls `BrowserBox.attach(port)` (its own shells, processes and permission answers)
-- `BrowserBox.boot({ site: true })` → the site's own kernel (the one a BrowserBox app on this site uses) instead of a box
+- `BrowserBox.boot({ site: true })` → the site's own kernel (the one a BrowserBox app on this site uses) instead of a box; `{ site: true, profile: id }` → one of the site's profiles
 - `box.kernelPort()` → a channel to the kernel's full internal protocol, for app UIs; versioned with the runtime
 
 ### `box.teardown()`

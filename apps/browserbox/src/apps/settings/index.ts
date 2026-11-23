@@ -9,6 +9,7 @@ import { modelSection } from './model';
 import { sectionNav } from './nav';
 import { appearanceSection } from './general';
 import { permissionsSection } from './permissions';
+import { profileSection } from './profile';
 import './style.css';
 
 const app: AppModule = {
@@ -36,6 +37,7 @@ const app: AppModule = {
       { id: 'agents', label: 'Agents', build: () => extensionSection(ctx, 'agent', saved) },
       { id: 'commands', label: 'Commands', build: () => extensionSection(ctx, 'command', saved) },
       { id: 'environment', label: 'Environment', build: () => environmentSection(ctx, saved) },
+      { id: 'profile', label: 'Profile', build: () => profileSection(ctx, saved) },
       { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },
     ];
     // `only` embeds a single section with no nav (the agent window's first-run setup uses the Model section).

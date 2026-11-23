@@ -49,6 +49,9 @@ function ask<T>(a: Omit<Ask, 'askId'>, signal?: AbortSignal, only?: Client): Pro
   });
 }
 
+/** The profile this worker serves, from its name (see boot.ts). */
+const PROFILE_ID = /^bbx-agent:([A-Za-z0-9_-]{1,64})$/.exec((self as unknown as { name?: string }).name ?? '')?.[1] ?? 'default';
+
 // ---- the box, borrowed from a window ---------------------------------------------
 let provider: Client | null = null;
 let world: Promise<{ os: AgentOs; agents: AgentManager }> | null = null;
@@ -147,7 +150,8 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
     kernel = await kernelFor(box);
     const os = await AgentOs.create(box, {
       settings,
-      secrets: new BrowserSecrets(),
+      // This worker serves one profile (its name says which): that profile's keys.
+      secrets: new BrowserSecrets(PROFILE_ID === 'default' ? 'bbx-secrets' : `bbx-secrets:profile:${PROFILE_ID}`),
       procs,
       prompter: (req: PermRequest, signal?: AbortSignal) => ask<PermDecision>({ kind: 'perm', payload: req }, signal).catch(() => 'deny' as const),
       ui: {

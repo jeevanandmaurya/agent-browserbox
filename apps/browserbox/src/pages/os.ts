@@ -3,6 +3,7 @@ import { appKernel } from '@/app/boot';
 import type { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { createDesktop } from '@/ui/desktop';
 import { bootConsole } from '@/ui/boot';
+import { profileGate } from '@/ui/profiles';
 import { followTheme } from '@/ui/standalone';
 
 /**
@@ -14,7 +15,9 @@ const os = appKernel();
 followTheme(os);
 os.mark('page');
 
-void bootConsole(os, document.getElementById('desk')!).then(
+void bootConsole(os, document.getElementById('desk')!)
+  .then(() => profileGate(os, document.getElementById('desk')!))
+  .then(
   () => {
     const apps = createDesktop(os, document.getElementById('desk')!);
     // Announces that a desktop is available, so other windows route "open app" requests here.

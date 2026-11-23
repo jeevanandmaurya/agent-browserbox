@@ -43,7 +43,7 @@ export interface ServerService {
 }
 
 const wire = (p: Proc): WireProc => ({ pid: p.pid, ppid: p.ppid, name: p.name, kind: p.kind, started: p.started, state: p.state, detail: p.detail, cpuMs: p.cpuMs, memBytes: p.memBytes });
-const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'notify', 'app:open', 'kmsg', 'dev:update', 'dev:log'];
+const FORWARDED: Array<keyof KernelEvents> = ['fs:change', 'settings:change', 'secrets:lock', 'notify', 'app:open', 'kmsg', 'dev:update', 'dev:log'];
 
 /**
  * Exposes the kernel to windows over message ports. Each connection is a
@@ -210,6 +210,21 @@ export class KernelServer {
       'secrets.has': (name: string) => os.secrets.has(name),
       'secrets.set': (name: string, value: string) => os.secrets.set(name, value),
       'secrets.delete': (name: string) => os.secrets.delete(name),
+      // Password lock. Every window of the profile hears about a change ('secrets:lock').
+      'secrets.status': () => os.secrets.status(),
+      'secrets.unlock': async (password: string) => {
+        const ok = await os.secrets.unlock(password);
+        if (ok) os.bus.emit('secrets:lock', { state: await os.secrets.status() });
+        return ok;
+      },
+      'secrets.lock': async () => {
+        await os.secrets.lock();
+        os.bus.emit('secrets:lock', { state: await os.secrets.status() });
+      },
+      'secrets.setPassword': async (password: string | null) => {
+        await os.secrets.setPassword(password);
+        os.bus.emit('secrets:lock', { state: await os.secrets.status() });
+      },
 
       // Processes. A window's own processes (apps, sandboxes) are registered here so they show up everywhere.
       'procs.spawn': (p: WireProc) => {

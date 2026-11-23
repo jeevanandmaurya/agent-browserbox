@@ -27,7 +27,7 @@
     "@anthropic-ai/sdk": "^1.8.0"
   },
   "peerDependencies": {
-    "@jeevanand/agent-browserbox-sdk": "^0.2.0",
+    "@jeevanand/agent-browserbox-sdk": ">=0.2.0 <0.4.0",
     "@mlc-ai/web-llm": "^0.2.88"
   },
   "keywords": [

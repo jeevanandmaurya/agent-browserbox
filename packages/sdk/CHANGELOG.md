@@ -5,8 +5,19 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
-## 0.2.1
+## 0.3.0
 
+New, all backward compatible:
+
+- **Profiles**: `BrowserBox.boot({ site: true, profile })` drives one of the
+  site's profiles, each a kernel of its own (files, settings, keys). The
+  runtime's client manages the list (`listProfiles`, `createProfile`,
+  `updateProfile`, `deleteProfile`, `lastProfile`). The first profile keeps
+  the site's existing data and no longer sees other profiles' or boxes' folders.
+- **Password-locked keys**: `secrets.setPassword()`, `status()`, `lock()` and
+  `unlock()` on the kernel client. With a password, signing out locks the
+  saved keys until the password is entered again; every window of the profile
+  hears it (`secrets:lock`).
 - The welcome file a new BrowserBox site writes lists every kind of model,
   not just Claude.
 

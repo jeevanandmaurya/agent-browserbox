@@ -20,7 +20,7 @@ export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, KernelC
 export { PROTOCOL_VERSION };
 
 /** This SDK's version. Always released together with the runtime of the same version. */
-export const VERSION = '0.2.1';
+export const VERSION = '0.3.0';
 
 /**
  * The hosted runtime of exactly this SDK's version. Released runtimes never
@@ -50,6 +50,11 @@ export interface BootOptions {
    * separate storage: browsers partition it by the top-level site.)
    */
   site?: boolean;
+  /**
+   * With `site`: which profile of the site to drive. Each profile has its own
+   * files, settings and keys; omitted or 'default' is the first one.
+   */
+  profile?: string;
   /** Element the hidden runtime frame is added to. Default: document.body. */
   container?: HTMLElement;
   /**
@@ -296,7 +301,9 @@ export class BrowserBox {
     const memory = opts.storage === 'memory';
     const id = opts.id ?? (memory ? `mem-${crypto.randomUUID()}` : 'default');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return Promise.reject(new BoxError(`invalid box id "${id}": use letters, digits, '-' and '_' (at most 64)`));
-    const src = new URL(opts.site ? 'embed/?site=1' : `embed/?box=${encodeURIComponent(id)}&storage=${memory ? 'memory' : 'opfs'}`, base);
+    if (opts.profile !== undefined && !/^[A-Za-z0-9_-]{1,64}$/.test(opts.profile)) return Promise.reject(new BoxError(`invalid profile id "${opts.profile}"`));
+    const profile = opts.profile && opts.profile !== 'default' ? `&profile=${encodeURIComponent(opts.profile)}` : '';
+    const src = new URL(opts.site ? `embed/?site=1${profile}` : `embed/?box=${encodeURIComponent(id)}&storage=${memory ? 'memory' : 'opfs'}`, base);
     const permissions: PermissionHandler = typeof opts.permissions === 'function' ? opts.permissions : opts.permissions === 'allow' ? () => 'once' : () => 'deny';
 
     const frame = document.createElement('iframe');

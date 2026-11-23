@@ -2,7 +2,7 @@ import { connectKernel, type KernelLink } from '../src/client/connect';
 import { RemoteKernel } from '../src/client/remote-kernel';
 import { EMBED_ORIGINS } from '../src/config/origins';
 import type { PermDecision, PermRequest } from '../src/kernel/perms';
-import { APP_KERNEL, fromSearch, type KernelInstance } from '../src/kernel/instance';
+import { BOX_ID, fromSearch, profileKernel, type KernelInstance } from '../src/kernel/instance';
 import { HOME } from '../src/kernel/paths';
 import { plainText, stripAnsi } from '../src/shell/ansi';
 import type { ShellHandle } from '../src/kernel/api';
@@ -18,12 +18,15 @@ import { PROTOCOL_VERSION, type DevServer, type ExecOptions, type ExecResult, ty
  */
 // Which kernel this page drives comes from its URL, set by the SDK:
 //   embed/?box=<id>&storage=opfs|memory  a box of its own (default: the 'default' box)
-//   embed/?site=1                        the site's own kernel (the BrowserBox app's), whose files,
-//                                        settings and keys stay where they are. Browsers partition
-//                                        a cross-site frame's storage, so only the site itself reaches its data.
+//   embed/?site=1[&profile=<id>]         the site's own kernel (the BrowserBox app's), or one of its
+//                                        profiles, whose files, settings and keys stay where they are.
+//                                        Browsers partition a cross-site frame's storage, so only the
+//                                        site itself reaches its data.
 const query = new URLSearchParams(location.search);
 const fromUrl = fromSearch(location.search);
-const instance: KernelInstance = query.get('site') === '1' ? APP_KERNEL : { box: fromUrl.box ?? 'default', storage: fromUrl.box === null ? 'opfs' : fromUrl.storage };
+const siteProfile = query.get('profile');
+if (siteProfile !== null && !BOX_ID.test(siteProfile)) throw new Error(`invalid profile id: ${siteProfile}`);
+const instance: KernelInstance = query.get('site') === '1' ? profileKernel(siteProfile) : { box: fromUrl.box ?? 'default', storage: fromUrl.box === null ? 'opfs' : fromUrl.storage };
 const firstLink = connectKernel({ instance });
 /** A port to the kernel for one more client (each SDK connection has its own). */
 const moreLinks = (): Promise<KernelLink> => firstLink.then((l) => l.more!());

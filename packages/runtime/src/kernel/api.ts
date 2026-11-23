@@ -4,7 +4,7 @@ import type { PlatformCap } from './caps';
 import type { KCore } from './kcore';
 import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
-import type { KernelEvents, Notice } from './types';
+import type { KernelEvents, LockState, Notice } from './types';
 import type { Stat } from './vfs/types';
 
 /**
@@ -88,6 +88,14 @@ export interface SecretsApi {
   has(name: string): Promise<boolean>;
   set(name: string, value: string): Promise<void>;
   delete(name: string): Promise<void>;
+  /** The profile's password lock: 'open' (no password), 'locked' (signed out) or 'unlocked'. */
+  status(): Promise<LockState>;
+  /** Signs in; false when the password is wrong. */
+  unlock(password: string): Promise<boolean>;
+  /** Signs out: the keys stay encrypted until the next unlock. */
+  lock(): Promise<void>;
+  /** Sets or changes the password (`null` removes it). Needs the keys unlocked. */
+  setPassword(password: string | null): Promise<void>;
 }
 
 // ---- Shell sessions ---------------------------------------------------------

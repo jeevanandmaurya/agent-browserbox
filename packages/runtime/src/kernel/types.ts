@@ -20,12 +20,17 @@ export interface Notice {
 }
 
 /** Every event that can cross module boundaries. */
+/** A profile's password lock: 'open' (no password), 'locked' (signed out) or 'unlocked' (signed in). */
+export type LockState = 'open' | 'locked' | 'unlocked';
+
 export interface KernelEvents extends Record<string, unknown> {
   'fs:change': FsChange;
   'proc:spawn': Proc;
   'proc:update': Proc;
   'proc:exit': { proc: Proc; reason: string };
   'settings:change': { key: string; value: unknown };
+  /** The profile was signed in or out, or its password changed. */
+  'secrets:lock': { state: LockState };
   notify: Notice;
   /** A line was added to the kernel log. */
   kmsg: KernelLogLine;

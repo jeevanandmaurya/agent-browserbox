@@ -386,6 +386,7 @@ last reply's speed and time to first token, and a Compact button.
 | Slash commands | Type `/`; `/home/agent/commands/<name>.md` | Built-ins act on the window; custom commands are prompt templates (`$ARGUMENTS`). |
 | Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Anthropic* has Anthropic's API connect to it (Anthropic models only). Local stdio servers cannot run in a browser. |
 | Images | **+** → Attach files, paste, or `@file.png` | PNG, JPEG, GIF and WebP images (up to 5 MB) go to the model as images, with thumbnails in the chat; `view_image` lets the agent look at image files itself. Needs a vision model. |
+| Profiles | Sidebar → your name; Settings → Profile | Several people in one browser, each with their own files, settings, keys and chats (a kernel each). An optional password locks the profile's API keys when you sign out. Files are not encrypted. |
 | Permission rules | Settings → Permissions → Rules | Allow, always ask or never allow by command (`git *`), path, URL or tool, before the Ask/Auto mode. Never allow wins; a command line with `&&`, `;` or `|` is allowed only when every command in it is. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
 

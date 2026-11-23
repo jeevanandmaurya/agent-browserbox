@@ -1,13 +1,19 @@
 import { agentsOf } from '@/app/agents';
 import { deleteSession, listSessions, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
 import type { Kernel } from '@jeevanand/agent-browserbox-runtime/client';
+import { getProfile } from '@jeevanand/agent-browserbox-runtime/client';
+import { PROFILE } from '@/app/boot';
 import { fmtTime, h } from '@/ui/dom';
+import { openMenu } from '@/ui/menu';
+import { avatar, chooseProfile, signOut } from '@/ui/profiles';
 import { icon } from './icons';
 
 export interface SidebarActions {
   newChat(): void;
   openChat(id: string): void;
   settings(): void;
+  /** Settings → Profile. */
+  profileSettings(): void;
   processes(): void;
   openDesktop(): void;
   /** Inside the desktop: the button offers a tab of its own instead. */
@@ -32,6 +38,39 @@ function bucket(ts: number): string {
 }
 
 export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
+  // Who is using BrowserBox: the profile, with switching and signing out.
+  const profileName = h('span', { class: 'sb-kernel-text' }, '');
+  const profileAvatar = h('span', { class: 'sb-avatar' });
+  const profileBtn = h(
+    'button',
+    {
+      class: 'sb-row sb-profile',
+      type: 'button',
+      title: 'Profile',
+      'aria-haspopup': 'menu',
+      onclick: async () => {
+        const locked = (await os.secrets.status().catch(() => 'open')) !== 'open';
+        openMenu(
+          profileBtn,
+          [
+            { label: 'Switch profile…', onSelect: () => void chooseProfile() },
+            { label: 'Profile settings…', onSelect: act.profileSettings },
+            ...(locked ? [{ separator: true as const }, { label: 'Sign out', onSelect: () => void signOut(os) }] : []),
+          ],
+          'Profile',
+        );
+      },
+    },
+    profileAvatar,
+    profileName,
+  );
+  const showProfile = async () => {
+    const p = await getProfile(await PROFILE).catch(() => null);
+    profileName.textContent = p?.name ?? 'Profile';
+    profileAvatar.replaceChildren(avatar(p?.name ?? '?', 22));
+  };
+  void showProfile();
+  os.bus.on('settings:change', () => void showProfile());
   let all: SessionInfo[] = [];
   let active = '';
   /** Chats running in the kernel right now: working, or waiting for you (an approval or a question). */
@@ -59,6 +98,7 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
     h(
       'div',
       { class: 'sb-foot' },
+      profileBtn,
       row('Settings', 'gear', act.settings),
       h('button', { class: 'sb-row sb-kernel', type: 'button', title: 'Show processes', onclick: act.processes }, icon('chip', 18), kernelLabel, dot),
       h('button', { class: 'sb-desktop', type: 'button', title: act.embedded ? 'Open the agent in a browser tab of its own' : 'Open the optional desktop in a new window', onclick: act.openDesktop }, act.embedded ? 'Open in new tab' : 'Open desktop', icon('external', 13)),

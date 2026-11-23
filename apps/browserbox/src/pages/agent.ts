@@ -3,6 +3,7 @@ import agentApp from '@/apps/agent/index';
 import { appKernel } from '@/app/boot';
 import type { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { bootConsole } from '@/ui/boot';
+import { profileGate } from '@/ui/profiles';
 import { followTheme, mountStandalone } from '@/ui/standalone';
 
 /**
@@ -16,6 +17,7 @@ os.mark('page');
 
 const root = document.getElementById('app')!;
 bootConsole(os, root)
+  .then(() => profileGate(os, root))
   .then(() => mountStandalone(os, agentApp, 'Agent', root, { embedsApps: true }))
   .then(
   () => os.mark('ready'),

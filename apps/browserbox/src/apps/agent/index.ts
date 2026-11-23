@@ -124,6 +124,7 @@ const app: AppModule = {
       newChat: () => void newSession(),
       openChat: (id) => void openSession(id),
       settings: () => settings.open(),
+      profileSettings: () => settings.open('profile'),
       processes: () => route('taskmgr'),
       openDesktop: embedded ? openTab : openDesktop,
       embedded,

@@ -9,11 +9,24 @@ import { FsError, type FsBackend, type Stat } from './types';
 export class HandleFs implements FsBackend {
   #dirs = new Map<string, FileSystemDirectoryHandle>();
 
+  #hidden: Set<string>;
+
+  /** `hidden`: top-level folders this filesystem does not show or let anyone reach. */
   constructor(
     root: FileSystemDirectoryHandle,
     readonly label: string,
+    hidden: string[] = [],
   ) {
     this.#dirs.set('/', root);
+    this.#hidden = new Set(hidden);
+  }
+
+  #isHidden(path: string): boolean {
+    return this.#hidden.size > 0 && this.#hidden.has(path.split('/')[1] ?? '');
+  }
+
+  #guard(path: string): void {
+    if (this.#isHidden(path)) throw new FsError('ENOENT', path);
   }
 
   async #dir(path: string, create = false): Promise<FileSystemDirectoryHandle> {
@@ -39,6 +52,7 @@ export class HandleFs implements FsBackend {
   }
 
   async readFile(path: string): Promise<Uint8Array> {
+    this.#guard(path);
     try {
       const dir = await this.#dir(dirname(path));
       const fh = await dir.getFileHandle(basename(path));
@@ -59,6 +73,7 @@ export class HandleFs implements FsBackend {
   }
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {
+    if (this.#isHidden(path)) throw new FsError('EACCES', path);
     try {
       const dir = await this.#dir(dirname(path));
       const fh = await dir.getFileHandle(basename(path), { create: true });
@@ -71,11 +86,13 @@ export class HandleFs implements FsBackend {
   }
 
   async readdir(path: string): Promise<Stat[]> {
+    this.#guard(path);
     const dir = await this.#dir(path);
     const prefix = path === '/' ? '/' : path + '/';
     const jobs: Promise<Stat>[] = [];
     for await (const [name, handle] of dir.entries()) {
       const p = prefix + name;
+      if (path === '/' && this.#hidden.has(name)) continue;
       if (handle.kind === 'directory') jobs.push(Promise.resolve({ path: p, name, kind: 'dir', size: 0, mtime: 0 }));
       else
         jobs.push(
@@ -90,6 +107,7 @@ export class HandleFs implements FsBackend {
 
   async stat(path: string): Promise<Stat | null> {
     if (path === '/') return { path, name: '', kind: 'dir', size: 0, mtime: 0 };
+    if (this.#isHidden(path)) return null;
     let dir: FileSystemDirectoryHandle;
     try {
       dir = await this.#dir(dirname(path));
@@ -111,11 +129,12 @@ export class HandleFs implements FsBackend {
   }
 
   async mkdir(path: string): Promise<void> {
+    if (this.#isHidden(path)) throw new FsError('EACCES', path);
     await this.#dir(path, true);
   }
 
   async remove(path: string, recursive: boolean): Promise<void> {
-    if (path === '/') throw new FsError('EACCES', path);
+    if (path === '/' || this.#isHidden(path)) throw new FsError('EACCES', path);
     try {
       const dir = await this.#dir(dirname(path));
       await dir.removeEntry(basename(path), { recursive });

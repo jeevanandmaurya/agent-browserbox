@@ -827,6 +827,53 @@ if (errors.length) {
   failed++;
   console.log('page errors:\n  ' + errors.join('\n  '));
 }
+await check('profiles: a second profile is separate; a password locks keys until sign-in', async () => {
+  // A context of its own: switching profiles reloads the page.
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  const p = await ctx.newPage();
+  const setup = async () => {
+    for (const a of ['', '', '']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+  };
+  try {
+    await p.goto(base + 'agent/');
+    await setup();
+    await p.evaluate(() => bbx.secrets.set('test.key', 'secret-1'));
+    await p.evaluate(() => bbx.fs.writeFile('/home/user/first.txt', 'first'));
+    await p.evaluate(() => bbx.openApp('settings', { section: 'profile' }));
+    await p.getByLabel('New password', { exact: true }).fill('pass1234');
+    await p.getByLabel('Repeat the new password').fill('pass1234');
+    await p.getByRole('button', { name: 'Set password' }).click();
+    await p.getByRole('button', { name: 'Sign out' }).waitFor();
+    await p.getByLabel('Name of the new profile').fill('Second');
+    await Promise.all([p.waitForEvent('load'), p.getByRole('button', { name: 'New profile' }).click()]);
+    await setup();
+    const separate = await p.evaluate(async () => !(await bbx.secrets.has('test.key')) && !(await bbx.fs.exists('/home/user/first.txt')));
+    if (!separate) throw new Error('the new profile sees the first one’s data');
+    await p.locator('.sb-profile').click();
+    await p.locator('.menu .pop-item', { hasText: 'Switch profile' }).click();
+    await Promise.all([p.waitForEvent('load'), p.locator('.pf-modal .pf-item').first().click()]);
+    await p.waitForSelector('.ag-input', { timeout: 60000 });
+    await p.locator('.sb-profile').click();
+    await Promise.all([p.waitForEvent('load'), p.locator('.menu .pop-item', { hasText: 'Sign out' }).click()]);
+    await p.waitForSelector('.pf-signin', { timeout: 60000 });
+    await p.getByLabel('Password').fill('wrong');
+    await p.getByRole('button', { name: 'Sign in' }).click();
+    await p.locator('.st-error', { hasText: 'not right' }).waitFor();
+    await p.getByLabel('Password').fill('pass1234');
+    await p.getByRole('button', { name: 'Sign in' }).click();
+    await p.waitForSelector('.ag-input', { timeout: 60000 });
+    if (!(await p.evaluate(() => bbx.secrets.has('test.key')))) throw new Error('the key is gone after signing in');
+    return 'second profile separate; sign-out locked the keys, a wrong password was refused, the keys came back';
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();
