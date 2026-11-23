@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { AgentConfig } from '../config.js';
+import { hasServerWebTools, type AgentConfig } from '../config.js';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types.js';
 
 type StreamParams = Parameters<Anthropic['beta']['messages']['stream']>[0];
@@ -52,8 +52,9 @@ function explain(err: unknown): never {
  * never leaves this device except in requests to api.anthropic.com.
  */
 export function createAnthropicProvider(cfg: AgentConfig, apiKey: string, relayedMcp: Array<{ name: string; url: string; token: string | null }> = []): Provider {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const model = cfg.anthropicModel;
+  const client = new Anthropic({ apiKey, baseURL: cfg.apiBaseUrl.replace(/\/v1\/*$/, ''), dangerouslyAllowBrowser: true });
+  const model = cfg.apiModel;
+  if (!model) throw new ProviderError('No model selected for the API. Pick one in Settings → Model.');
   const betas: string[] = [];
   const fallback = FALLBACK_MODELS.has(model);
   if (fallback) betas.push('server-side-fallback-2026-07-01');
@@ -73,7 +74,7 @@ export function createAnthropicProvider(cfg: AgentConfig, apiKey: string, relaye
         // agent loop validates every input against its schema before running it.
         eager_input_streaming: true,
       }));
-      if (cfg.webSearch) {
+      if (hasServerWebTools(cfg)) {
         tools.push({ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }, { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 8 });
       }
       for (const s of relayedMcp) tools.push({ type: 'mcp_toolset', mcp_server_name: s.name } as unknown as Anthropic.Beta.BetaToolUnion);
@@ -84,7 +85,7 @@ export function createAnthropicProvider(cfg: AgentConfig, apiKey: string, relaye
         messages: toParams(req.messages),
         tools,
         cache_control: { type: 'ephemeral' },
-        ...(ADAPTIVE.test(model) ? { thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: cfg.effort } } : {}),
+        ...(ADAPTIVE.test(model) ? { thinking: { type: 'adaptive', display: 'summarized' } } : {}),
         ...(betas.length ? { betas } : {}),
         ...(fallback ? { fallbacks: 'default' } : {}),
         ...(relayedMcp.length ? { mcp_servers: relayedMcp.map((s) => ({ type: 'url', url: s.url, name: s.name, ...(s.token ? { authorization_token: s.token } : {}) })) } : {}),

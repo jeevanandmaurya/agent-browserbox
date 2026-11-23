@@ -12,12 +12,14 @@ npm install @jeevanand/agent-browserbox @jeevanand/agent-browserbox-sdk
 import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
 import { Agent, AgentOs, SECRET, saveConfig } from '@jeevanand/agent-browserbox';
 
+const api = 'https://api.anthropic.com/v1'; // or https://api.openai.com/v1, https://openrouter.ai/api/v1, …
+
 const box = await BrowserBox.boot({ id: 'my-project' });
 const os = await AgentOs.create(box, {
-  secrets: { [SECRET.anthropic]: apiKey },
+  secrets: { [SECRET.api(api)]: apiKey },
   ui: { notify: (n) => toast(n.title), openApp: (id, args) => show(id, args) },
 });
-saveConfig(os, { provider: 'anthropic', anthropicModel: 'claude-opus-5-5', effort: 'medium' });
+saveConfig(os, { provider: 'api', apiBaseUrl: api, apiModel: 'claude-opus-5-5' });
 
 const agent = new Agent(os, {
   onEvent: (e) => render(e), // text, thinking, tool_start, tool_end, file_change, todos, usage, compact, done, …
@@ -33,7 +35,7 @@ await agent.send('Make a todo app in ./todo, serve it, and check the console for
   - code: `shell` (a session that keeps `cd` and variables), `run_js`, `run_python` (once `pkg install python`), `run_wasm`, `gpu_compute` (WebGPU in the page)
   - web projects: `dev_server`, `preview_logs`, `show_html`
   - shipping: `github` (clone, push, pull requests) and `deploy` (Netlify, Vercel, GitHub Pages)
-  - the web: `http_fetch`, plus Claude's web search and fetch
+  - the web: `http_fetch`, plus web search and fetch on Anthropic's API
   - people: `ask_user`, `notify`, `open_app`, clipboard, `speak`
   - the box: `system_info`, `list_processes`, `kill_process`
   - work: `todo_write`, `use_skill`, `spawn_agent` (sub-agents)
@@ -53,17 +55,18 @@ await agent.send('Make a todo app in ./todo, serve it, and check the console for
   without one, everything inside the box is allowed.
 - **Sessions**: `AgentManager` keeps several conversations, saves them in the
   box (`/home/agent/.sessions`) and resumes them; `listSessions(os)` lists them.
-- **Models**: Claude (official Anthropic SDK: adaptive thinking, prompt
-  caching, server-side fallback), any OpenAI-compatible server (Ollama, LM
-  Studio, OpenRouter, …), or a model running in the tab on WebGPU (install the
-  optional `@mlc-ai/web-llm`). Or pass your own: `AgentOs.create(box, { provider })`.
+- **Models**, from three sources (`provider`): `api`, a hosted model with an
+  API key (Anthropic's API through the official SDK, or any OpenAI-compatible
+  API: OpenAI, OpenRouter, Groq, …); `local`, a model server such as Ollama or
+  LM Studio; `webgpu`, a model running in the tab (install the optional
+  `@mlc-ai/web-llm`). Or pass your own: `AgentOs.create(box, { provider })`.
 
 ## `AgentOs.create(box, options)`
 
 | Option | |
 |---|---|
 | `settings`, `onSettingsChange` | The agent's settings: model config (`saveConfig` / `loadConfig`), permission mode and grants, MCP connectors, … Pass stored values in; store what `onSettingsChange` reports. In memory by default. |
-| `secrets` | API keys and tokens by name (`SECRET.anthropic`, `SECRET.openai`, GitHub/Netlify/Vercel tokens, MCP tokens): a map or your own store. |
+| `secrets` | API keys and tokens by name (`SECRET.api(baseUrl)` per API, `SECRET.local`, GitHub/Netlify/Vercel tokens, MCP tokens): a map or your own store. |
 | `prompter` | `(request) => 'once' \| 'always' \| 'deny'` for gated actions. |
 | `ui` | What only your app can do: `notify`, `openApp` with the `apps` it can open, `clipboardRead`/`clipboardWrite`, `speak`. Tools that need one are offered or fail clearly without it. |
 | `provider` | A model of your own instead of the configured one. |

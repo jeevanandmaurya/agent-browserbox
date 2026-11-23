@@ -5,6 +5,13 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## Unreleased
+
+- **Settings → Model** has three choices: **API** (Anthropic, OpenAI,
+  OpenRouter, Groq and others, each with its own key), **Local server** and
+  **In this browser**. The Claude-only settings (model list, effort, web
+  search switch) are gone; your model and key carry over.
+
 ## 0.2.0
 
 The app now runs on the released packages instead of its own copy of the

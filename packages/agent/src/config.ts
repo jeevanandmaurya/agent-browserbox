@@ -1,33 +1,29 @@
 import type { Kernel, WithFiles, WithSettings } from './host/os.js';
 
 /**
- * anthropic: Claude via Anthropic's API. local: a model server on your own
- * machine or network (Ollama, LM Studio…). openai: a hosted API that speaks
- * the OpenAI protocol (OpenAI, OpenRouter, Groq…). webllm: a model in this tab.
+ * Where the agent's model runs. api: a hosted model with an API key (Anthropic,
+ * OpenAI, OpenRouter, Groq…). local: a model server on your own machine or
+ * network (Ollama, LM Studio…). webgpu: a model in this tab.
  */
-export type ProviderId = 'anthropic' | 'local' | 'openai' | 'webllm';
-export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type ProviderId = 'api' | 'local' | 'webgpu';
+/** The wire protocol of an API: Anthropic's own for api.anthropic.com, OpenAI-compatible for everything else. */
+export type Protocol = 'anthropic' | 'openai';
 
 export interface AgentConfig {
   provider: ProviderId;
-  /** Claude model id (Anthropic API). */
-  anthropicModel: string;
-  effort: Effort;
+  /** A hosted API: base URL (ending in /v1) and model id. */
+  apiBaseUrl: string;
+  apiModel: string;
   /** A model server on your machine or network. */
   localBaseUrl: string;
   localModel: string;
-  /** A hosted OpenAI-compatible API. */
-  openaiBaseUrl: string;
-  openaiModel: string;
   /** MLC model id for the in-browser WebGPU runtime. */
-  webllmModel: string;
+  webgpuModel: string;
   /** Upper bound on model↔tool round trips per user message. */
   maxSteps: number;
   /** Extra instructions appended to the system prompt. */
   instructions: string;
-  /** Let Claude use Anthropic's server-side web search and fetch tools. */
-  webSearch: boolean;
-  /** Context window of a local or OpenAI-compatible model, in tokens (servers do not report it). */
+  /** Context window of models that do not report it, in tokens. */
   contextWindow: number;
   /** Summarise the conversation automatically when the context is nearly full. */
   autoCompact: boolean;
@@ -39,28 +35,18 @@ export interface AgentConfig {
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
-  provider: 'anthropic',
-  anthropicModel: 'claude-opus-5-5',
-  effort: 'medium',
+  provider: 'api',
+  apiBaseUrl: 'https://api.anthropic.com/v1',
+  apiModel: 'claude-opus-5-5',
   localBaseUrl: 'http://localhost:11434/v1',
   localModel: '',
-  openaiBaseUrl: 'https://api.openai.com/v1',
-  openaiModel: '',
-  webllmModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
+  webgpuModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
   maxSteps: 50,
   instructions: '',
-  webSearch: true,
   contextWindow: 32768,
   autoCompact: true,
   corsRelay: '',
 };
-
-export const ANTHROPIC_MODELS = [
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 — default executor' },
-  { id: 'claude-fable-5-2', label: 'Claude Fable 5.2 — most capable' },
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — fast, balanced' },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 — fastest' },
-] as const;
 
 /** Model servers you run yourself; they speak the OpenAI chat-completions protocol. */
 export const LOCAL_PRESETS = [
@@ -72,6 +58,7 @@ export const LOCAL_PRESETS = [
 
 /** Hosted APIs that speak the OpenAI protocol. They need an API key and must allow browser (CORS) requests. */
 export const API_PRESETS = [
+  { label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', hint: 'Claude models. Keys at console.anthropic.com. Includes web search and fetch.', model: 'claude-opus-5-5' },
   { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', hint: 'Keys at platform.openai.com.' },
   { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', hint: 'One key for many models; allows browser requests.' },
   { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', hint: 'Fast open models.' },
@@ -80,8 +67,47 @@ export const API_PRESETS = [
   { label: 'Ollama Cloud', baseUrl: 'https://ollama.com/v1', hint: 'ollama.com does not accept requests from web pages, so it needs a relay (below). Or use Local server instead: a local Ollama signed in to your account (ollama signin) runs the -cloud models for you.' },
 ] as const;
 
-/** Names under which API keys are kept in the encrypted secret store (`os.secrets`). */
-export const SECRET = { anthropic: 'anthropic.apiKey', openai: 'openai.apiKey', local: 'local.apiKey' } as const;
+/** Names under which API keys are kept in the encrypted secret store (`os.secrets`): one per API host. */
+export const SECRET = {
+  local: 'local.apiKey',
+  api: (baseUrl: string): string => `api.key:${hostOf(baseUrl)}`,
+} as const;
+
+/** Keys stored before keys were kept per host. */
+const LEGACY_KEY = { anthropic: 'anthropic.apiKey', openai: 'openai.apiKey' } as const;
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url.trim();
+  }
+}
+
+/** Which protocol an API speaks, from its address. */
+export function protocolOf(baseUrl: string): Protocol {
+  return /(^|\.)anthropic\.com$/.test(new URL(baseUrl, 'https://x').hostname) ? 'anthropic' : 'openai';
+}
+
+interface SecretStore {
+  get(name: string): Promise<string | null>;
+  set(name: string, value: string): Promise<void>;
+}
+
+/** The API key for an API, moving a key saved under an older name across. */
+export async function apiKeyFor(secrets: SecretStore, baseUrl: string): Promise<string | null> {
+  const name = SECRET.api(baseUrl);
+  const key = await secrets.get(name);
+  if (key) return key;
+  const legacy = await secrets.get(protocolOf(baseUrl) === 'anthropic' ? LEGACY_KEY.anthropic : LEGACY_KEY.openai);
+  if (legacy) await secrets.set(name, legacy);
+  return legacy;
+}
+
+/** Whether the model can use the API's own server-side web search and fetch. */
+export function hasServerWebTools(cfg: AgentConfig): boolean {
+  return cfg.provider === 'api' && protocolOf(cfg.apiBaseUrl) === 'anthropic';
+}
 
 const KEY = 'agent.config';
 
@@ -95,12 +121,31 @@ const isLocalUrl = (url: string) => {
 };
 
 export function loadConfig(os: WithSettings): AgentConfig {
-  const stored = os.settings.get<Partial<AgentConfig>>(KEY, {});
-  // Older configs kept local servers under the "openai" provider; move them across.
-  if (stored.provider === 'openai' && stored.localBaseUrl === undefined && stored.openaiBaseUrl && isLocalUrl(stored.openaiBaseUrl)) {
-    return { ...DEFAULT_CONFIG, ...stored, provider: 'local', localBaseUrl: stored.openaiBaseUrl, localModel: stored.openaiModel ?? '', openaiBaseUrl: DEFAULT_CONFIG.openaiBaseUrl, openaiModel: '' };
+  return migrate(os.settings.get<Record<string, unknown>>(KEY, {}));
+}
+
+/** Reads a stored config, including the shapes older versions saved. */
+export function migrate(stored: Record<string, unknown>): AgentConfig {
+  const str = (k: string) => (typeof stored[k] === 'string' ? (stored[k] as string) : undefined);
+  const cfg: AgentConfig = { ...DEFAULT_CONFIG };
+  for (const k of Object.keys(DEFAULT_CONFIG) as Array<keyof AgentConfig>) if (stored[k] !== undefined && typeof stored[k] === typeof DEFAULT_CONFIG[k]) (cfg as unknown as Record<string, unknown>)[k] = stored[k];
+  // Before 0.3: providers anthropic | openai | local | webllm, each with its own fields.
+  const old = str('provider');
+  if (str('webllmModel') && stored.webgpuModel === undefined) cfg.webgpuModel = str('webllmModel')!;
+  if (old === 'webllm') cfg.provider = 'webgpu';
+  if (old === 'anthropic' || (old !== 'openai' && stored.apiBaseUrl === undefined && str('anthropicModel'))) {
+    if (old === 'anthropic') cfg.provider = 'api';
+    cfg.apiBaseUrl = 'https://api.anthropic.com/v1';
+    cfg.apiModel = str('anthropicModel') ?? DEFAULT_CONFIG.apiModel;
   }
-  return { ...DEFAULT_CONFIG, ...stored };
+  if (old === 'openai') {
+    const url = str('openaiBaseUrl') ?? 'https://api.openai.com/v1';
+    // Even older configs kept local servers under "openai".
+    if (stored.localBaseUrl === undefined && isLocalUrl(url)) Object.assign(cfg, { provider: 'local', localBaseUrl: url, localModel: str('openaiModel') ?? '' });
+    else Object.assign(cfg, { provider: 'api', apiBaseUrl: url, apiModel: str('openaiModel') ?? '' });
+  }
+  if (!['api', 'local', 'webgpu'].includes(cfg.provider)) cfg.provider = DEFAULT_CONFIG.provider;
+  return cfg;
 }
 
 export function saveConfig(os: WithSettings, patch: Partial<AgentConfig>): AgentConfig {
@@ -111,10 +156,9 @@ export function saveConfig(os: WithSettings, patch: Partial<AgentConfig>): Agent
 
 /** Human label for the active model, e.g. for window titles. */
 export function describeModel(cfg: AgentConfig): string {
-  if (cfg.provider === 'anthropic') return cfg.anthropicModel;
-  if (cfg.provider === 'local') return `${cfg.localModel || 'no model'} @ ${cfg.localBaseUrl.replace(/^https?:\/\//, '')}`;
-  if (cfg.provider === 'openai') return `${cfg.openaiModel || 'no model'} @ ${cfg.openaiBaseUrl.replace(/^https?:\/\//, '')}`;
-  return `${cfg.webllmModel} (WebGPU)`;
+  if (cfg.provider === 'local') return `${cfg.localModel || 'no model'} @ ${hostOf(cfg.localBaseUrl)}`;
+  if (cfg.provider === 'api') return `${cfg.apiModel || 'no model'} @ ${hostOf(cfg.apiBaseUrl)}`;
+  return `${cfg.webgpuModel} (WebGPU)`;
 }
 
 /** The URL to request, through the relay when one is set. */
@@ -123,7 +167,7 @@ export function relayed(url: string, relay = ''): string {
 }
 
 /** Why a browser could not reach a server, and what to do about it. */
-export function unreachable(url: string, kind: 'local' | 'openai', relay = ''): string {
+export function unreachable(url: string, kind: 'local' | 'api', relay = ''): string {
   let host = url;
   try {
     host = new URL(url).host;
@@ -135,18 +179,24 @@ export function unreachable(url: string, kind: 'local' | 'openai', relay = ''): 
   const ollama = /(^|\.)ollama\.com$/.test(host)
     ? ' For Ollama Cloud you can instead run Ollama on your computer, sign in (ollama signin) and use Local server: it runs the -cloud models for you.'
     : '';
-  return `${host} did not accept a request from this page. Browsers only let a web page call servers that allow it (CORS), and ${host} does not (or the address is wrong, or you are offline). Set a relay in Settings → Model → OpenAI-compatible API (relay/worker.js in the BrowserBox repository is one you can deploy for free), or use a provider that allows browser requests, such as OpenRouter.${ollama}`;
+  return `${host} did not accept a request from this page. Browsers only let a web page call servers that allow it (CORS), and ${host} does not (or the address is wrong, or you are offline). Set a relay in Settings → Model → API (relay/worker.js in the BrowserBox repository is one you can deploy for free), or use a provider that allows browser requests, such as OpenRouter.${ollama}`;
 }
 
-/** Lists model ids from an OpenAI-compatible server. Throws with a readable message when unreachable. */
-export async function probeOpenAi(baseUrl: string, apiKey?: string | null, signal?: AbortSignal, opts: { kind?: 'local' | 'openai'; relay?: string } = {}): Promise<string[]> {
+/** Lists model ids from an API or model server. Throws with a readable message when unreachable. */
+export async function probeModels(baseUrl: string, apiKey?: string | null, signal?: AbortSignal, opts: { kind?: 'local' | 'api'; relay?: string } = {}): Promise<string[]> {
+  const anthropic = opts.kind === 'api' && protocolOf(baseUrl) === 'anthropic';
+  const headers: Record<string, string> = !apiKey ? {} : anthropic ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } : { authorization: `Bearer ${apiKey}` };
   let res: Response;
   try {
-    res = await fetch(relayed(`${baseUrl.replace(/\/+$/, '')}/models`, opts.relay), { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}, signal });
+    res = await fetch(relayed(`${baseUrl.replace(/\/+$/, '')}/models${anthropic ? '?limit=100' : ''}`, anthropic ? '' : opts.relay), { headers, signal });
   } catch {
     throw new Error(unreachable(baseUrl, opts.kind ?? 'local', opts.relay));
   }
+  if (res.status === 401 || res.status === 403) throw new Error(`${hostOf(baseUrl)} rejected the API key (${res.status}).`);
   if (!res.ok) throw new Error(`${baseUrl} answered ${res.status} ${res.statusText}`);
   const body = (await res.json()) as { data?: Array<{ id: string }> };
   return (body.data ?? []).map((m) => m.id).sort();
 }
+
+/** @deprecated Use probeModels. */
+export const probeOpenAi = probeModels;

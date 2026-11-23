@@ -2,9 +2,13 @@
 
 Choose the model in **Settings → Model**, or from the model name under the message box.
 
-## Claude
+There are three places a model can run.
 
-The default. Add an Anthropic API key (from console.anthropic.com). The key is stored encrypted in this browser and sent only to Anthropic. Claude can also search and read the web for the agent (server-side, so it is not limited by the browser).
+## API
+
+A hosted model with your API key. Pick a service (**Anthropic**, **OpenAI**, **OpenRouter**, **Groq**, **Together**, **Mistral**, **Ollama Cloud**) or type any address that speaks the OpenAI protocol, add the key, then **Test connection** to list its models. Each service keeps its own key, stored encrypted in this browser and sent only to that service.
+
+On Anthropic's API the agent can also search and read the web (server-side, so it is not limited by the browser). Some services (ollama.com among them) do not accept requests from web pages; see [Troubleshooting](troubleshooting) and the **Relay** setting.
 
 ## Local server
 
@@ -16,10 +20,6 @@ A model server on your machine or network: **Ollama**, **LM Studio**, **llama.cp
 - vLLM: `--allowed-origins '["*"]'`
 
 Ollama's cloud models work this way too: run `ollama signin`, then use a model whose name ends in `-cloud`.
-
-## OpenAI-compatible API
-
-Hosted services that speak the OpenAI protocol: OpenAI, OpenRouter, Groq, Together, Mistral. They need an API key. Some services (ollama.com among them) do not accept requests from web pages; see [Troubleshooting](troubleshooting) and the **Relay** setting.
 
 ## In this browser
 

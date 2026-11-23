@@ -34,7 +34,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
     void os.secrets.has(mcpTokenName(s.name)).then((has) => (tokenState.textContent = has ? 'token saved' : 'no token'));
     async function test(): Promise<void> {
       result.hidden = false;
-      result.replaceChildren(h('span', { class: 'muted' }, s.via === 'anthropic' ? 'Connectors used through Claude are reached by Anthropic’s servers, so they can only be tested by sending a message.' : 'Connecting…'));
+      result.replaceChildren(h('span', { class: 'muted' }, s.via === 'anthropic' ? 'Connectors used through Anthropic are reached by Anthropic’s servers, so they can only be tested by sending a message.' : 'Connecting…'));
       if (s.via === 'anthropic') return;
       try {
         const tools = await agentsOf(os).probeMcp(s.name);
@@ -53,7 +53,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
       h(
         'div',
         { class: 'ex-text' },
-        h('span', { class: 'ex-name' }, s.name, ' ', h('span', { class: 'badge' }, s.via === 'anthropic' ? 'via Claude' : 'direct'), ' ', tokenState),
+        h('span', { class: 'ex-name' }, s.name, ' ', h('span', { class: 'badge' }, s.via === 'anthropic' ? 'via Anthropic' : 'direct'), ' ', tokenState),
         h('span', { class: 'muted ex-desc mono' }, s.url),
         result,
       ),
@@ -84,7 +84,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
   const nameIn = h('input', { class: 'input', id: id('name'), placeholder: 'e.g. github', autocomplete: 'off' });
   const urlIn = h('input', { class: 'input mono', id: id('url'), type: 'url', placeholder: 'https://example.com/mcp', autocomplete: 'off' });
   const tokenIn = h('input', { class: 'input mono', id: id('token'), type: 'password', placeholder: 'Optional bearer token', autocomplete: 'off' });
-  const viaSel = h('select', { class: 'select', id: id('via') }, h('option', { value: 'direct' }, 'Direct from this browser'), h('option', { value: 'anthropic' }, 'Through Claude (Claude models only)'));
+  const viaSel = h('select', { class: 'select', id: id('via') }, h('option', { value: 'direct' }, 'Direct from this browser'), h('option', { value: 'anthropic' }, 'Through Anthropic (Anthropic models only)'));
   const formError = h('p', { class: 'st-error', hidden: true });
   const form = h(
     'form',
@@ -127,7 +127,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
     'div',
     { class: 'st-section' },
     heading('Connectors', 'Remote MCP servers (Streamable HTTP).'),
-    h('p', { class: 'st-note muted' }, 'Direct: called from this browser (the server must allow CORS). Through Claude: Anthropic’s API connects instead.'),
+    h('p', { class: 'st-note muted' }, 'Direct: called from this browser (the server must allow CORS). Through Anthropic: Anthropic’s API connects instead (Anthropic models only).'),
     list,
     form,
   );

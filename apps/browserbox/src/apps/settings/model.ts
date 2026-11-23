@@ -1,48 +1,21 @@
 import { agentsOf } from '@/app/agents';
-import {
-  ANTHROPIC_MODELS,
-  DEFAULT_CONFIG,
-  API_PRESETS,
-  LOCAL_PRESETS,
-  SECRET,
-  loadConfig,
-  saveConfig,
-  type AgentConfig,
-  type Effort,
-  type ProviderId,
-} from '@jeevanand/agent-browserbox/ui';
+import { DEFAULT_CONFIG, API_PRESETS, LOCAL_PRESETS, SECRET, loadConfig, protocolOf, saveConfig, type AgentConfig, type ProviderId } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { keyField } from './keyfield';
 import { webllmManager } from './webllm';
 import { errText, heading, nextId } from './nav';
 
-const CUSTOM = '__custom__';
-const EFFORTS: Array<{ id: Effort; label: string }> = [
-  { id: 'low', label: 'Low — quickest, fewest tokens' },
-  { id: 'medium', label: 'Medium — default, balanced' },
-  { id: 'high', label: 'High — deeper reasoning' },
-  { id: 'xhigh', label: 'Extra high' },
-  { id: 'max', label: 'Max — most thorough, slowest' },
-];
-
 const PROVIDERS: Array<{ id: ProviderId; title: string; text: string }> = [
-  { id: 'anthropic', title: 'Claude', text: 'Anthropic API key. Web search included.' },
+  { id: 'api', title: 'API', text: 'A hosted model with an API key: Anthropic, OpenAI, OpenRouter, Groq and others.' },
   { id: 'local', title: 'Local server', text: 'Ollama, LM Studio, llama.cpp or vLLM on your machine or network.' },
-  { id: 'openai', title: 'OpenAI-compatible API', text: 'OpenAI, OpenRouter, Groq and similar, with an API key.' },
-  { id: 'webllm', title: 'In this browser', text: 'A small model on WebGPU. Offline after the first download.' },
+  { id: 'webgpu', title: 'In this browser', text: 'A small model on WebGPU. Offline after the first download.' },
 ];
 
 /** A labelled control. */
 function field(label: string, control: HTMLElement, hint?: HTMLElement | string): HTMLElement {
   const id = control.id || (control.id = nextId('f'));
   return h('div', { class: 'field' }, h('label', { for: id }, label), control, hint ? (typeof hint === 'string' ? h('p', { class: 'muted st-note' }, hint) : hint) : null);
-}
-
-function select(options: Array<{ id: string; label: string }>, value: string, onchange: (v: string) => void): HTMLSelectElement {
-  const el = h('select', { class: 'select', onchange: () => onchange(el.value) }, options.map((o) => h('option', { value: o.id }, o.label)));
-  el.value = value;
-  return el;
 }
 
 export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
@@ -74,61 +47,20 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     for (const [pid, el] of panels) el.hidden = pid !== id;
   }
 
-  // ---- Anthropic
-  const known = ANTHROPIC_MODELS.some((m) => m.id === cfg.anthropicModel);
-  const customModel = h('input', { class: 'input mono', placeholder: 'e.g. claude-opus-5-5', value: known ? '' : cfg.anthropicModel, autocomplete: 'off' });
-  const customField = field('Custom model id', customModel);
-  customField.hidden = known;
-  const saveCustom = () => {
-    const v = customModel.value.trim();
-    if (v && v !== cfg.anthropicModel) save({ anthropicModel: v });
-  };
-  customModel.addEventListener('input', debounce(saveCustom, 500));
-  customModel.addEventListener('change', saveCustom);
-  const modelSelect = select([...ANTHROPIC_MODELS, { id: CUSTOM, label: 'Custom model id…' }], known ? cfg.anthropicModel : CUSTOM, (v) => {
-    customField.hidden = v !== CUSTOM;
-    if (v === CUSTOM) {
-      customModel.focus();
-      saveCustom();
-    } else save({ anthropicModel: v });
-  });
-  panels.set(
-    'anthropic',
-    h(
-      'div',
-      { class: 'st-panel' },
-      keyField(ctx, {
-        secret: SECRET.anthropic,
-        label: 'Anthropic API key',
-        placeholder: 'sk-ant-…',
-        note: 'The key is encrypted at rest in this browser and sent only to api.anthropic.com. Create one at console.anthropic.com.',
-        onSaved: saved,
-      }),
-      field('Model', modelSelect),
-      customField,
-      field('Effort', select(EFFORTS, cfg.effort, (v) => save({ effort: v as Effort })), 'How hard Claude thinks before acting. Higher is more thorough but slower and uses more tokens.'),
-      h(
-        'label',
-        { class: 'st-check' },
-        h('input', { type: 'checkbox', checked: cfg.webSearch, onchange: (e: Event) => save({ webSearch: (e.target as HTMLInputElement).checked }) }),
-        'Allow web search and fetch (runs on Anthropic’s servers)',
-      ),
-    ),
-  );
-
   // ---- Local server and hosted API: same protocol, different expectations
+  panels.set('api', serverPanel('api'));
   panels.set('local', serverPanel('local'));
-  panels.set('openai', serverPanel('openai'));
 
-  function serverPanel(kind: 'local' | 'openai'): HTMLElement {
+  function serverPanel(kind: 'local' | 'api'): HTMLElement {
     const local = kind === 'local';
     const presets = local ? LOCAL_PRESETS : API_PRESETS;
-    const get = () => (local ? { url: cfg.localBaseUrl, model: cfg.localModel } : { url: cfg.openaiBaseUrl, model: cfg.openaiModel });
+    const get = () => (local ? { url: cfg.localBaseUrl, model: cfg.localModel } : { url: cfg.apiBaseUrl, model: cfg.apiModel });
     const put = (p: { url?: string; model?: string }) =>
-      save(local ? { ...(p.url !== undefined && { localBaseUrl: p.url }), ...(p.model !== undefined && { localModel: p.model }) } : { ...(p.url !== undefined && { openaiBaseUrl: p.url }), ...(p.model !== undefined && { openaiModel: p.model }) });
+      save(local ? { ...(p.url !== undefined && { localBaseUrl: p.url }), ...(p.model !== undefined && { localModel: p.model }) } : { ...(p.url !== undefined && { apiBaseUrl: p.url }), ...(p.model !== undefined && { apiModel: p.model }) });
 
     const baseUrl = h('input', { class: 'input mono', type: 'url', value: get().url, placeholder: presets[0].baseUrl, autocomplete: 'off' });
     const hint = h('p', { class: 'muted st-note' });
+    let lastPreset: (typeof presets)[number] | undefined = presets.find((p) => p.baseUrl === get().url);
     const mixed = h('p', { class: 'st-warn st-note', hidden: true }, 'This page is served over https, so the browser blocks plain http:// addresses other than localhost.');
     const presetBtns = presets.map((p) =>
       h(
@@ -139,6 +71,12 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
           onclick: () => {
             baseUrl.value = p.baseUrl;
             saveBase();
+            // A preset with a known default model fills it in when the model is empty or belongs to another service.
+            if ('model' in p && (!model.value.trim() || (lastPreset && lastPreset !== p))) {
+              model.value = p.model;
+              saveModel();
+            }
+            lastPreset = p;
           },
         },
         p.label,
@@ -147,7 +85,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     const syncHint = () => {
       const url = baseUrl.value.trim().replace(/\/+$/, '');
       const preset = presets.find((p) => p.baseUrl === url);
-      hint.textContent = preset ? `${preset.label}: ${preset.hint}` : local ? 'Any server with /v1/models and /v1/chat/completions.' : 'Any hosted API with /v1/models and /v1/chat/completions that allows browser requests.';
+      hint.textContent = preset ? `${preset.label}: ${preset.hint}` : local ? 'Any server with /v1/models and /v1/chat/completions.' : 'Anthropic’s API, or any hosted API with /v1/models and /v1/chat/completions that allows browser requests.';
       presetBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(presets[i] === preset)));
       let host = '';
       try {
@@ -160,7 +98,10 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     const saveBase = () => {
       const v = baseUrl.value.trim();
       syncHint();
-      if (v && v !== get().url) put({ url: v });
+      if (v && v !== get().url) {
+        put({ url: v });
+        if (!local) keySlot.replaceChildren(apiKeyField());
+      }
     };
     baseUrl.addEventListener('input', debounce(saveBase, 500));
     baseUrl.addEventListener('input', syncHint);
@@ -169,7 +110,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
 
     const listId = nextId('models');
     const datalist = h('datalist', { id: listId });
-    const model = h('input', { class: 'input mono', value: get().model, placeholder: local ? 'e.g. qwen2.5-coder:7b' : 'e.g. gpt-5.1-mini', autocomplete: 'off' });
+    const model = h('input', { class: 'input mono', value: get().model, placeholder: local ? 'e.g. qwen2.5-coder:7b' : 'e.g. claude-opus-5-5 or gpt-5.1-mini', autocomplete: 'off' });
     model.setAttribute('list', listId); // `list` is a read-only property, so h() cannot set it
     const saveModel = () => {
       const v = model.value.trim();
@@ -185,6 +126,16 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
       saveModel();
     });
     const probeStatus = h('p', { class: 'st-note', 'aria-live': 'polite' });
+    // API keys are kept per service, so the key field follows the address.
+    const apiKeyField = () =>
+      keyField(ctx, {
+        secret: local ? SECRET.local : SECRET.api(get().url),
+        label: local ? 'API key (optional)' : `API key for ${get().url.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`,
+        placeholder: local ? 'Only if your server requires one' : protocolOf(get().url) === 'anthropic' ? 'sk-ant-…' : 'sk-…',
+        note: 'Stored encrypted; sent only to the address above.',
+        onSaved: saved,
+      });
+    const keySlot = h('div', null, apiKeyField());
     const testBtn = h('button', { class: 'btn', type: 'button', onclick: () => void test() }, 'Test connection');
 
     async function test(): Promise<void> {
@@ -217,13 +168,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
       { class: 'st-panel' },
       h('div', { class: 'field' }, h('span', null, local ? 'Server' : 'Service'), h('div', { class: 'row st-wrap', role: 'group', 'aria-label': 'Presets' }, presetBtns)),
       field('Base URL', baseUrl, h('div', null, hint, mixed)),
-      keyField(ctx, {
-        secret: local ? SECRET.local : SECRET.openai,
-        label: local ? 'API key (optional)' : 'API key',
-        placeholder: local ? 'Only if your server requires one' : 'sk-…',
-        note: 'Stored encrypted; sent only to the URL above.',
-        onSaved: saved,
-      }),
+      keySlot,
       local ? null : relayField(),
       h('div', { class: 'row st-wrap' }, testBtn, found),
       probeStatus,
@@ -246,7 +191,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
   }
 
   // ---- WebLLM: download, use, delete and import in-browser models
-  panels.set('webllm', h('div', { class: 'st-panel' }, webllmManager(ctx, () => cfg, save)));
+  panels.set('webgpu', h('div', { class: 'st-panel' }, webllmManager(ctx, () => cfg, save)));
   for (const [pid, el] of panels) el.hidden = pid !== cfg.provider;
 
   // ---- Common
@@ -285,6 +230,6 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     h('h3', null, 'Context'),
     h('label', { class: 'st-check' }, autoCompact, 'Summarise the conversation automatically when the context window is 85% full'),
     h('p', { class: 'muted st-note' }, 'The summary replaces the older messages for the model; the full history stays visible in the chat. You can also compact any time with /compact or the meter in the header.'),
-    field('Context window for local and OpenAI-compatible models (tokens)', ctxWindow, 'Local servers do not report this. Use the context size you started the model with (for Ollama, num_ctx). Claude models are set automatically.'),
+    field('Context window for models that do not report it (tokens)', ctxWindow, 'Local servers and most APIs do not report this. Use the context size you started the model with (for Ollama, num_ctx). Anthropic models and in-browser models are set automatically.'),
   );
 }

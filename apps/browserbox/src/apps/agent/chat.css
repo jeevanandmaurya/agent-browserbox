@@ -102,10 +102,6 @@
 .mp-item-text { display: grid; min-width: 0; }
 .mp-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .mp-hint { color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.mp-effort { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin: 0 4px 4px; padding: 3px; background: var(--panel-2); border-radius: 9px; }
-.mp-eff { height: 28px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
-.mp-eff:hover { color: var(--text); }
-.mp-eff.on { background: var(--raised); color: var(--text); font-weight: 500; box-shadow: var(--shadow-sm) }
 
 /* Markdown (agent replies) */
 .md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
@@ -135,7 +131,6 @@
 .ag-log > .ag-msg { content-visibility: auto; contain-intrinsic-size: auto 160px; }
 @media (hover: none) { .ag-actions { opacity: 1; } }
 @media (pointer: coarse) {
-  .mp-eff { height: 38px; }
   .ag-actions .icon-btn { width: 40px; height: 40px; }
   .ag-tool summary { min-height: 46px; }
   .ag-card .btn { height: 42px; }

@@ -17,7 +17,7 @@ Ask it for something and it works the way a developer would: it writes files, ru
 - **The kernel** runs in the background (a shared worker). It owns the [file system](privacy), the processes, the shell and the agents. Closing a window does not stop it while another BrowserBox window is open.
 - **Windows** are just views onto the kernel: the agent window you are probably in now, and an optional [desktop](desktop). Both see the same files and chats.
 - **Code runs in sandboxes**: separate frames with no access to BrowserBox's storage or keys, and no network unless you allow it.
-- **Models** are your choice: Claude, a server on your machine, a hosted API, or a small model running on your GPU in this tab. See [Models](models).
+- **Models** are your choice: a hosted API (Anthropic, OpenAI, OpenRouter…), a server on your machine, or a small model running on your GPU in this tab. See [Models](models).
 
 ## Not a good fit
 

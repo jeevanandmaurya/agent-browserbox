@@ -1,5 +1,5 @@
 import { Agent } from './agent.js';
-import { DEFAULT_CONFIG, describeModel, loadConfig, probeOpenAi, saveConfig, SECRET } from './config.js';
+import { API_PRESETS, DEFAULT_CONFIG, describeModel, loadConfig, probeModels, saveConfig, SECRET } from './config.js';
 import { C } from './host/ansi.js';
 import { Shell, type AgentOs } from './host/os.js';
 import { resolve } from './host/path.js';
@@ -85,11 +85,24 @@ export const setupCommand: Command = {
         os.settings.set('user.name', name);
         out(`${C.green}✓${C.reset} Hi, ${name}\n`);
       }
-      const key = await ask(tty, `Anthropic API key ${C.dim}(hidden · Enter to skip)${C.reset}: `, true);
+      const key = await ask(tty, `API key for a hosted model ${C.dim}(Anthropic, OpenAI, OpenRouter… · hidden · Enter for a local server)${C.reset}: `, true);
       if (key) {
-        await os.secrets.set(SECRET.anthropic, key);
-        saveConfig(os, { provider: 'anthropic' });
-        out(`${C.green}✓${C.reset} Claude Opus 5.5 · key stored encrypted\n`);
+        // Known key formats name their service; anything else asks for the address.
+        const known = key.startsWith('sk-ant-') ? API_PRESETS.find((p) => p.label === 'Anthropic') : key.startsWith('sk-or-') ? API_PRESETS.find((p) => p.label === 'OpenRouter') : undefined;
+        const url = known?.baseUrl ?? ((await ask(tty, `API address ${C.dim}(Enter for ${API_PRESETS[1]!.baseUrl})${C.reset}: `)) || API_PRESETS[1]!.baseUrl);
+        await os.secrets.set(SECRET.api(url), key);
+        let model = known && 'model' in known ? known.model : '';
+        if (!model) {
+          try {
+            const models = await probeModels(url, key, undefined, { kind: 'api' });
+            if (models.length > 1) models.forEach((m, i) => out(`  ${i + 1}  ${m}\n`));
+            model = models.length > 1 ? (models[Number(await ask(tty, `model ${C.dim}[1]${C.reset}: `)) - 1] ?? models[0]!) : (models[0] ?? '');
+          } catch (err) {
+            out(`${C.yellow}${(err as Error).message}${C.reset}\n`);
+          }
+        }
+        saveConfig(os, { provider: 'api', apiBaseUrl: url, apiModel: model });
+        out(`${C.green}✓${C.reset} ${model || 'no model yet: pick one in Settings → Model'} · key stored encrypted\n`);
       } else {
         for (;;) {
           const url = await ask(tty, `Local model server ${C.dim}(e.g. ${DEFAULT_CONFIG.localBaseUrl} · Enter to skip)${C.reset}: `);
@@ -98,7 +111,7 @@ export const setupCommand: Command = {
             break;
           }
           try {
-            const models = await probeOpenAi(url, null);
+            const models = await probeModels(url, null);
             if (!models.length) throw new Error(`${url} has no models loaded`);
             let model = models[0]!;
             if (models.length > 1) {

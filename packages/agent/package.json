@@ -1,6 +1,6 @@
 {
   "name": "@jeevanand/agent-browserbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The BrowserBox agent as a library: works inside a BrowserBox with file, search, shell, code, dev-server and publishing tools, compaction, checkpoints and undo, plan mode, skills, sub-agents and MCP. Claude, OpenAI-compatible or in-browser models.",
   "type": "module",
   "main": "./dist/index.js",

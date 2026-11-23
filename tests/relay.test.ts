@@ -42,7 +42,7 @@ describe('relay URLs and errors', () => {
     expect(relayed('https://ollama.com/v1/models', '')).toBe('https://ollama.com/v1/models');
   });
   it('explains CORS failures, with Ollama-specific advice', () => {
-    expect(unreachable('https://ollama.com/v1', 'openai')).toMatch(/ollama\.com did not accept a request from this page.*relay.*ollama signin/s);
+    expect(unreachable('https://ollama.com/v1', 'api')).toMatch(/ollama\.com did not accept a request from this page.*relay.*ollama signin/s);
     expect(unreachable('http://localhost:11434/v1', 'local')).toMatch(/OLLAMA_ORIGINS/);
   });
 });

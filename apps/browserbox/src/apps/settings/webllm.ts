@@ -49,7 +49,7 @@ export function webllmManager(ctx: AppContext, cfg: () => AgentConfig, save: (pa
   }
 
   function row(m: ModelEntry): HTMLElement {
-    const inUse = cfg().webllmModel === m.id;
+    const inUse = cfg().webgpuModel === m.id;
     const have = downloaded.has(m.id);
     const job = busy.get(m.id);
     const meta = [`${(m.vramMB / 1024).toFixed(1)} GB GPU memory`, m.low ? 'fits phones' : '', m.custom ? 'imported' : '', `${m.contextWindow / 1024}k context`].filter(Boolean).join(' · ');
@@ -75,13 +75,13 @@ export function webllmManager(ctx: AppContext, cfg: () => AgentConfig, save: (pa
   }
 
   function render(): void {
-    const shown = entries.filter((m) => showAll || m.recommended || downloaded.has(m.id) || cfg().webllmModel === m.id);
+    const shown = entries.filter((m) => showAll || m.recommended || downloaded.has(m.id) || cfg().webgpuModel === m.id);
     list.replaceChildren(...shown.map(row));
     allBtn.textContent = showAll ? 'Show recommended only' : `Show all ${entries.length} models`;
   }
 
   function use(id: string): void {
-    save({ webllmModel: id, provider: 'webllm' });
+    save({ webgpuModel: id, provider: 'webgpu' });
     status.className = 'st-note st-ok';
     status.textContent = `${pretty(id)} will load on your next message.`;
     render();
@@ -117,7 +117,7 @@ export function webllmManager(ctx: AppContext, cfg: () => AgentConfig, save: (pa
 
   async function del(m: ModelEntry): Promise<void> {
     if (!(await confirmDialog(`Delete ${pretty(m.id)}?`, m.custom ? 'The imported model is removed from this browser. The folder on your computer is not touched.' : 'Its files are removed from this browser; you can download it again later.', 'Delete', true))) return;
-    if (cfg().webllmModel === m.id) unload();
+    if (cfg().webgpuModel === m.id) unload();
     await remove(os.settings, m.id);
     downloaded.delete(m.id);
     if (m.custom) entries = entries.filter((e) => e.id !== m.id);

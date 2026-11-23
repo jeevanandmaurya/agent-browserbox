@@ -12,4 +12,4 @@ BrowserBox is static files. Build with `npm run build` and serve `dist/` anywher
 
 ## The relay
 
-Some services do not accept requests from web pages. `relay/worker.js` in the repository is a small Cloudflare Worker that forwards requests only to the hosts you allow, only for your site. Set its address in Settings → Model → OpenAI-compatible API → Relay, or for git with `git config http.corsProxy`.
+Some services do not accept requests from web pages. `relay/worker.js` in the repository is a small Cloudflare Worker that forwards requests only to the hosts you allow, only for your site. Set its address in Settings → Model → API → Relay, or for git with `git config http.corsProxy`.

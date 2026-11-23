@@ -26,7 +26,7 @@ running on the user's device.
 |---|---|
 | [`@jeevanand/agent-browserbox-sdk`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
 | [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
-| [`@jeevanand/agent-browserbox`](packages/agent) | The agent: Claude or any OpenAI-compatible model, working inside a box with file, search, shell and JavaScript tools. |
+| [`@jeevanand/agent-browserbox`](packages/agent) | The agent: any model (an API, a local server or WebGPU in the tab), working inside a box with file, search, shell and JavaScript tools. |
 | `@jeevanand/browserbox` | This app. Not on npm at the moment; use the hosted app or run it from source (below). |
 
 ```ts
@@ -130,8 +130,9 @@ Every window starts with a boot console: the kernel log (`dmesg`) as the
 kernel mounts storage, loads its WebAssembly core and checks the platform.
 First boot then runs `setup`, which asks a few things, all skippable with
 Enter: your name (there is no account, so this is what greetings use), an
-Anthropic API key (read without echo, stored encrypted), or failing that the
-URL of a local model server. Everything else gets a default
+API key for a hosted model (read without echo, stored encrypted; Anthropic and
+OpenRouter keys are recognised, others ask for the address), or failing that
+the URL of a local model server. Everything else gets a default
 (ask before acting, system theme, the small packages git, sqlite and zip).
 Change any of it in Settings, or run `setup` again.
 
@@ -326,18 +327,17 @@ it, and reopening returns to the same chat.
 
 ### Models
 
-Pick one in **Settings → Model**:
+Pick one of three sources in **Settings → Model**:
 
-- **Claude** (Anthropic API, called directly from the tab with the official SDK).
-  Default `claude-opus-5-5`; adaptive thinking, streaming, prompt caching,
-  refusal fallbacks and optional server-side web search are enabled.
+- **API** — a hosted model with your API key: Anthropic, OpenAI, OpenRouter,
+  Groq, Together, Mistral, or any OpenAI-compatible address. Keys are kept per
+  service. Anthropic's address uses its own API through the official SDK
+  (adaptive thinking, prompt caching, refusal fallbacks, server-side web
+  search and fetch); everything else uses the OpenAI chat-completions protocol.
 - **Local server** — Ollama, LM Studio, llama.cpp, vLLM on your machine or
   network. The tab talks straight to `http://localhost:…`; an API key is
   optional. The server must allow the page's origin, e.g.
   `OLLAMA_ORIGINS="*" ollama serve`.
-- **OpenAI-compatible API** — hosted services such as OpenAI, OpenRouter,
-  Groq, Together or Mistral, with your API key. Kept separate from the local
-  server, so switching between them keeps both settings.
 - **In this browser** — a model running on WebGPU via WebLLM in a worker.
   Nothing leaves the device. Small models get a reduced tool set. Settings →
   Model lists the models with the GPU memory each needs: download them (with
@@ -355,7 +355,7 @@ so no page can call it directly. Two ways round it:
 - Run Ollama on your computer, sign in (`ollama signin`) and use **Local
   server**: local Ollama runs the `-cloud` models for you.
 - Deploy the relay in [`relay/worker.js`](relay/worker.js) (free on Cloudflare
-  Workers) and set its URL in Settings → Model → OpenAI-compatible API →
+  Workers) and set its URL in Settings → Model → API →
   Relay. It only forwards to the hosts in `ALLOWED_HOSTS` and only for pages
   from `ALLOWED_ORIGINS`; your API key passes through it, so run your own.
 
@@ -373,7 +373,7 @@ last reply's speed and time to first token, and a Compact button.
 `move_path` · `shell` `run_js` `run_python` `run_wasm` `gpu_compute` ·
 `http_fetch` `open_app` `show_html` · `list_processes` `kill_process`
 `system_info` · `notify` `clipboard_read` `clipboard_write` `speak` ·
-`ask_user` `todo_write` `spawn_agent` · `dev_server` `preview_logs` (plus Claude's `web_search` / `web_fetch`).
+`ask_user` `todo_write` `spawn_agent` · `dev_server` `preview_logs` (plus `web_search` / `web_fetch` on Anthropic's API).
 
 ## Agent features
 
@@ -384,7 +384,7 @@ last reply's speed and time to first token, and a Compact button.
 | Skills | `/home/agent/skills/<name>/SKILL.md`; Settings → Skills | Instructions plus supporting files. The agent sees names and descriptions and loads a skill with `use_skill` when a task matches. |
 | Custom agents | `/home/agent/agents/<name>.md`; Settings → Agents | A role prompt and an optional `tools:` allow-list. The main agent delegates with `spawn_agent` and the sub-agent runs with a fresh context. |
 | Slash commands | Type `/`; `/home/agent/commands/<name>.md` | Built-ins act on the window; custom commands are prompt templates (`$ARGUMENTS`). |
-| Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Claude* has Anthropic's API connect to it (Claude models only). Local stdio servers cannot run in a browser. |
+| Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Anthropic* has Anthropic's API connect to it (Anthropic models only). Local stdio servers cannot run in a browser. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
 
 Example skills, an `explorer` agent and an `/explain` command are created on first run; edit or delete them freely.

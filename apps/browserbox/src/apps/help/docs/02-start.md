@@ -5,7 +5,7 @@
 The first time BrowserBox opens, it shows its start-up log and asks three things, all optional (press Enter to skip):
 
 1. **Your name**, for the greeting.
-2. **An Anthropic API key**, to use Claude. It is stored encrypted in this browser.
+2. **An API key** for a hosted model (Anthropic, OpenAI, OpenRouter…). It is stored encrypted in this browser.
 3. If you skip the key: **the address of a model server** on your machine, such as Ollama.
 
 You can change any of it later in **Settings → Model**, or run `setup` again in the Terminal.

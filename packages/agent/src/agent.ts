@@ -318,7 +318,7 @@ export class Agent {
   /** Where the context window is going right now. */
   context(): ContextReport {
     const cfg = loadConfig(this.os);
-    const rolling = cfg.provider === 'webllm';
+    const rolling = cfg.provider === 'webgpu';
     return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact && !rolling ? AUTO_COMPACT_AT : 0, rolling };
   }
 

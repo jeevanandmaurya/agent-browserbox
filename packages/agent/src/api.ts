@@ -69,8 +69,8 @@ export interface AgentsApi {
   attach(sid: string): Promise<AgentHandle>;
   /** Sessions currently alive in the kernel, most recent first. */
   live(): Promise<AgentInfo[]>;
-  /** Lists models on an OpenAI-compatible server, using the stored API key if any. */
-  probeModels(baseUrl: string, kind?: 'local' | 'openai'): Promise<string[]>;
+  /** Lists the models of an API or a local server, using the stored API key if any. */
+  probeModels(baseUrl: string, kind?: 'local' | 'api'): Promise<string[]>;
   /** Connects to a configured MCP server and lists its tools. */
   probeMcp(name: string): Promise<Array<{ name: string; description: string }>>;
 }

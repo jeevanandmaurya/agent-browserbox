@@ -2,7 +2,7 @@ import type { AgentHandle, AgentInfo, AgentsApi, AgentSnapshot } from './api.js'
 import type { KernelCore } from './host/os.js';
 import type { Prompter } from './host/perms.js';
 import { Agent, type AgentEvent } from './agent.js';
-import { loadConfig, probeOpenAi, SECRET } from './config.js';
+import { apiKeyFor, loadConfig, probeModels, SECRET } from './config.js';
 import { loadSession, saveSession, titleFrom } from './session.js';
 
 interface Session {
@@ -81,8 +81,9 @@ export class AgentManager implements AgentsApi {
     return this.os.mcp.probe(name);
   }
 
-  async probeModels(baseUrl: string, kind: 'local' | 'openai' = 'local'): Promise<string[]> {
-    return probeOpenAi(baseUrl, await this.os.secrets.get(kind === 'local' ? SECRET.local : SECRET.openai), undefined, { kind, relay: kind === 'openai' ? loadConfig(this.os).corsRelay : '' });
+  async probeModels(baseUrl: string, kind: 'local' | 'api' = 'local'): Promise<string[]> {
+    const key = kind === 'local' ? await this.os.secrets.get(SECRET.local) : await apiKeyFor(this.os.secrets, baseUrl);
+    return probeModels(baseUrl, key, undefined, { kind, relay: kind === 'api' ? loadConfig(this.os).corsRelay : '' });
   }
 
   async #save(s: Session): Promise<void> {

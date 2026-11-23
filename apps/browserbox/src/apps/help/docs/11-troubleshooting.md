@@ -6,7 +6,7 @@ Browsers only let a web page call servers that allow it (CORS). This is the serv
 
 - **Local server**: start it so it allows this page (for Ollama: `OLLAMA_ORIGINS="*" ollama serve`). Recent Chrome may ask to let the site access devices on your network: allow it.
 - **ollama.com**: use a local Ollama signed in to your account (`-cloud` models), or set a relay.
-- **Websites the agent fetches**: most do not allow it. With Claude, the agent's web search and fetch run server-side and are not limited.
+- **Websites the agent fetches**: most do not allow it. On Anthropic's API, the agent's web search and fetch run server-side and are not limited.
 
 ## The in-browser model is slow or fails to load
 

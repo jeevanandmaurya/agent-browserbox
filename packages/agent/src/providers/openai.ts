@@ -57,7 +57,7 @@ async function* sse(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
  */
 /** Where to send requests: a local model server or a hosted OpenAI-compatible API. */
 export interface ServerTarget {
-  kind: 'local' | 'openai';
+  kind: 'local' | 'api';
   baseUrl: string;
   model: string;
 }
@@ -66,9 +66,9 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
   const base = target.baseUrl.replace(/\/+$/, '');
   const where = target.kind === 'local' ? 'the local server' : 'the API';
   // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
-  const relay = target.kind === 'openai' ? cfg.corsRelay : '';
+  const relay = target.kind === 'api' ? cfg.corsRelay : '';
   return {
-    id: target.kind,
+    id: target.kind === 'api' ? 'openai' : 'local',
     contextBudget: Math.floor(cfg.contextWindow * 0.75),
     contextWindow: cfg.contextWindow,
     async turn(req: TurnRequest): Promise<TurnResult> {

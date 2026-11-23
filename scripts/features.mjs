@@ -602,7 +602,7 @@ await check('in-browser models: download, use, delete, and import from a folder'
   await row.getByRole('button', { name: 'Use' }).click();
   await row.locator('.badge', { hasText: 'In use' }).waitFor();
   const cfg = await page.evaluate(() => bbx.settings.get('agent.config', {}));
-  if (cfg.webllmModel !== ID || cfg.provider !== 'webllm') throw new Error(JSON.stringify(cfg));
+  if (cfg.webgpuModel !== ID || cfg.provider !== 'webgpu') throw new Error(JSON.stringify(cfg));
   await row.getByRole('button', { name: 'Delete' }).click();
   await page.locator('.modal .btn.danger').click();
   await row.getByRole('button', { name: 'Download' }).waitFor({ timeout: 10000 });

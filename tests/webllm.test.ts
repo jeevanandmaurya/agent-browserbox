@@ -66,7 +66,7 @@ const { kernelBox } = await import('./helpers/kernel-box');
 
 async function setup(model = 'tiny') {
   const { box } = await kernelBox();
-  const os = await AgentOs.create(box, { settings: { 'agent.config': { provider: 'webllm', webllmModel: model } }, seed: false });
+  const os = await AgentOs.create(box, { settings: { 'agent.config': { provider: 'webgpu', webgpuModel: model } }, seed: false });
   const gpu = os.caps.find((c) => c.id === 'webgpu');
   if (gpu) gpu.ok = true;
   else os.caps.push({ id: 'webgpu', label: 'WebGPU', ok: true } as never);

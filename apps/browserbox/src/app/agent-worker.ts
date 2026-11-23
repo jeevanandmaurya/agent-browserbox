@@ -264,7 +264,7 @@ function connect(port: MessagePort): void {
     'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean }) => adopt(await (await agents()).create(opts)),
     'agent.attach': async (sid: string) => adopt(await (await agents()).attach(sid)),
     'agent.live': async () => (await agents()).live(),
-    'agent.probeModels': async (baseUrl: string, kind?: 'local' | 'openai') => (await agents()).probeModels(baseUrl, kind),
+    'agent.probeModels': async (baseUrl: string, kind?: 'local' | 'api') => (await agents()).probeModels(baseUrl, kind),
     'agent.probeMcp': async (name: string) => (await agents()).probeMcp(name),
     'agent.send': (sid: string, text: string, opts?: { plan?: boolean }) => agent(sid).send(text, opts),
     'agent.rewind': (sid: string, index: number, files: boolean) => agent(sid).rewind(index, files),

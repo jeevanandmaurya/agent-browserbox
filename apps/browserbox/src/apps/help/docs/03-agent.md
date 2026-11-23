@@ -35,7 +35,7 @@ Type **/** in the message box: `/plan`, `/changes`, `/init`, `/compact` (summari
 
 ## Context, tokens and speed
 
-Each reply ends with its time, speed (tokens per second), tokens written and the context size. The gauge next to the model shows how full the context window is; open it to see what fills it and this chat's totals. When it is nearly full the conversation is summarised automatically (Claude and servers), or the oldest messages drop out of view (small in-browser models).
+Each reply ends with its time, speed (tokens per second), tokens written and the context size. The gauge next to the model shows how full the context window is; open it to see what fills it and this chat's totals. When it is nearly full the conversation is summarised automatically (APIs and servers), or the oldest messages drop out of view (small in-browser models).
 
 ## Private chats
 

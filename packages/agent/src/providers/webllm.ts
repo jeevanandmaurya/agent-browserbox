@@ -174,7 +174,7 @@ function holdFrom(answer: string): number {
 /** A model running entirely inside this tab on WebGPU. Nothing leaves the device. */
 export async function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Promise<Provider> {
   // Each model has its own window (some 2k, most 4k); the catalogue says which.
-  const record = (await appConfig(os.settings)).model_list.find((m) => m.model_id === cfg.webllmModel);
+  const record = (await appConfig(os.settings)).model_list.find((m) => m.model_id === cfg.webgpuModel);
   const window = record?.overrides?.context_window_size ?? 4096;
   const reserve = Math.min(768, Math.floor(window / 4));
   return {
@@ -184,7 +184,7 @@ export async function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Promis
     contextWindow: window,
     async turn(req: TurnRequest): Promise<TurnResult> {
       if (!os.hasCap('webgpu')) throw new ProviderError('This browser has no WebGPU, which the in-browser model needs. Choose another provider in Settings → Model.');
-      const engine = await getEngine(os, cfg.webllmModel, req.onStatus);
+      const engine = await getEngine(os, cfg.webgpuModel, req.onStatus);
       req.onStatus('');
       const pid = current?.pid ?? 0;
       os.procs.update(pid, { state: 'running' });
@@ -199,7 +199,7 @@ export async function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Promis
       const usage = { input: 0, output: 0, cacheRead: 0 };
       let chat = toChat(req, window, reserve);
       // Qwen3 thinks out loud by default, which is slow on a phone and eats the small context.
-      const noThink = /^qwen3/i.test(cfg.webllmModel);
+      const noThink = /^qwen3/i.test(cfg.webgpuModel);
       try {
         for (let attempt = 0; ; attempt++) {
           try {
@@ -269,7 +269,7 @@ export async function createWebLlmProvider(os: Kernel, cfg: AgentConfig): Promis
       if (reply.call) content.push({ type: 'tool_use', id: `local_${Date.now()}`, name: reply.call.name, input: reply.call.input, invalid: reply.call.invalid });
       // Cut off at the output limit: the agent says so (and does not run a half-written tool call).
       const stop = finish === 'length' ? 'max_tokens' : reply.call ? 'tool_use' : 'end';
-      return { content, stop, usage, model: cfg.webllmModel, speed };
+      return { content, stop, usage, model: cfg.webgpuModel, speed };
     },
   };
 }
