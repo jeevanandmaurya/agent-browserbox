@@ -44,6 +44,7 @@ export const fsTools: ToolDef[] = [
     describe: (i) => `Read ${i.path}`,
     async run(i, tc) {
       const data = await tc.os.fs.readFile(tc.path(i.path));
+      await tc.seen.note(tc.path(i.path), data);
       if (looksBinary(data)) return `(binary file, ${data.length} bytes)`;
       const lines = new TextDecoder().decode(data).split('\n');
       const start = Math.max(1, i.offset ?? 1);
@@ -60,8 +61,11 @@ export const fsTools: ToolDef[] = [
     cap: (i, tc) => writeCap([i.path], tc),
     describe: (i) => `Write ${i.path} (${i.content.length} chars)`,
     async run(i, tc) {
-      await tc.os.fs.writeFile(tc.path(i.path), i.content);
-      return `Wrote ${i.content.length} characters to ${tc.path(i.path)}`;
+      const p = tc.path(i.path);
+      await tc.seen.check(tc.os, p);
+      await tc.os.fs.writeFile(p, i.content);
+      await tc.seen.note(p, i.content);
+      return `Wrote ${i.content.length} characters to ${p}`;
     },
   }),
   tool<{ path: string; old_string: string; new_string: string; replace_all?: boolean }>({
@@ -72,12 +76,15 @@ export const fsTools: ToolDef[] = [
     describe: (i) => `Edit ${i.path}`,
     async run(i, tc) {
       const p = tc.path(i.path);
+      await tc.seen.check(tc.os, p);
       const text = await tc.os.fs.readText(p);
       if (!i.old_string) throw new Error('old_string must not be empty');
       const count = text.split(i.old_string).length - 1;
       if (count === 0) throw new Error('old_string was not found in the file. Read the file again and match it exactly, including whitespace.');
       if (count > 1 && !i.replace_all) throw new Error(`old_string occurs ${count} times. Add surrounding context to make it unique, or set replace_all.`);
-      await tc.os.fs.writeFile(p, i.replace_all ? text.split(i.old_string).join(i.new_string) : text.replace(i.old_string, () => i.new_string));
+      const next = i.replace_all ? text.split(i.old_string).join(i.new_string) : text.replace(i.old_string, () => i.new_string);
+      await tc.os.fs.writeFile(p, next);
+      await tc.seen.note(p, next);
       return `Edited ${p} (${i.replace_all ? count : 1} replacement${count > 1 && i.replace_all ? 's' : ''})`;
     },
   }),
@@ -153,6 +160,7 @@ export const fsTools: ToolDef[] = [
     describe: (i) => `Delete ${i.path}`,
     async run(i, tc) {
       await tc.os.fs.rm(tc.path(i.path), { recursive: true });
+      tc.seen.forget(tc.path(i.path));
       return `Deleted ${tc.path(i.path)}`;
     },
   }),
@@ -164,6 +172,7 @@ export const fsTools: ToolDef[] = [
     describe: (i) => `${i.copy ? 'Copy' : 'Move'} ${i.from} → ${i.to}`,
     async run(i, tc) {
       await (i.copy ? tc.os.fs.cp(tc.path(i.from), tc.path(i.to)) : tc.os.fs.mv(tc.path(i.from), tc.path(i.to)));
+      tc.seen.move(tc.path(i.from), tc.path(i.to), !!i.copy);
       return `${i.copy ? 'Copied' : 'Moved'} ${tc.path(i.from)} → ${tc.path(i.to)}`;
     },
   }),

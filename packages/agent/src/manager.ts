@@ -61,6 +61,7 @@ export class AgentManager implements AgentsApi {
       agent.todos = saved.todos ?? [];
       agent.checkpoints.list = saved.checkpoints ?? [];
       agent.diffs = saved.diffs ?? {};
+      agent.subagents = saved.subagents ?? {};
     }
     this.#sessions.set(agent.id, session);
     return this.#handle(agent.id, session);
@@ -90,7 +91,7 @@ export class AgentManager implements AgentsApi {
 
   async #save(s: Session): Promise<void> {
     if (s.private || !s.agent.transcript.length) return;
-    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs }).catch((err: Error) =>
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
   }
@@ -118,7 +119,7 @@ export class AgentManager implements AgentsApi {
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents };
       },
       onEvent(fn) {
         mine.add(fn);

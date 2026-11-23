@@ -314,7 +314,7 @@ describe('changes, undo and plan mode', () => {
   it('shows what a file tool changed, and rewinds the chat and the files', async () => {
     const { agent, os, events } = await setup();
     await os.fs.writeFile('/home/agent/notes.txt', 'one\ntwo\nthree\n');
-    replies = [call('write_file', { path: 'notes.txt', content: 'one\n2\nthree\nfour\n' }), 'Updated.', call('write_file', { path: 'new.txt', content: 'hello\n' }), 'Created.'];
+    replies = [call('read_file', { path: 'notes.txt' }), call('write_file', { path: 'notes.txt', content: 'one\n2\nthree\nfour\n' }), 'Updated.', call('write_file', { path: 'new.txt', content: 'hello\n' }), 'Created.'];
     await agent.send('Change notes');
     await agent.send('Add a new file');
     const diffs = events.filter((e) => e.type === 'file_change').map((e) => e.diff as { path: string; added: number; removed: number; before: string | null });

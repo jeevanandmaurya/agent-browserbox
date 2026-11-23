@@ -19,6 +19,8 @@ export interface AgentSnapshot {
   context: ContextReport;
   /** What each file tool call changed, by tool call id. */
   diffs: Record<string, FileDiff>;
+  /** What each sub-agent did, by its spawn_agent call id. */
+  subagents?: Record<string, Msg[]>;
 }
 
 /** The files one turn changed, with their content before (null: created by the agent, or binary/too large). */

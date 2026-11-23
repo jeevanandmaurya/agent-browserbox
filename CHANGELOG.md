@@ -5,6 +5,15 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.4.0
+
+- **Accept edits** mode (Shift+Tab or Settings → Permissions): file changes
+  go through, commands and the network still ask.
+- The agent reads a file before changing it, and never overwrites a change
+  you made while it was working.
+- Sub-agents run several at once; open one's card to see what it did. Pick a
+  faster model for them in Settings → Model, or per agent with `model:`.
+
 ## 0.3.2
 
 Agent fixes (agent 0.3.1):

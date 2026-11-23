@@ -3,6 +3,22 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
+## 0.4.0
+
+- **Read before edit**: an existing file must be read (or written) by the
+  agent before it edits or overwrites it, and an edit is refused when the
+  file changed since (the user, a command or another agent changed it); the
+  model reads it again. Compaction forgets what was read.
+- **Accept-edits mode** (`perms.mode: 'edits'`): file changes go through
+  without asking, except under `/mnt`; commands, code, network and system
+  actions still ask. Rules still come first.
+- **Parallel sub-agents**: spawn_agent calls in one turn run together, up
+  to 4 at a time. Each sub-agent's last 200 messages are kept with the
+  session (`subagents`, in snapshots and saved sessions).
+- **A model per agent**: `model:` in a custom agent's file, or
+  `subagentModel` in the config, for sub-agents on an API.
+- The system prompt states run_js's real time limit.
+
 ## 0.3.1
 
 Fixes from a review of the agent:

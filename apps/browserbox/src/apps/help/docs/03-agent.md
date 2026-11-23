@@ -5,8 +5,11 @@
 The chip next to **+** sets how the agent works on your next message. **Shift+Tab** switches between them.
 
 - **Ask first**: the agent asks before it changes files outside its own folder, runs commands or code, or uses the network. You can allow once or always.
+- **Accept edits**: file changes go through without asking (except in folders you shared from your computer, under `/mnt`); running commands and code, the network and system actions still ask. Undo in **Changes** puts files back.
 - **Plan**: the agent only looks (reads files, searches), then replies with a numbered plan. Choose **Run the plan** to have it carry the plan out, or keep refining it.
 - **Auto**: the agent acts without asking. Everything still happens inside the sandbox.
+
+The agent reads a file before it changes it. If you edit a file while it works, its next edit of that file is refused until it reads your version, so your change is kept.
 
 ## Permission rules
 
@@ -55,6 +58,6 @@ The ghost icon on a new chat starts a **private chat**: it is not saved, not lis
 ## Extending the agent
 
 - **Skills** (Settings → Skills): instructions for specific kinds of task, used when a request matches.
-- **Agents** (Settings → Agents): specialised sub-agents with their own role and tools, which the agent can delegate to.
+- **Agents** (Settings → Agents): specialised sub-agents with their own role, tools and optionally model (`model:` in the file), which the agent can delegate to. Several sub-agents run at once; open a sub-agent's card and choose **Show what it did** to read its work. Settings → Model → **Model for sub-agents** picks a cheaper, faster model for all of them.
 - **Connectors** (Settings → Connectors): MCP servers that add tools.
 - **Environment** (Settings → Environment): variables available to the shell, JavaScript and Python.

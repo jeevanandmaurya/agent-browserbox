@@ -52,6 +52,8 @@ export class Transcript {
   #dirty = false;
   #cost = 0;
   #diffs = new Map<string, FileDiff>();
+  /** Opens a sub-agent's work (its spawn_agent call id and summary). */
+  onOpenSubagent: ((id: string, title: string) => void) | null = null;
   /** Reads a file from the box, to show attached images. */
   readFile?: (path: string) => Promise<Uint8Array>;
   /** Called with the message's position among your messages (0 = first) and its text, to edit and resend it. */
@@ -236,6 +238,11 @@ export class Transcript {
       h('div', { class: 'ag-tool-body' }, h('div', { class: 'ag-tool-label' }, 'Input'), h('pre', { class: 'ag-tool-in' }, typeof input === 'string' ? input : JSON.stringify(input, null, 2)), h('div', { class: 'ag-tool-label' }, 'Output'), output),
     );
     el.dataset.id = id;
+    // A sub-agent's card opens what it did, step by step.
+    if (name === 'spawn_agent' && this.onOpenSubagent) {
+      const open = h('button', { class: 'btn small ag-sub-open', type: 'button', onclick: () => this.onOpenSubagent?.(id, line) }, 'Show what it did');
+      el.querySelector('.ag-tool-body')!.append(open);
+    }
     const card = { el, status, output, text: '' };
     this.#tools.set(id, card);
     this.#ensureTurn().append(el);

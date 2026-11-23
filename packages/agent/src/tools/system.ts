@@ -56,6 +56,7 @@ export const systemTools: ToolDef[] = [
       if (i.save_to) {
         const data = new Uint8Array(await res.arrayBuffer());
         await tc.os.fs.writeFile(tc.path(i.save_to), data);
+        await tc.seen.note(tc.path(i.save_to), data);
         return `${head}Saved ${fmtBytes(data.length)} to ${tc.path(i.save_to)}`;
       }
       const text = await res.text();

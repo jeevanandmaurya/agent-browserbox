@@ -10,7 +10,7 @@ import type { AppModule } from '@/ui/apps';
 import { isImagePath, loadConfig } from '@jeevanand/agent-browserbox/ui';
 import { openMenu } from '@/ui/menu';
 import { AGENT_HOME } from '@jeevanand/agent-browserbox-runtime/client';
-import { choiceDialog } from '@/ui/dialog';
+import { choiceDialog, modal } from '@/ui/dialog';
 import { h } from '@/ui/dom';
 import { icon } from './icons';
 import { collectChanges, openChanges } from './changes';
@@ -351,6 +351,22 @@ const app: AppModule = {
     shell.todoSlot.after(changesChip);
 
     // Edit an earlier message: the chat goes back to just before it (and, if you choose, so do the files).
+    // A sub-agent's work, read-only, in a dialog: the same view as a chat.
+    log.onOpenSubagent = async (id, title) => {
+      const messages = (await agent.snapshot()).subagents?.[id];
+      const body = h('div', { class: 'ag-sub-log' });
+      let close = () => undefined as void;
+      const box = h('div', { class: 'modal ag-sub-modal', role: 'dialog', 'aria-label': `Sub-agent: ${title}` }, h('h3', null, 'Sub-agent'), h('p', { class: 'muted' }, title), body, h('div', { class: 'modal-actions' }, h('button', { class: 'btn', type: 'button', onclick: () => close() }, 'Close')));
+      if (!messages?.length) body.append(h('p', { class: 'muted' }, 'Its work is shown once it has finished.'));
+      else {
+        const sub = new Transcript();
+        sub.readFile = (p) => os.fs.readFile(p);
+        sub.restore(messages);
+        body.append(sub.el);
+      }
+      close = modal(box, () => close());
+    };
+
     log.onEdit = async (ordinal, text) => {
       if (busy) return os.notify('Stop the agent first (Esc), then edit.');
       const snap = await agent.snapshot();

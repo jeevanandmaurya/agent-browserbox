@@ -23,6 +23,8 @@ export interface Extension {
   body: string;
   /** Tool names this agent may use; empty = all. (agents only) */
   tools: string[];
+  /** A model of its own, e.g. a fast one for exploring (agents only; API models). */
+  model?: string;
   enabled: boolean;
 }
 
@@ -53,7 +55,7 @@ export async function loadExtensions(os: WithFiles & WithSettings, kind: ExtKind
       const text = await os.fs.readText(path).catch(() => null);
       if (text === null || !validName(name)) return null;
       const { meta, body } = parseFrontmatter(text);
-      return { kind, name, description: meta.description ?? body.split('\n').find((l) => l.trim() && !l.startsWith('#'))?.trim().slice(0, 160) ?? '', path, dir: skill ? e.path : root, body, tools: parseList(meta.tools), enabled: !off.has(`${kind}:${name}`) };
+      return { kind, name, description: meta.description ?? body.split('\n').find((l) => l.trim() && !l.startsWith('#'))?.trim().slice(0, 160) ?? '', path, dir: skill ? e.path : root, body, tools: parseList(meta.tools), ...(meta.model ? { model: meta.model.trim() } : {}), enabled: !off.has(`${kind}:${name}`) };
     }),
   );
   return out.filter((e): e is Extension => e !== null).sort((a, b) => a.name.localeCompare(b.name));
@@ -62,7 +64,7 @@ export async function loadExtensions(os: WithFiles & WithSettings, kind: ExtKind
 /** Starter content for a new extension file. */
 export function template(kind: ExtKind, name: string): string {
   if (kind === 'skill') return `---\nname: ${name}\ndescription: When to use this skill, in one sentence.\n---\n\n# ${name}\n\nStep-by-step instructions for the agent. Keep supporting files (templates, scripts, examples) in this folder and refer to them by name.\n`;
-  if (kind === 'agent') return `---\nname: ${name}\ndescription: What this agent is for, in one sentence.\ntools: read_file, list_dir, glob, grep\n---\n\nYou are a focused sub-agent. Describe its role, how it should work, and what its final report must contain.\n`;
+  if (kind === 'agent') return `---\nname: ${name}\ndescription: What this agent is for, in one sentence.\ntools: read_file, list_dir, glob, grep\n# model: claude-haiku-5-5   (optional: a model of its own)\n---\n\nYou are a focused sub-agent. Describe its role, how it should work, and what its final report must contain.\n`;
   return `---\ndescription: What this command does.\n---\n\nThe prompt sent to the agent when you type /${name}. Use $ARGUMENTS where the text after the command should go.\n`;
 }
 

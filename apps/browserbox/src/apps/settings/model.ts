@@ -199,6 +199,11 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
   for (const [pid, el] of panels) el.hidden = pid !== cfg.provider;
 
   // ---- Common
+  // Sub-agents (spawn_agent) can use a cheaper, faster model on the same API.
+  const subModel = h('input', { class: 'input mono', value: cfg.subagentModel, placeholder: 'Same as the main model', autocomplete: 'off', 'aria-label': 'Model for sub-agents' });
+  const saveSub = () => subModel.value.trim() !== cfg.subagentModel && save({ subagentModel: subModel.value.trim() });
+  subModel.addEventListener('input', debounce(saveSub, 500));
+  subModel.addEventListener('change', saveSub);
   const maxSteps = h('input', { class: 'input st-num', type: 'number', min: 1, max: 500, step: 1, value: String(cfg.maxSteps) });
   maxSteps.addEventListener('change', () => {
     const n = Math.round(Number(maxSteps.value));
@@ -229,6 +234,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     chooser,
     ...panels.values(),
     h('h3', null, 'Agent behaviour'),
+    field('Model for sub-agents (API only)', subModel, 'A model id on the same API for sub-agents, e.g. a faster, cheaper one for exploring. Custom agents can name their own with model: in their file.'),
     field('Max steps per message', maxSteps, 'Upper limit on model ↔ tool round trips before the agent stops and reports back.'),
     field('Extra instructions', instructions, 'Appended to the agent’s system prompt.'),
     h('h3', null, 'Context'),

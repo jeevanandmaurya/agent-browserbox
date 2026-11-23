@@ -19,6 +19,8 @@ export interface AgentConfig {
   localModel: string;
   /** MLC model id for the in-browser WebGPU runtime. */
   webgpuModel: string;
+  /** Model id for sub-agents on an API ('' = the main model). Custom agents can name their own. */
+  subagentModel: string;
   /** Upper bound on model↔tool round trips per user message. */
   maxSteps: number;
   /** Extra instructions appended to the system prompt. */
@@ -43,6 +45,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   localBaseUrl: 'http://localhost:11434/v1',
   localModel: '',
   webgpuModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
+  subagentModel: '',
   maxSteps: 50,
   instructions: '',
   contextWindow: 32768,

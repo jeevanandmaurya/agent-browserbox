@@ -15,6 +15,7 @@ const CAP_LABEL: Record<Capability, string> = {
 
 const MODES: Array<{ id: PermMode; title: string; text: string }> = [
   { id: 'ask', title: 'Ask before risky actions', text: 'The agent must get your OK before it writes files, runs code, uses the network or controls the system. Choose “Always allow” in a prompt to skip future prompts for that kind of action.' },
+  { id: 'edits', title: 'Accept file edits, ask for the rest', text: 'The agent changes files without asking, except in folders you shared from your computer (/mnt). Running code and commands, the network and controlling the system still ask. Undo puts changed files back.' },
   { id: 'auto', title: 'Allow everything inside the sandbox', text: 'No prompts. The agent can freely change files in the virtual filesystem, run code and make network requests. Best for unattended tasks you trust.' },
 ];
 

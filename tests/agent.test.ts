@@ -141,13 +141,14 @@ describe('the ported agent', () => {
   it('returns bad calls to the model as errors instead of running them', async () => {
     const { model, agent } = await setup(
       [
+        () => ({ content: [use('0', 'read_file', { path: 'a.txt' })] }),
         () => ({ content: [use('1', 'write_file', { path: 'x' }), use('2', 'no_such_tool', {}), use('3', 'shell', {}, { invalid: '{"command":' }), use('4', 'edit_file', { path: 'a.txt', old_string: 'x', new_string: 'y' }), use('5', 'shell', { command: 'fail now' })] }),
         () => ({ content: [say('ok')] }),
       ],
       { files: { [`${AGENT_HOME}/a.txt`]: 'x x' } },
     );
     await agent.send('go');
-    const r = resultsOf(model.requests[1]!);
+    const r = resultsOf(model.requests[2]!);
     expect(r.map((x) => [x.tool_use_id, !!x.is_error])).toEqual([['1', true], ['2', true], ['3', true], ['4', true], ['5', true]]);
     expect(r[0]!.content).toMatch(/missing required property "content"/);
     expect(r[1]!.content).toMatch(/Unknown tool/);
@@ -177,7 +178,7 @@ describe('the ported agent', () => {
 
   it('rewinds the conversation and puts the files back', async () => {
     const { box, agent } = await setup(
-      [() => ({ content: [use('1', 'write_file', { path: 'f.txt', content: 'changed' })] }), () => ({ content: [say('changed it')] })],
+      [() => ({ content: [use('0', 'read_file', { path: 'f.txt' })] }), () => ({ content: [use('1', 'write_file', { path: 'f.txt', content: 'changed' })] }), () => ({ content: [say('changed it')] })],
       { files: { [`${AGENT_HOME}/f.txt`]: 'original' } },
     );
     await agent.send('change f');
@@ -312,6 +313,7 @@ describe('agent package', () => {
     const f = `${AGENT_HOME}/a.txt`;
     const { box, model, agent } = await setup(
       [
+        () => ({ content: [use('0', 'read_file', { path: 'a.txt' })] }),
         () => ({ content: [use('1', 'edit_file', { path: 'a.txt', old_string: 'one', new_string: 'ONE' }), use('2', 'edit_file', { path: 'a.txt', old_string: 'two', new_string: 'TWO' })] }),
         () => ({ content: [say('ok')] }),
       ],
@@ -319,7 +321,7 @@ describe('agent package', () => {
     );
     await agent.send('edit');
     expect(box.files.get(f)).toBe('ONE TWO');
-    expect(resultsOf(model.requests[1]!).every((r) => !r.is_error)).toBe(true);
+    expect(resultsOf(model.requests[2]!).every((r) => !r.is_error)).toBe(true);
   });
 
   it('asks before deleting the workspace or its saved chats, and keeps downloads in it', async () => {
@@ -351,5 +353,81 @@ describe('agent package', () => {
     await agent.send('two');
     expect(model.requests[0]!.system).not.toContain('Answer in French.');
     expect(model.requests[1]!.system).toContain('Answer in French.');
+  });
+
+  it('refuses to edit a file it has not read, or one that changed since', async () => {
+    const f = `${AGENT_HOME}/doc.md`;
+    const { model, agent, box } = await setup(
+      [
+        () => ({ content: [use('a', 'edit_file', { path: 'doc.md', old_string: 'v1', new_string: 'v2' }), use('n', 'write_file', { path: 'new.md', content: 'fresh' })] }),
+        () => ({ content: [use('r', 'read_file', { path: 'doc.md' })] }),
+        () => {
+          box.files.set(f, 'v1 edited by the user');
+          return { content: [use('b', 'edit_file', { path: 'doc.md', old_string: 'v1', new_string: 'v2' })] };
+        },
+        () => ({ content: [use('r2', 'read_file', { path: 'doc.md' }), use('c', 'edit_file', { path: 'doc.md', old_string: 'v1', new_string: 'v2' })] }),
+        () => ({ content: [say('done')] }),
+      ],
+      { files: { [f]: 'v1' } },
+    );
+    await agent.send('update the doc');
+    const first = resultsOf(model.requests[1]!);
+    expect(first.find((r) => r.tool_use_id === 'a')!.content).toMatch(/Read \/home\/agent\/doc.md first/);
+    expect(first.find((r) => r.tool_use_id === 'n')!.is_error).toBeFalsy(); // a new file needs no read
+    expect(resultsOf(model.requests[3]!)[0]!.content).toMatch(/changed since you last read it/);
+    expect(resultsOf(model.requests[4]!).every((r) => !r.is_error)).toBe(true);
+    expect(box.files.get(f)).toBe('v2 edited by the user');
+  });
+
+  it('accepts file edits without asking in edits mode, but not commands or the user\'s real folders', async () => {
+    const asked: string[] = [];
+    const { box, agent } = await setup(
+      [
+        () => ({ content: [use('w', 'write_file', { path: '/home/user/notes.md', content: 'hi' }), use('m', 'write_file', { path: '/mnt/laptop/x.md', content: 'hi' }), use('s', 'shell', { command: 'ls' })] }),
+        () => ({ content: [say('ok')] }),
+      ],
+      { settings: { 'perms.mode': 'edits' }, prompter: async (r) => (asked.push(r.detail), 'once') },
+    );
+    await agent.send('write');
+    expect(box.files.get('/home/user/notes.md')).toBe('hi');
+    expect(asked).toEqual(['Write /mnt/laptop/x.md (2 chars)', 'ls']);
+  });
+
+  it('runs sub-agents asked for together at the same time, each with its own model and kept transcript', async () => {
+    const box = fakeBox();
+    await box.fs.writeFile(`${AGENT_HOME}/agents/explorer.md`, '---\ndescription: looks around\nmodel: fast-model\n---\nExplore.');
+    let running = 0;
+    let most = 0;
+    const models: string[] = [];
+    let os!: AgentOs;
+    const provider: Provider = {
+      id: 'scripted',
+      contextBudget: 0,
+      contextWindow: 100_000,
+      async turn(req) {
+        const last = req.messages.at(-1)!;
+        const text = last.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+        const usage = { input: 1, output: 1, cacheRead: 0 };
+        if (text.startsWith('task ')) {
+          running++;
+          most = Math.max(most, running);
+          models.push(...os.procs.list().filter((p) => p.name !== 'agent').map((p) => p.detail));
+          await new Promise((r) => setTimeout(r, 200));
+          running--;
+          return { content: [say(`${text} done`)], stop: 'end', usage, model: 'm' };
+        }
+        if (last.content.some((b) => b.type === 'tool_result')) return { content: [say('all done')], stop: 'end', usage, model: 'm' };
+        return { content: [use('s1', 'spawn_agent', { task: 'task one', agent: 'explorer' }), use('s2', 'spawn_agent', { task: 'task two' }), use('s3', 'spawn_agent', { task: 'task three' })], stop: 'tool_use', usage, model: 'm' };
+      },
+    };
+    os = await AgentOs.create(box, { provider, seed: false, settings: { 'agent.config': { provider: 'api', apiBaseUrl: 'https://api.test/v1', apiModel: 'main-model', subagentModel: 'sub-model' } } });
+    const agent = new Agent(os, { onEvent: () => undefined, ask: async () => 'yes' });
+    await agent.send('explore three things');
+    expect(most).toBe(3);
+    expect(agent.lastText()).toBe('all done');
+    expect(models.some((d) => d.startsWith('fast-model'))).toBe(true); // the explorer's own model
+    expect(models.some((d) => d.startsWith('sub-model'))).toBe(true); // the sub-agent model setting
+    expect(Object.keys(agent.subagents).sort()).toEqual(['s1', 's2', 's3']);
+    expect(agent.subagents.s2!.at(-1)!.content).toEqual([say('task two done')]);
   });
 });

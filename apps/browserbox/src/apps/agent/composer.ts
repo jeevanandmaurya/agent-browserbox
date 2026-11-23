@@ -6,9 +6,10 @@ import { mentionMenu } from './mention';
 import { expandCommand, slashMenu, type SlashCommand } from './slash';
 
 /** How the agent works on the next message: ask before acting, act without asking, or plan first. */
-export type AgentMode = 'ask' | 'auto' | 'plan';
-export const MODES: Array<{ id: AgentMode; label: string; hint: string; icon: 'shield' | 'spark' | 'fileText' }> = [
+export type AgentMode = 'ask' | 'edits' | 'auto' | 'plan';
+export const MODES: Array<{ id: AgentMode; label: string; hint: string; icon: 'shield' | 'spark' | 'fileText' | 'edit' }> = [
   { id: 'ask', label: 'Ask first', hint: 'Approve each change, command and network use', icon: 'shield' },
+  { id: 'edits', label: 'Accept edits', hint: 'File changes go through; commands and network still ask', icon: 'edit' },
   // Plan comes before Auto, so Shift+Tab from Ask to Plan never passes through (and turns on) Auto.
   { id: 'plan', label: 'Plan', hint: 'Look around and propose a plan; change nothing', icon: 'fileText' },
   { id: 'auto', label: 'Auto', hint: 'Act without asking (everything stays in the sandbox)', icon: 'spark' },

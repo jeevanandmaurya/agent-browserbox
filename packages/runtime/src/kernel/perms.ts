@@ -22,7 +22,13 @@ export interface PermRequest {
 export type PermDecision = 'once' | 'always' | 'deny';
 /** `signal` aborts when the request was answered elsewhere (another window). */
 export type Prompter = (req: PermRequest, signal?: AbortSignal) => Promise<PermDecision>;
-export type PermMode = 'ask' | 'auto';
+/**
+ * ask: risky actions need a one-off or standing grant. edits: like ask, but
+ * the agent's file changes go through (its own judgement, see the agent).
+ * auto: everything inside the sandbox is allowed.
+ */
+export type PermMode = 'ask' | 'edits' | 'auto';
+const MODES: PermMode[] = ['ask', 'edits', 'auto'];
 
 /**
  * Capability broker. Policy: in `auto` mode everything inside the sandbox is
@@ -43,7 +49,9 @@ export class Permissions {
   }
 
   get mode(): PermMode {
-    return this.settings.get<PermMode>('perms.mode', 'ask');
+    const m = this.settings.get<PermMode>('perms.mode', 'ask');
+    // A mode this version does not know (written by a newer one) is treated as the safest.
+    return MODES.includes(m) ? m : 'ask';
   }
   set mode(m: PermMode) {
     this.settings.set('perms.mode', m);

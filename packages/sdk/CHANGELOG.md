@@ -5,6 +5,13 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.4.0
+
+- **Accept-edits permission mode**: `PermMode` is `'ask' | 'edits' | 'auto'`.
+  The runtime treats `edits` like `ask` for its own checks (commands such as
+  `curl` and `js --net` still ask); the agent lets its file changes through.
+  A mode the runtime does not know is treated as `ask`.
+
 ## 0.3.1
 
 New, all backward compatible:

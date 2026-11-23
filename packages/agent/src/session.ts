@@ -20,6 +20,8 @@ export interface SessionFile {
   checkpoints?: Checkpoint[];
   /** What each file tool call changed, by tool call id. */
   diffs?: Record<string, FileDiff>;
+  /** What each sub-agent did, by its spawn_agent call id. */
+  subagents?: Record<string, Msg[]>;
 }
 
 export interface SessionInfo {

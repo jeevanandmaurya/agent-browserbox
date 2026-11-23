@@ -49,10 +49,12 @@ function respond(r) {
   if (lastUser.includes('Your context window is nearly full')) return text('SUMMARY: the user asked about skills and weather; all done.');
   if (last.role === 'tool' && last.content.includes('installed python') && r.tools.some((t) => t.function.name === 'run_python')) return call('run_python', { code: 'print(6 * 7)' });
   if (last.role === 'tool' && last.content.startsWith('Serving ')) return call('preview_logs', { wait_ms: 1500, all: true });
+  // A file is read before it is changed (the agent refuses to edit blind): read, then write.
+  if (lastUser.includes('change the notes') && last.role === 'tool' && /^\s+1\t/.test(last.content)) return call('write_file', { path: 'notes.txt', content: 'first\nSECOND\nthird\n' });
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
   if (lastUser.includes('serve the todo app')) return call('dev_server', { action: 'start', path: 'todo' });
   if (lastUser.includes('Plan mode')) return text('1. Read notes.txt\n2. Change the second line\n3. Check the result');
-  if (lastUser.includes('change the notes')) return call('write_file', { path: 'notes.txt', content: 'first\nSECOND\nthird\n' });
+  if (lastUser.includes('change the notes')) return call('read_file', { path: 'notes.txt' });
   if (lastUser.includes('Go ahead with the plan')) return text('Plan done.');
   if (lastUser.includes('use the web-page skill')) return call('use_skill', { name: 'web-page' });
   if (lastUser.includes('compute with python')) return call('shell', { command: 'pkg install python' });
@@ -828,6 +830,29 @@ if (errors.length) {
   failed++;
   console.log('page errors:\n  ' + errors.join('\n  '));
 }
+await check('accept-edits mode via Shift+Tab; a sub-agent card opens what it did', async () => {
+  const mode = await page.evaluate(() => bbx.perms.mode);
+  try {
+    await page.evaluate(() => (bbx.perms.mode = 'ask'));
+    const input = page.locator('.ag-input');
+    await input.focus();
+    await input.press('Shift+Tab');
+    await page.locator('.cp-mode', { hasText: 'Accept edits' }).waitFor({ timeout: 5000 });
+    if ((await page.evaluate(() => bbx.perms.mode)) !== 'edits') throw new Error('the mode was not stored as edits');
+    await page.evaluate(() => (bbx.perms.mode = 'auto'));
+    await send('delegate to explorer', 'Tool said');
+    const card = page.locator('.ag-tool', { hasText: 'spawn_agent' }).last();
+    await card.locator('summary').click();
+    await card.getByRole('button', { name: 'Show what it did' }).click();
+    const dialog = page.locator('.ag-sub-modal');
+    await dialog.locator('text=EXPLORER REPORT').waitFor({ timeout: 10000 });
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    return 'Shift+Tab → Accept edits (stored as edits); the explorer’s transcript opened from its card';
+  } finally {
+    await page.evaluate((m) => (bbx.perms.mode = m), mode);
+  }
+});
+
 await check('profile commands: a person can switch and exit in the terminal; the agent cannot change profiles', async () => {
   // Auto mode: no approval prompt, so only the profile rule itself can stop the agent.
   const mode = await page.evaluate(() => bbx.perms.mode);

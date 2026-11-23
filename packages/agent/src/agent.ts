@@ -4,13 +4,14 @@ import type { KernelCore as Kernel } from './host/os.js';
 import { AGENT_HOME } from './host/paths.js';
 import type { Prompter } from './host/perms.js';
 import type { Proc } from './host/os.js';
-import { resolve } from './host/path.js';
+import { isInside, resolve } from './host/path.js';
 import { listApps } from './host/os.js';
 import { Shell } from './host/os.js';
 import { describeModel, hasServerWebTools, loadConfig } from './config.js';
 import { buildSystemPrompt } from './prompt.js';
 import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
 import { decide, describeRule, loadRules } from './rules.js';
+import { FileMemory } from './seen.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
 import { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index.js';
@@ -73,6 +74,23 @@ function changedPaths(call: { name: string; input: Record<string, unknown> }, pa
   if (call.name === 'move_path') return [i.copy ? null : i.from, i.to].filter((p): p is string => typeof p === 'string').map(path);
   if ((call.name === 'http_fetch' && typeof i.save_to === 'string') || (call.name === 'gpu_compute' && typeof i.output_file === 'string')) return [path((i.save_to ?? i.output_file) as string)];
   return [];
+}
+
+/** Sub-agents that run at the same time. */
+const MAX_SUBAGENTS = 4;
+
+/** Runs `fn` over `items`, at most `limit` at a time, keeping their order in the result. */
+async function pooled<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const k = next++;
+      out[k] = await fn(items[k]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 /** Keeps a diff small enough to send and save. */
@@ -139,6 +157,8 @@ export class Agent {
   #run: AbortController | null = null;
   /** Image data read during a run, by path; dropped when the run ends. */
   #images = new Map<string, string>();
+  /** What the agent has seen of each file (read-before-edit). */
+  #seen = new FileMemory();
   #system: string | null = null;
   /** What the system prompt was built for; it is rebuilt when that changes (model kind, instructions). */
   #systemKey = '';
@@ -153,13 +173,18 @@ export class Agent {
   readonly checkpoints: Checkpoints;
   /** What each file tool call changed, by tool call id (shown in the chat, kept with the session). */
   diffs: Record<string, FileDiff> = {};
+  /** What each sub-agent did, by the spawn_agent call id (its last messages), so the user can read it. */
+  subagents: Record<string, Msg[]> = {};
+  /** A model of its own (custom agents, sub-agents): the main provider with this model id. */
+  #model: string | null;
 
   constructor(
     private os: Kernel,
     private host: AgentHost,
-    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension } = {},
+    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension; model?: string } = {},
   ) {
     this.#depth = opts.depth ?? 0;
+    this.#model = opts.model || null;
     this.#persona = opts.persona ?? null;
     this.id = opts.id ?? `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
     this.proc = os.procs.spawn({ name: this.#persona ? `agent:${this.#persona.name}` : this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
@@ -198,7 +223,7 @@ export class Agent {
     const run = (this.#run = new AbortController());
     const emit = (e: AgentEvent) => this.host.onEvent(e);
     const started = performance.now();
-    const cfg = loadConfig(this.os);
+    const cfg = this.#config();
     this.os.procs.update(this.proc.pid, { state: 'running', detail: describeModel(cfg) });
     const wake = await navigator.wakeLock?.request('screen').catch(() => null);
     let reason: Extract<AgentEvent, { type: 'done' }>['reason'] = 'end';
@@ -310,6 +335,7 @@ export class Agent {
     this.transcript = this.transcript.slice(0, index);
     const ids = new Set(this.transcript.flatMap((m) => m.content.flatMap((b) => (b.type === 'tool_use' ? [b.id] : []))));
     for (const id of Object.keys(this.diffs)) if (!ids.has(id)) delete this.diffs[id];
+    for (const id of Object.keys(this.subagents)) if (!ids.has(id)) delete this.subagents[id];
     this.#lastContext = 0;
     return result;
   }
@@ -354,6 +380,12 @@ export class Agent {
     const cfg = loadConfig(this.os);
     const rolling = cfg.provider === 'webgpu';
     return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact && !rolling ? AUTO_COMPACT_AT : 0, rolling };
+  }
+
+  /** The model configuration, with this agent's own model when it has one (only an API has several). */
+  #config(): ReturnType<typeof loadConfig> {
+    const cfg = loadConfig(this.os);
+    return this.#model && cfg.provider === 'api' ? { ...cfg, apiModel: this.#model } : cfg;
   }
 
   /**
@@ -417,6 +449,8 @@ export class Agent {
       emit({ type: 'note', text: 'Compaction failed: the model returned no summary. The conversation was left as it is.' });
       return false;
     }
+    // The summary does not hold file contents: files must be read again before editing.
+    this.#seen.clear();
     this.messages = [{ role: 'user', content: [{ type: 'text', text: `${CONTINUATION}\n\n${summary}${midTask ? '\n\nContinue the task from where you left off. Do not redo finished work.' : ''}` }] }];
     this.#lastContext = 0;
     this.#compactions++;
@@ -469,11 +503,12 @@ export class Agent {
         }
       },
       progress: (chunk) => emit({ type: 'tool_progress', id, chunk }),
+      seen: this.#seen,
       setTodos: (items) => {
         this.todos = items;
         emit({ type: 'todos', items });
       },
-      spawnAgent: (task, agent) => this.#spawn(task, agent, signal, (chunk) => emit({ type: 'tool_progress', id, chunk })),
+      spawnAgent: (task, agent) => this.#spawn(id, task, agent, signal, (chunk) => emit({ type: 'tool_progress', id, chunk })),
     });
 
     const one = async (call: ToolUse): Promise<ToolResult> => {
@@ -499,7 +534,10 @@ export class Agent {
             // The user's rules come first: deny blocks, ask always prompts, allow skips the prompt.
             const rule = decide(loadRules(this.os), call.name, call.input, ctx.path);
             let allowed = rule?.action !== 'deny';
-            if (rule?.action === 'ask' || (!rule && cap)) {
+            // Accept-edits mode: the agent's file changes go through, except in the user's real folders (/mnt).
+            const paths = changedPaths(call, ctx.path);
+            const editAccepted = !rule && cap === 'fs.write' && this.os.perms.mode === 'edits' && paths.length > 0 && paths.every((p) => !isInside('/mnt', p));
+            if (rule?.action === 'ask' || (!rule && cap && !editAccepted)) {
               this.os.procs.update(this.proc.pid, { state: 'blocked' });
               const req = { cap: cap ?? 'system', actor: 'The agent', title: call.name, detail: summary } as const;
               allowed = rule ? (await (this.host.prompter ?? ((r) => this.os.perms.prompt(r)))(req)) !== 'deny' : await this.os.perms.request(req, this.host.prompter);
@@ -510,7 +548,6 @@ export class Agent {
               out = fail(rule?.action === 'deny' ? `Blocked by the user's permission rule "${describeRule(rule.rule)}". Do not look for another way to do this; if it is needed, ask the user.` : 'The user denied permission for this action.');
             else {
               // Keep what the files were, for undo, and show what changed.
-              const paths = changedPaths(call, ctx.path);
               const before = paths.length ? await this.checkpoints.capture(paths) : null;
               const r = await def.run(call.input, ctx);
               out = typeof r === 'string' ? { type: 'tool_result', tool_use_id: call.id, content: r } : { type: 'tool_result', tool_use_id: call.id, content: r.text, images: r.images };
@@ -539,11 +576,20 @@ export class Agent {
     const parallel = calls.length > 1 && calls.every((c) => READ_ONLY.has(c.name) && c.invalid === undefined && tools.some((t) => t.name === c.name));
     if (parallel) return Promise.all(calls.map(one));
     const results: ToolResult[] = [];
-    for (const c of calls) results.push(await one(c));
+    for (let i = 0; i < calls.length; ) {
+      // Sub-agents asked for together run together (a few at a time). Their edits cannot clash
+      // silently: an edit of a file another one changed is refused until it is read again.
+      let j = i;
+      while (j < calls.length && calls[j]!.name === 'spawn_agent') j++;
+      if (j - i > 1) {
+        results.push(...(await pooled(calls.slice(i, j), MAX_SUBAGENTS, one)));
+        i = j;
+      } else results.push(await one(calls[i++]!));
+    }
     return results;
   }
 
-  async #spawn(task: string, agentName: string | undefined, signal: AbortSignal, progress: (chunk: string) => void): Promise<string> {
+  async #spawn(callId: string, task: string, agentName: string | undefined, signal: AbortSignal, progress: (chunk: string) => void): Promise<string> {
     let persona: Extension | undefined;
     if (agentName) {
       const agents = (await loadExtensions(this.os, 'agent')).filter((a) => a.enabled);
@@ -560,7 +606,8 @@ export class Agent {
         ask: async () => 'Sub-agents cannot ask the user. Use your best judgement and note the assumption in your report.',
         prompter: this.host.prompter,
       },
-      { ppid: this.proc.pid, depth: this.#depth + 1, persona },
+      // Its model: the custom agent's own, else the one set for sub-agents, else this agent's.
+      { ppid: this.proc.pid, depth: this.#depth + 1, persona, model: persona?.model || loadConfig(this.os).subagentModel || this.#model || undefined },
     );
     const abort = () => child.stop();
     signal.addEventListener('abort', abort);
@@ -569,6 +616,7 @@ export class Agent {
       signal.throwIfAborted();
       return child.lastText() || '(the sub-agent produced no report)';
     } finally {
+      this.subagents[callId] = child.transcript.slice(-200);
       signal.removeEventListener('abort', abort);
       child.dispose();
     }
