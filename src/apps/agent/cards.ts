@@ -1,5 +1,5 @@
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
-import type { PermDecision, PermRequest } from '@/kernel/perms';
+import type { PermDecision, PermRequest } from '@/client/index';
 import { h } from '@/ui/dom';
 import { icon } from './icons';
 

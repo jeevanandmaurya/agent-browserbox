@@ -2,7 +2,7 @@ import type { AgentEvent } from '@jeevanand/agent-browserbox/ui';
 import { MODE_TAG } from '@jeevanand/agent-browserbox/ui';
 import type { FileDiff } from '@jeevanand/agent-browserbox/ui';
 import type { Msg } from '@jeevanand/agent-browserbox/ui';
-import type { PermDecision, PermRequest } from '@/kernel/perms';
+import type { PermDecision, PermRequest } from '@/client/index';
 import { fmtDuration, h } from '@/ui/dom';
 import { loader } from '@/ui/icons';
 import { renderMarkdown } from '@/ui/markdown';

@@ -1,6 +1,6 @@
 import '../ui/base.css';
 import { docsView, TOPICS } from '@/apps/help/view';
-import { AGENT_URL } from '@/config/origins';
+import { AGENT_URL } from '@/app/config';
 
 /**
  * The documentation as a page of its own. It does not start the kernel, so it

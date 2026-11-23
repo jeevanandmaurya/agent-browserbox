@@ -73,4 +73,4 @@ export class AnsiView {
   }
 }
 
-export { plainText } from '@/shell/ansi';
+export { plainText } from '@/client/index';

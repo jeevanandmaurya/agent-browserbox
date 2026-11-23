@@ -1,7 +1,7 @@
-import type { Kernel } from '@/kernel/api';
-import { HOME } from '@/kernel/paths';
-import { basename, extname, join } from '@/kernel/vfs/path';
-import type { Notice } from '@/kernel/types';
+import type { Kernel } from '@/client/index';
+import { HOME } from '@/client/index';
+import { basename, extname, join } from '@/client/index';
+import type { Notice } from '@/client/index';
 import { isTextLike, kindOf } from '@/apps/files/filetypes';
 import type { AppHost } from '../apps';
 import { confirmDialog, promptDialog } from '../dialog';

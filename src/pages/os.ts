@@ -1,6 +1,6 @@
 import '../ui/base.css';
 import { appKernel } from '@/app/boot';
-import type { RemoteKernel } from '@/client/remote-kernel';
+import type { RemoteKernel } from '@/client/index';
 import { createDesktop } from '@/ui/desktop';
 import { bootConsole } from '@/ui/boot';
 import { followTheme } from '@/ui/standalone';

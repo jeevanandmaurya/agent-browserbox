@@ -1,5 +1,5 @@
 import { loadExtensions } from '@jeevanand/agent-browserbox/ui';
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { h } from '@/ui/dom';
 
 export interface SlashCommand {

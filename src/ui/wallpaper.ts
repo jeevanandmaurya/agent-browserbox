@@ -1,5 +1,5 @@
-import type { Kernel } from '@/kernel/api';
-import { basename, extname } from '@/kernel/vfs/path';
+import type { Kernel } from '@/client/index';
+import { basename, extname } from '@/client/index';
 import { h } from './dom';
 import { icon } from './icons';
 

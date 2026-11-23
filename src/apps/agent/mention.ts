@@ -1,6 +1,6 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { looksBinary } from '@/apps/files/filetypes';
-import { resolve } from '@/kernel/vfs/path';
+import { resolve } from '@/client/index';
 import { h } from '@/ui/dom';
 import { icon } from './icons';
 

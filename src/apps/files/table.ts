@@ -1,5 +1,5 @@
 /** The sortable, multi-select file list. Owns rendering, selection and arrow-key navigation. */
-import type { Stat } from '@/kernel/vfs/vfs';
+import type { Stat } from '@/client/index';
 import { fmtBytes, fmtTime, h } from '@/ui/dom';
 import { icon } from '@/ui/icons';
 import { iconFor } from './filetypes';

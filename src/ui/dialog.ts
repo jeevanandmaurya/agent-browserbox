@@ -1,4 +1,4 @@
-import type { PermDecision, PermRequest } from '@/kernel/perms';
+import type { PermDecision, PermRequest } from '@/client/index';
 import { h } from './dom';
 
 function modal(content: HTMLElement, onDismiss: () => void): () => void {

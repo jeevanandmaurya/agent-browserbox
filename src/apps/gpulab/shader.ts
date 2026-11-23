@@ -1,4 +1,4 @@
-import { getDevice } from '@/sandbox/gpu';
+import { getDevice } from '@/app/gpu';
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog, promptDialog } from '@/ui/dialog';
 import { debounce, h } from '@/ui/dom';

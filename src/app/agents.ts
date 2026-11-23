@@ -1,10 +1,18 @@
 import type { AgentsApi } from '@jeevanand/agent-browserbox/ui';
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 
-/**
- * The app's kernel client also reaches the agent (its agent worker): the
- * kernel itself has no agent, so this is how app code gets to it.
- */
+const clients = new WeakMap<object, AgentsApi>();
+
+/** Pairs a window's kernel client with its agent client (see appKernel). */
+export function attachAgents(os: Kernel, agents: AgentsApi): void {
+  clients.set(os, agents);
+  // For scripts and the console: bbx.agents, as before.
+  Object.defineProperty(os, 'agents', { value: agents, configurable: true });
+}
+
+/** The agent (the app's agent worker), for app code: the kernel itself has no agent. */
 export function agentsOf(os: Kernel): AgentsApi {
-  return (os as Kernel & { agents: AgentsApi }).agents;
+  const a = clients.get(os);
+  if (!a) throw new Error('this window has no agent client');
+  return a;
 }

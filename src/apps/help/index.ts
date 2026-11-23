@@ -1,4 +1,4 @@
-import { DOCS_URL } from '@/config/origins';
+import { DOCS_URL } from '@/app/config';
 import type { AppModule } from '@/ui/apps';
 import { docsView } from './view';
 

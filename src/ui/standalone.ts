@@ -1,6 +1,6 @@
-import { OS_URL } from '@/config/origins';
-import type { RemoteKernel as Kernel } from '@/client/remote-kernel';
-import type { PermDecision, PermRequest } from '@/kernel/perms';
+import { OS_URL } from '@/app/config';
+import type { RemoteKernel as Kernel } from '@/client/index';
+import type { PermDecision, PermRequest } from '@/client/index';
 import type { AppContext, AppModule, AppWindow } from './apps';
 import { permissionDialog } from './dialog';
 import { h } from './dom';

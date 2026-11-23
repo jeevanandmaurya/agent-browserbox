@@ -1,7 +1,7 @@
 import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
 import { AGENT_COMMANDS, AgentManager, AgentOs, BrowserSecrets, pathIn, type AgentHandle, type PermDecision, type PermRequest, type ProcTable, type SettingsApi } from '@jeevanand/agent-browserbox';
-import { RemoteKernel } from '@/client/remote-kernel';
-import { Peer } from '@/rpc/peer';
+import { RemoteKernel } from '@/client/index';
+import { Peer } from '@/client/index';
 import { APP_MANIFESTS } from '@/ui/app-manifest';
 
 /**

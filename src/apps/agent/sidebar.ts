@@ -1,6 +1,6 @@
 import { agentsOf } from '@/app/agents';
 import { deleteSession, listSessions, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { fmtTime, h } from '@/ui/dom';
 import { icon } from './icons';
 

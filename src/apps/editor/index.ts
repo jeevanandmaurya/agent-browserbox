@@ -1,4 +1,4 @@
-import { basename, dirname, extname, isInside, resolve } from '@/kernel/vfs/path';
+import { basename, dirname, extname, isInside, resolve } from '@/client/index';
 import type { AppContext, AppModule } from '@/ui/apps';
 import { debounce, fmtBytes, h } from '@/ui/dom';
 import { confirmDialog, promptDialog } from '@/ui/dialog';

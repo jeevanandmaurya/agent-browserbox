@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { h } from '@/ui/dom';
 import { icon, type IconName } from './icons';
 import { mountPanelApp, type PanelApp } from './panel-host';

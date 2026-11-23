@@ -1,5 +1,7 @@
 import { BrowserBox, VERSION as RUNTIME_VERSION } from '@jeevanand/agent-browserbox-sdk';
-import { RemoteKernel } from '@/client/remote-kernel';
+import { RemoteKernel } from '@/client/index';
+import { AgentClient } from './agent-client';
+import { attachAgents } from './agents';
 
 /**
  * How a BrowserBox app window starts. The app is a client of the released
@@ -42,6 +44,6 @@ export function appKernel(): RemoteKernel {
       .then((b) => b.share())
       .then((shared) => port.postMessage({ k: 'evt', n: 'box', p: shared }, [shared]));
   });
-  os.useAgentService(Promise.resolve(port), lock);
+  attachAgents(os, new AgentClient(Promise.resolve(port), os, lock));
   return os;
 }

@@ -1,4 +1,4 @@
-import { basename, dirname, isInside, resolve } from '@/kernel/vfs/path';
+import { basename, dirname, isInside, resolve } from '@/client/index';
 import type { AppModule } from '@/ui/apps';
 import { debounce, fmtBytes, h } from '@/ui/dom';
 import { renderMarkdown } from '../editor/markdown';

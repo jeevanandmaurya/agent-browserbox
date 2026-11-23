@@ -1,4 +1,4 @@
-import { adapterInfo, gpuAvailable, gpuCompute } from '@/sandbox/gpu';
+import { adapterInfo, gpuAvailable, gpuCompute } from '@/app/gpu';
 import type { AppContext } from '@/ui/apps';
 import { fmtBytes, h } from '@/ui/dom';
 import { errText, heading, kvList } from './nav';

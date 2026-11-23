@@ -1,4 +1,4 @@
-import type { Capability, PermMode } from '@/kernel/perms';
+import type { Capability, PermMode } from '@/client/index';
 import type { AppContext } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { errText, heading, nextId } from './nav';

@@ -1,4 +1,4 @@
-import type { ShellHandle } from '@/kernel/api';
+import type { ShellHandle } from '@/client/index';
 import { AnsiView } from './ansi-view';
 import { h } from './dom';
 

@@ -1,6 +1,6 @@
 /** Filesystem helpers for the file manager: naming, uploads, downloads. */
-import type { FsApi as Vfs } from '@/kernel/api';
-import { basename, join } from '@/kernel/vfs/path';
+import type { FsApi as Vfs } from '@/client/index';
+import { basename, join } from '@/client/index';
 import { mimeOf } from './filetypes';
 
 function splitName(name: string): [string, string] {

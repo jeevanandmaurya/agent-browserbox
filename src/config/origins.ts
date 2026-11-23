@@ -16,20 +16,7 @@ const here = (rel: string) => new URL(rel, globalThis.location?.href ?? 'http://
 
 /** Serves the kernel worker, the bridge frame and the sandbox frames. */
 export const KERNEL_URL: string = env.VITE_KERNEL_URL || here('../kernel/');
-/** The agent window. */
-export const AGENT_URL: string = env.VITE_AGENT_URL || here('../agent/');
-/** The documentation, a page of its own (no kernel needed). */
-export const DOCS_URL: string = env.VITE_DOCS_URL || here('../docs/');
-/** The optional desktop GUI. */
-export const OS_URL: string = env.VITE_OS_URL || here('../os/');
 
-/**
- * Pages shown in Preview (agent-made pages, dev servers) load into a frame
- * served from here, sandboxed to an opaque origin. Give it its own origin
- * (VITE_PREVIEW_URL=https://preview.example.com/) once you have a domain.
- */
-export const PREVIEW_URL: string = env.VITE_PREVIEW_URL || here('../preview/');
-export const PREVIEW_FRAME_URL = new URL('frame.html', PREVIEW_URL).href;
 
 /** Origins allowed to embed the kernel bridge and talk to the kernel. Empty = same origin only. */
 export const ALLOWED_ORIGINS: string[] = (env.VITE_ALLOWED_ORIGINS || '')

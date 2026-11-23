@@ -1,5 +1,5 @@
 import './style.css';
-import { getDevice, gpuAvailable } from '@/sandbox/gpu';
+import { getDevice, gpuAvailable } from '@/app/gpu';
 import type { AppModule } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { errMsg, gpuHelp, type Tab } from './common';

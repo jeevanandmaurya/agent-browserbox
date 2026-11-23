@@ -1,7 +1,7 @@
 import '../ui/base.css';
 import agentApp from '@/apps/agent/index';
 import { appKernel } from '@/app/boot';
-import type { RemoteKernel } from '@/client/remote-kernel';
+import type { RemoteKernel } from '@/client/index';
 import { bootConsole } from '@/ui/boot';
 import { followTheme, mountStandalone } from '@/ui/standalone';
 

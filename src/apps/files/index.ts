@@ -1,5 +1,5 @@
-import { basename, dirname, isInside, join, normalize, resolve } from '@/kernel/vfs/path';
-import type { Stat } from '@/kernel/vfs/vfs';
+import { basename, dirname, isInside, join, normalize, resolve } from '@/client/index';
+import type { Stat } from '@/client/index';
 import type { AppModule } from '@/ui/apps';
 import { confirmDialog, promptDialog } from '@/ui/dialog';
 import { debounce, fmtBytes, h } from '@/ui/dom';

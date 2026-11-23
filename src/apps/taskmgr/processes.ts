@@ -1,4 +1,4 @@
-import type { Proc } from '@/kernel/proc';
+import type { Proc } from '@/client/index';
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog } from '@/ui/dialog';
 import { fmtBytes, fmtDuration, h } from '@/ui/dom';

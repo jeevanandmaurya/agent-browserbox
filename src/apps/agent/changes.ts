@@ -1,6 +1,6 @@
 import { diffFiles, type FileDiff } from '@jeevanand/agent-browserbox/ui';
 import type { AgentHandle, TurnChanges } from '@jeevanand/agent-browserbox/ui';
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { confirmDialog } from '@/ui/dialog';
 import { h } from '@/ui/dom';
 import { diffStat, diffView } from './diffview';

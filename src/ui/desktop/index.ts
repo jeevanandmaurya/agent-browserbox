@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { AppHost } from '../apps';
 import { permissionDialog } from '../dialog';
 import { h } from '../dom';

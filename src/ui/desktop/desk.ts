@@ -1,4 +1,4 @@
-import type { Stat } from '@/kernel/vfs/types';
+import type { Stat } from '@/client/index';
 import { iconFor } from '@/apps/files/filetypes';
 import { APPS, type AppManifest } from '../apps';
 import { h } from '../dom';

@@ -1,5 +1,4 @@
 /** Collapsible output panel that runs the buffer in the JS or Python sandbox. */
-import { runJs, runPython, type RunResult } from '@/sandbox/sandbox';
 import type { AppContext } from '@/ui/apps';
 import { fmtDuration, h } from '@/ui/dom';
 
@@ -62,12 +61,24 @@ export class RunPanel {
     this.#stop.disabled = false;
     this.#status.className = 'muted';
     this.#status.textContent = lang === 'py' ? 'Running (Python may take a few seconds to load)…' : 'Running…';
-    const opts = { cwd, signal: ctl.signal, onStdout: (s: string) => this.#write(s), onStderr: (s: string) => this.#write(s, 'err') };
-    let r: RunResult;
+    // Run like any program in the box: the code in a temporary file, through the shell's js or python.
+    const os = this.ctx.os;
+    const file = `/tmp/editor-run-${Date.now()}.${lang}`;
+    const started = performance.now();
+    let r: { ok: boolean; error?: string; exitCode?: number; ms: number; value?: string };
     try {
-      r = lang === 'js' ? await runJs(this.ctx.os, code, { ...opts, ppid: this.ctx.proc.pid }) : await runPython(this.ctx.os, code, opts);
+      await os.fs.writeFile(file, code);
+      const shell = await os.shells.open({ cwd });
+      try {
+        const exitCode = await shell.run(`${lang === 'js' ? 'js' : 'python'} '${file}'`, { out: (s) => this.#write(s), err: (s) => this.#write(s, 'err'), signal: ctl.signal });
+        r = { ok: exitCode === 0 && !ctl.signal.aborted, exitCode, ms: performance.now() - started, error: ctl.signal.aborted ? 'aborted' : undefined };
+      } finally {
+        shell.close();
+      }
     } catch (err) {
-      r = { ok: false, stdout: '', stderr: '', error: (err as Error).message, ms: 0 };
+      r = { ok: false, error: ctl.signal.aborted ? 'aborted' : (err as Error).message, ms: performance.now() - started };
+    } finally {
+      void os.fs.rm(file).catch(() => undefined);
     }
     this.#ctl = null;
     if (this.ctx.win.closed) return;

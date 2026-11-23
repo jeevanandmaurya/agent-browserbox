@@ -1,4 +1,4 @@
-import { gpuCompute } from '@/sandbox/gpu';
+import { gpuCompute } from '@/app/gpu';
 import type { AppContext } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { codeEditor, errMsg, type Tab } from './common';

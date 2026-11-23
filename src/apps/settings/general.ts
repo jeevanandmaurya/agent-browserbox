@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import type { AppContext } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { wallpaperPicker } from '@/ui/wallpaper';

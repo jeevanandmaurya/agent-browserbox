@@ -1,6 +1,6 @@
 import { agentsOf } from '@/app/agents';
-import type { RemoteKernel } from '@/client/remote-kernel';
-import type { KernelLogLine } from '@/kernel/types';
+import type { RemoteKernel } from '@/client/index';
+import type { KernelLogLine } from '@/client/index';
 import { Terminal } from './terminal';
 
 const SETUP_DONE = 'setup.done';

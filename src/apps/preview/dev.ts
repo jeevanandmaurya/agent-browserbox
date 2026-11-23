@@ -1,5 +1,5 @@
-import type { DevInfo, DevLog, WireRequest } from '@/kernel/dev/types';
-import { isInside } from '@/kernel/vfs/path';
+import type { DevInfo, DevLog, WireRequest } from '@/client/index';
+import { isInside } from '@/client/index';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { icon, loader } from '@/ui/icons';

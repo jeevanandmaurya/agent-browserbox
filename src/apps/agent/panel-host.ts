@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { APPS, type AppContext, type AppModule, type AppWindow } from '@/ui/apps';
 import { h } from '@/ui/dom';
 import { loader } from '@/ui/icons';

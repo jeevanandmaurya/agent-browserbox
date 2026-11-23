@@ -1,4 +1,4 @@
-import type { Kernel } from '@/kernel/api';
+import type { Kernel } from '@/client/index';
 import { fmtBytes, h } from '@/ui/dom';
 import { openMenu } from '@/ui/menu';
 import { icon } from './icons';

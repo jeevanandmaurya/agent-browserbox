@@ -1,4 +1,4 @@
-export { fmtBytes, fmtDuration } from '@/kernel/format';
+export { fmtBytes, fmtDuration } from '@/client/index';
 
 /** Minimal hyperscript helpers. No virtual DOM: apps create nodes once and patch them directly. */
 

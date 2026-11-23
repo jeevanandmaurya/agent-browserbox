@@ -1,6 +1,4 @@
 import type { DevApi } from '@/kernel/dev/types';
-import type { AgentEvent } from '@jeevanand/agent-browserbox/ui';
-import type { AgentHandle, AgentsApi } from '@jeevanand/agent-browserbox/ui';
 import type { FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
 import { Bus } from '@/kernel/bus';
 import { detectCaps, type PlatformCap } from '@/kernel/caps';
@@ -18,11 +16,6 @@ import type { KernelLink } from './connect';
 const NEVER = new AbortController().signal;
 const dec = new TextDecoder();
 
-interface AgentLocal {
-  events: Set<(e: AgentEvent) => void>;
-  asker?: (q: string, o?: string[]) => Promise<string>;
-  prompter?: Prompter;
-}
 
 interface Owned {
   proc: Proc;
@@ -58,7 +51,6 @@ export class RemoteKernel implements Kernel {
   #owned = new Map<number, Owned>();
   #nextPid = 0;
   #mounts: MountInfo[] = [];
-  #agents = new Map<string, AgentLocal>();
   #shells = new Map<string, { reader?: (prompt: string, secret: boolean) => Promise<string | null>; clear?: () => void }>();
   #runs = new Map<number, ShellIo>();
   #nextRun = 1;
@@ -73,33 +65,6 @@ export class RemoteKernel implements Kernel {
       return peer;
     });
     this.ready = this.#peer.then(async (peer) => this.#hydrate(await peer.call<Hello>('hello', role)));
-  }
-
-  #agentPeer: Promise<Peer> | null = null;
-
-  /**
-   * Sends this window's agent calls (`agents.*`) to an agent service, the app's
-   * agent worker, instead of the kernel. Its events and questions (permissions,
-   * ask_user) are answered here as before.
-   */
-  useAgentService(port: Promise<MessagePort>, lock?: string): void {
-    this.#agentPeer = port.then((p) => {
-      const peer = new Peer(p);
-      peer.on<{ sid: string; event: AgentEvent }>('agent', ({ sid, event }) => {
-        for (const fn of [...(this.#agents.get(sid)?.events ?? [])]) fn(event);
-      });
-      peer.on<Ask>('ask', (ask) => void this.#answer(peer, ask));
-      peer.on<number>('ask:done', (askId) => {
-        this.#asking.get(askId)?.abort();
-        this.#asking.delete(askId);
-      });
-      if (lock) peer.emit('alive', lock);
-      return peer;
-    });
-  }
-
-  #agentCall<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
-    return this.#agentPeer ? this.#agentPeer.then((p) => p.call<T>(method, ...args)) : this.call<T>(method, ...args);
   }
 
   /** Calls a kernel method once connected. */
@@ -157,9 +122,6 @@ export class RemoteKernel implements Kernel {
       }
     });
     peer.on<number>('proc:kill', (pid) => this.#reap(pid, 'killed'));
-    peer.on<{ sid: string; event: AgentEvent }>('agent', ({ sid, event }) => {
-      for (const fn of [...(this.#agents.get(sid)?.events ?? [])]) fn(event);
-    });
     peer.on<{ runId: number; s: 'o' | 'e'; t: string }>('shell:out', ({ runId, s, t }) => {
       const io = this.#runs.get(runId);
       (s === 'o' ? io?.out : io?.err)?.(t);
@@ -179,13 +141,9 @@ export class RemoteKernel implements Kernel {
     let value: unknown;
     try {
       if (ask.kind === 'perm') {
-        const custom = ask.sid ? this.#agents.get(ask.sid)?.prompter : undefined;
-        value = await (custom ? custom(ask.payload as PermRequest, ctl.signal) : this.perms.prompt(ask.payload as PermRequest, ctl.signal));
+        value = await this.perms.prompt(ask.payload as PermRequest, ctl.signal);
       } else if (ask.kind === 'user') {
-        const asker = ask.sid ? this.#agents.get(ask.sid)?.asker : undefined;
-        if (!asker) return; // another window owns this conversation
-        const { question, options } = ask.payload as { question: string; options?: string[] };
-        value = await asker(question, options);
+        return; // agents ask through their own service (the app's agent client)
       } else if (ask.kind === 'tty') {
         const reader = ask.shellId ? this.#shells.get(ask.shellId)?.reader : undefined;
         const { prompt, secret } = ask.payload as { prompt: string; secret?: boolean };
@@ -298,54 +256,6 @@ export class RemoteKernel implements Kernel {
     log: (port, entries) => void this.call('dev.log', port, entries).catch(() => undefined),
     logs: (port, o) => this.call('dev.logs', port, o),
   };
-
-  readonly agents: AgentsApi = {
-    create: async (opts) => this.#agentHandle(await this.#agentCall<{ sid: string; pid: number }>('agent.create', opts)),
-    attach: async (sid) => this.#agentHandle(await this.#agentCall<{ sid: string; pid: number }>('agent.attach', sid)),
-    live: () => this.#agentCall('agent.live'),
-    probeModels: (baseUrl, kind) => this.#agentCall('agent.probeModels', baseUrl, kind),
-    probeMcp: (name) => this.#agentCall('agent.probeMcp', name),
-  };
-
-  #agentHandle({ sid, pid }: { sid: string; pid: number }): AgentHandle {
-    const local: AgentLocal = { events: new Set() };
-    this.#agents.set(sid, local);
-    const forget = () => {
-      if (this.#agents.get(sid) === local) this.#agents.delete(sid);
-    };
-    return {
-      sid,
-      pid,
-      send: (text, opts) => this.#agentCall('agent.send', sid, text, opts),
-      rewind: (index, files) => this.#agentCall('agent.rewind', sid, index, files),
-      changes: () => this.#agentCall('agent.changes', sid),
-      stop: () => void this.#agentCall('agent.stop', sid),
-      snapshot: () => this.#agentCall('agent.snapshot', sid),
-      context: () => this.#agentCall('agent.context', sid),
-      compact: () => this.#agentCall('agent.compact', sid),
-      onEvent: (fn) => {
-        local.events.add(fn);
-        return () => local.events.delete(fn);
-      },
-      onAsk: (fn) => {
-        local.asker = fn;
-      },
-      get prompter() {
-        return local.prompter;
-      },
-      set prompter(p) {
-        local.prompter = p;
-      },
-      detach: () => {
-        forget();
-        void this.#agentCall('agent.detach', sid);
-      },
-      dispose: () => {
-        forget();
-        void this.#agentCall('agent.dispose', sid);
-      },
-    };
-  }
 
   readonly shells: ShellsApi = {
     open: async (opts) => {

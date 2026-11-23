@@ -4,8 +4,8 @@
  * and media are inlined. Only files inside `root` (the site folder) are
  * inlined, so a page's scripts cannot pull arbitrary VFS files into reach.
  */
-import type { FsApi as Vfs } from '@/kernel/api';
-import { dirname, isInside, join, normalize, resolve } from '@/kernel/vfs/path';
+import type { FsApi as Vfs } from '@/client/index';
+import { dirname, isInside, join, normalize, resolve } from '@/client/index';
 import { mimeOf } from '../files/filetypes';
 
 const MAX_ASSET = 15 * 1024 * 1024;

@@ -1,4 +1,4 @@
-import { AGENT_URL } from '@/config/origins';
+import { AGENT_URL } from '@/app/config';
 import type { AppManifest } from '@/ui/app-manifest';
 
 export default {

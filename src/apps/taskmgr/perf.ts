@@ -1,4 +1,4 @@
-import type { ProcKind } from '@/kernel/proc';
+import type { ProcKind } from '@/client/index';
 import type { AppContext } from '@/ui/apps';
 import { fmtBytes, h } from '@/ui/dom';
 import { createChart, type Chart } from './chart';

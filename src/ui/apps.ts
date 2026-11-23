@@ -1,6 +1,6 @@
 import { APP_MANIFESTS, type AppManifest } from './app-manifest';
-import type { Kernel } from '@/kernel/api';
-import type { Proc } from '@/kernel/proc';
+import type { Kernel } from '@/client/index';
+import type { Proc } from '@/client/index';
 import { h } from './dom';
 import { loader } from './icons';
 import type { WindowManager } from './wm';
