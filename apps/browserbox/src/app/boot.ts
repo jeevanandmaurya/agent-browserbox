@@ -19,22 +19,61 @@ import { attachAgents } from './agents';
 export const RUNTIME_URL: string =
   import.meta.env.VITE_RUNTIME_URL || new URL(`../runtime/${RUNTIME_VERSION}/`, location.href).href;
 
+/** The profile of this tab, kept across its reloads. */
+const TAB_KEY = 'bbx-profile';
+const tabProfile = {
+  get: (): string | null => {
+    try {
+      return sessionStorage.getItem(TAB_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (id: string): void => {
+    try {
+      sessionStorage.setItem(TAB_KEY, id);
+    } catch {
+      /* private mode: the URL carries it instead */
+    }
+  },
+};
+
+let current: string | null = null;
+
 /**
- * The profile this window opens: `?profile=<id>` when it names one, otherwise
- * the one this browser used last. Each profile is a kernel of its own.
+ * The profile this window opens: the one its URL names (`?profile=<id>`, which
+ * every window the app opens carries), else the one this tab had before a
+ * reload, else, in a brand-new tab, the one this browser used last.
  */
 export const PROFILE: Promise<string> = (async () => {
-  const asked = new URLSearchParams(location.search).get('profile');
-  const id = asked && (await getProfile(asked).catch(() => null)) ? asked : await lastProfile().catch(() => DEFAULT_PROFILE);
+  const known = async (id: string | null) => (id && (await getProfile(id).catch(() => null)) ? id : null);
+  const id = (await known(new URLSearchParams(location.search).get('profile'))) ?? (await known(tabProfile.get())) ?? (await lastProfile().catch(() => DEFAULT_PROFILE));
+  current = id;
+  tabProfile.set(id);
   await setLastProfile(id).catch(() => undefined);
   return id;
 })();
 
-/** Opens another profile in this window. */
+/**
+ * A URL of the app for the same profile as this window, so a tab or window
+ * opened from here belongs to the same person (and their signed-in keys).
+ */
+export function withProfile(url: string): string {
+  if (!current) return url;
+  const u = new URL(url, location.href);
+  u.searchParams.set('profile', current);
+  return u.href;
+}
+
+/** A window name of this profile's own: another profile's window is never reused. */
+export const profileWindow = (name: string): string => (current && current !== DEFAULT_PROFILE ? `${name}:${current}` : name);
+
+/** Opens another profile in this tab. */
 export async function switchProfile(id: string): Promise<void> {
+  tabProfile.set(id);
   await setLastProfile(id);
   const url = new URL(location.href);
-  url.searchParams.delete('profile');
+  url.searchParams.set('profile', id);
   location.replace(url);
 }
 

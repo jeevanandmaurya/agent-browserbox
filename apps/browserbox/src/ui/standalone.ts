@@ -1,4 +1,5 @@
 import { OS_URL } from '@/app/config';
+import { profileWindow, withProfile } from '@/app/boot';
 import type { RemoteKernel as Kernel } from '@jeevanand/agent-browserbox-runtime/client';
 import type { PermDecision, PermRequest } from '@jeevanand/agent-browserbox-runtime/client';
 import type { AppContext, AppModule, AppWindow } from './apps';
@@ -77,7 +78,7 @@ const desktopOpen = (os: Kernel) => os.procs.list().some((p) => p.name === 'desk
  */
 export function openInDesktop(os: Kernel, id: string, args: Record<string, unknown> = {}): void {
   if (desktopOpen(os)) return os.openApp(id, args);
-  if (!open(OS_URL, 'bbx-os')) return os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
+  if (!open(withProfile(OS_URL), profileWindow('bbx-os'))) return os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
   const off = os.bus.on('proc:spawn', (p) => {
     if (p.name !== 'desktop') return;
     off();

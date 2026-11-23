@@ -868,7 +868,11 @@ await check('profiles: a second profile is separate; a password locks keys until
     await p.getByRole('button', { name: 'Sign in' }).click();
     await p.waitForSelector('.ag-input', { timeout: 60000 });
     if (!(await p.evaluate(() => bbx.secrets.has('test.key')))) throw new Error('the key is gone after signing in');
-    return 'second profile separate; sign-out locked the keys, a wrong password was refused, the keys came back';
+    // A window opened from here is the same person, still signed in, even though "Second" was used since.
+    const [desk] = await Promise.all([ctx.waitForEvent('page'), p.locator('.sb-desktop').click()]);
+    await desk.waitForFunction(() => globalThis.bbx?.ready, null, { timeout: 60000 });
+    if (!desk.url().includes('profile=default') || (await desk.locator('.pf-signin').count()) || !(await desk.evaluate(() => bbx.secrets.has('test.key')))) throw new Error(`the desktop opened another profile or lost the key: ${desk.url()}`);
+    return 'second profile separate; sign-out locked the keys, a wrong password was refused, the keys came back; the desktop opened from here is the same profile, signed in';
   } finally {
     await ctx.close();
   }

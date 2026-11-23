@@ -3,6 +3,7 @@ import './style.css';
 import './chat.css';
 import './workbench.css';
 import { OS_URL } from '@/app/config';
+import { profileWindow, withProfile } from '@/app/boot';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
 import type { AppModule } from '@/ui/apps';
@@ -68,10 +69,10 @@ const app: AppModule = {
     // Shown inside the desktop (a window there), rather than in a tab of its own.
     const embedded = window.top !== window;
     const openTab = () => {
-      if (!window.open(location.href, 'bbx-agent')) os.notify({ title: 'Allow pop-ups to open the agent in a new tab', level: 'warn' });
+      if (!window.open(withProfile(location.href), profileWindow('bbx-agent'))) os.notify({ title: 'Allow pop-ups to open the agent in a new tab', level: 'warn' });
     };
     const openDesktop = () => {
-      if (!open(OS_URL, 'bbx-os')) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
+      if (!open(withProfile(OS_URL), profileWindow('bbx-os'))) os.notify({ title: 'Allow pop-ups to open the desktop', level: 'warn' });
     };
     const route = (id: string, args: Record<string, unknown> = {}) => {
       if (id === 'settings') return settings.open(typeof args.section === 'string' ? args.section : undefined);

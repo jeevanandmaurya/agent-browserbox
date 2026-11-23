@@ -1,6 +1,7 @@
 import { APP_MANIFESTS, type AppManifest } from './app-manifest';
 import type { Kernel } from '@jeevanand/agent-browserbox-runtime/client';
 import type { Proc } from '@jeevanand/agent-browserbox-runtime/client';
+import { profileWindow, withProfile } from '@/app/boot';
 import { h } from './dom';
 import { loader } from './icons';
 import type { WindowManager } from './wm';
@@ -65,7 +66,7 @@ export class AppHost {
     if (existing && !existing.closed) return existing.focus();
     const area = this.wm.area.getBoundingClientRect();
     const win = this.wm.open({ title: app.name, icon: app.icon, width: Math.min(1060, area.width * 0.86), height: Math.min(760, area.height - 24) });
-    const frame = h('iframe', { class: 'win-page', src: app.external, title: app.name, allow: 'clipboard-read; clipboard-write; microphone; fullscreen; screen-wake-lock' });
+    const frame = h('iframe', { class: 'win-page', src: withProfile(app.external!), title: app.name, allow: 'clipboard-read; clipboard-write; microphone; fullscreen; screen-wake-lock' });
     win.body.append(frame);
     // Clicks inside the page never reach this document, so focus is how we learn the window was used.
     const onBlur = () => setTimeout(() => document.activeElement === frame && win.focus());
@@ -84,7 +85,7 @@ export class AppHost {
       // Pages of their own (the agent) open in a desktop window; `newTab` gives them a browser tab instead.
       if (!app.external || !args.newTab) return app.external ? this.#launchPage(app) : undefined;
       // Named, so a second launch returns to the same tab.
-      if (!open(app.external, `bbx-${id}`)) this.os.notify({ title: `Allow pop-ups to open ${app.name}`, body: 'The browser blocked the new tab.', level: 'warn' });
+      if (!open(withProfile(app.external), profileWindow(`bbx-${id}`))) this.os.notify({ title: `Allow pop-ups to open ${app.name}`, body: 'The browser blocked the new tab.', level: 'warn' });
       return;
     }
     const existing = this.#singletons.get(id);
