@@ -10,6 +10,7 @@ export const setWorkspace = (folder: string) => void (workspace = folder);
 
 export const TOOLS: Array<{ id: string; label: string; icon: IconName; defaults?: Record<string, unknown> }> = [
   { id: 'preview', label: 'Preview', icon: 'eye' },
+  { id: 'artifacts', label: 'Artifacts', icon: 'fileText' },
   {
     id: 'files',
     label: 'Files',

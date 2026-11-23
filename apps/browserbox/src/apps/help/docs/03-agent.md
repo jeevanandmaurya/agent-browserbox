@@ -39,6 +39,10 @@ Only changes made with the agent's file tools are tracked. Changes made by shell
 
 Each project has its own folder, chats, memory and instructions. Pick one at the top of the sidebar, or **New project…** to make one: give it a name and a folder (a new one under `~/Projects`, an existing one, or a folder you shared from your computer under `/mnt`). In a project the agent works in its folder, changes files there without asking (in Ask mode, elsewhere still asks), and reads the folder's `AGENTS.md`. **Project settings…** edits the instructions, sets a default model and pins knowledge files the agent always gets. **General** is the original workspace, `/home/agent`, with every chat from before projects. Deleting a project deletes its chats and memory; its folder is kept unless you tick the box.
 
+## Artifacts
+
+When the agent makes something worth keeping (a document, a web page or small app, a diagram, an SVG, a table, some code) it makes an **artifact**: a card in the chat that opens it beside the conversation. Each change is a new version you can switch between. **Edit** opens a copy as a new version in the Editor; **Copy** and **Download** take it elsewhere. **Artifacts** in the side panel (and on the desktop) lists every artifact in the project. They are files in the project's `.artifacts` folder, so undo and rewinding a chat cover them too. Pages and diagrams run sandboxed: they cannot reach your files, keys or other sites.
+
 ## Memory
 
 The agent remembers things between chats: about you (everywhere) and about the current project. It saves a fact when it learns something that will matter later; each one shows in the chat and can be undone. Type `/remember <fact>` (or `/remember me: <fact>` for everywhere) and `/forget <text>` yourself, and see or edit everything in **Settings → Memory**, where you can also stop the agent saving memories itself. New memories apply from the next chat.

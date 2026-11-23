@@ -52,6 +52,8 @@ export class Transcript {
   #dirty = false;
   #cost = 0;
   #diffs = new Map<string, FileDiff>();
+  /** Opens an artifact (its id and version). */
+  onOpenArtifact: ((id: string, version: number) => void) | null = null;
   /** Opens a sub-agent's work (its spawn_agent call id and summary). */
   onOpenSubagent: ((id: string, title: string) => void) | null = null;
   /** Reads a file from the box, to show attached images. */
@@ -250,6 +252,21 @@ export class Transcript {
   }
 
   #finishTool(card: ToolCard, result: string, isError: boolean, ms?: number): void {
+    // An artifact the agent made or changed: a card that opens it.
+    const art = !isError && /^(Created|Updated) artifact "(.*)" \(id: ([\w-]+), kind: (\w+), version (\d+)\)\.$/.exec(result);
+    if (art && this.onOpenArtifact && !card.el.nextElementSibling?.classList.contains('ag-artifact')) {
+      const [, verb, title, id, kind, version] = art;
+      const open = () => this.onOpenArtifact?.(id!, Number(version));
+      card.el.after(
+        h(
+          'button',
+          { class: 'ag-artifact', type: 'button', onclick: open, title: 'Open' },
+          icon(kind === 'html' ? 'globe' : kind === 'csv' ? 'grid' : kind === 'code' ? 'code' : kind === 'svg' || kind === 'mermaid' ? 'image' : 'fileText', 20),
+          h('span', { class: 'ag-artifact-text' }, h('strong', null, title), h('span', { class: 'muted' }, `${verb === 'Created' ? 'New' : 'Updated'} · version ${version}`)),
+          h('span', { class: 'ag-artifact-open' }, 'Open'),
+        ),
+      );
+    }
     card.output.textContent = result.length > 20000 ? result.slice(0, 20000) + '\n… (truncated in view)' : result;
     card.status.replaceChildren(icon(isError ? 'close' : 'check', 13));
     card.el.classList.add(isError ? 'err' : 'ok');

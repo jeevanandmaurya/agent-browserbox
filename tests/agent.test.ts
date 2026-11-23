@@ -529,4 +529,25 @@ describe('agent package', () => {
       expect(model.requests[0]!.tools.map((t) => t.name)).not.toContain('memory');
     });
   });
+
+  it('makes artifacts with versions, edits the latest, and rewinding removes them', async () => {
+    const { model, agent, box } = await setup([
+      () => ({ content: [use('a', 'create_artifact', { title: 'Q3 Report', kind: 'markdown', content: '# Q3\nSales up.' })] }),
+      () => ({ content: [use('b', 'update_artifact', { id: 'q3-report', edits: [{ old: 'Sales up.', new: 'Sales up 12%.' }], note: 'number' })] }),
+      () => ({ content: [use('c', 'read_artifact', {}), use('d', 'read_artifact', { id: 'q3-report', version: 1 })] }),
+      () => ({ content: [say('here it is')] }),
+    ]);
+    await agent.send('write the report');
+    const dir = `${AGENT_HOME}/.artifacts/q3-report`;
+    expect(resultsOf(model.requests[1]!)[0]!.content).toBe('Created artifact "Q3 Report" (id: q3-report, kind: markdown, version 1).');
+    expect(box.files.get(`${dir}/v2.md`)).toBe('# Q3\nSales up 12%.');
+    const meta = JSON.parse(box.files.get(`${dir}/artifact.json`)!);
+    expect(meta.versions.map((v: { n: number; note?: string }) => [v.n, v.note])).toEqual([[1, undefined], [2, 'number']]);
+    expect(meta.session).toBe(agent.id);
+    const list = resultsOf(model.requests[3]!);
+    expect(list[0]!.content).toBe('q3-report · markdown · v2 · Q3 Report');
+    expect(list[1]!.content).toContain('version 1 of 2');
+    await agent.rewind(0, true);
+    expect([...box.files.keys()].some((k) => k.startsWith(dir))).toBe(false);
+  });
 });

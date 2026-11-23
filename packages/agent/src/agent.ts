@@ -13,6 +13,7 @@ import { decide, describeRule, loadRules } from './rules.js';
 import { FileMemory } from './seen.js';
 import { GENERAL, GENERAL_ID, type Project } from './projects.js';
 import { autoMemory, memoryPath, type MemoryScope } from './memory.js';
+import { artifactFile } from './artifacts.js';
 import { runHooks, type HookEvent, type HookPayload } from './hooks.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
@@ -58,13 +59,13 @@ export interface AgentHost {
 }
 
 /** Tools that only look: what plan mode allows. */
-const PLAN_TOOLS = new Set(['read_file', 'view_image', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
+const PLAN_TOOLS = new Set(['read_artifact', 'read_file', 'view_image', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
 /**
  * Tools that change nothing, so several can run at once. Everything else runs
  * in order, even without a permission prompt: two edits of one file at once
  * would each start from the original, and the second would undo the first.
  */
-const READ_ONLY = new Set(['read_file', 'view_image', 'list_dir', 'glob', 'grep', 'system_info', 'list_processes', 'use_skill', 'preview_logs']);
+const READ_ONLY = new Set(['read_artifact', 'read_file', 'view_image', 'list_dir', 'glob', 'grep', 'system_info', 'list_processes', 'use_skill', 'preview_logs']);
 /** An http_fetch that only reads: what plan mode allows of it. */
 const readsOnly = (call: { name: string; input: Record<string, unknown> }) => call.name !== 'http_fetch' || ((call.input.method === undefined || String(call.input.method).toUpperCase() === 'GET') && call.input.save_to === undefined);
 const PLAN_NOTE =
@@ -72,10 +73,12 @@ const PLAN_NOTE =
 export { MODE_TAG } from './mode.js';
 
 /** Files a tool call will change, resolved to absolute paths. */
-function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string, project = GENERAL_ID): string[] {
+function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string, project = GENERAL_ID, workspace = ''): string[] {
   const i = call.input;
   // Memory files are files: changes to them show as diffs and can be undone.
   if (call.name === 'memory' && i.action !== 'view') return [memoryPath((i.scope as MemoryScope | undefined) ?? 'project', project)];
+  // A new version changes the artifact's record; the version file itself is reported as created.
+  if (call.name === 'update_artifact' && typeof i.id === 'string') return [artifactFile(workspace, i.id)];
   if (call.name === 'write_file' || call.name === 'edit_file' || call.name === 'delete_path') return typeof i.path === 'string' ? [path(i.path)] : [];
   if (call.name === 'move_path') return [i.copy ? null : i.from, i.to].filter((p): p is string => typeof p === 'string').map(path);
   if ((call.name === 'http_fetch' && typeof i.save_to === 'string') || (call.name === 'gpu_compute' && typeof i.output_file === 'string')) return [path((i.save_to ?? i.output_file) as string)];
@@ -550,6 +553,8 @@ export class Agent {
       },
       progress: (chunk) => emit({ type: 'tool_progress', id, chunk }),
       seen: this.#seen,
+      session: this.id,
+      created: (p) => this.checkpoints.created(p),
       project: this.project,
       workspace: this.project.folder,
       setTodos: (items) => {
@@ -583,7 +588,7 @@ export class Agent {
             const rule = decide(loadRules(this.os), call.name, call.input, ctx.path);
             let allowed = rule?.action !== 'deny';
             // Accept-edits mode: the agent's file changes go through, except in the user's real folders (/mnt).
-            const paths = changedPaths(call, ctx.path, this.project.id);
+            const paths = changedPaths(call, ctx.path, this.project.id, this.project.folder);
             const editAccepted = !rule && cap === 'fs.write' && this.os.perms.mode === 'edits' && paths.length > 0 && paths.every((p) => !isInside('/mnt', p));
             if (rule?.action === 'ask' || (!rule && cap && !editAccepted)) {
               this.os.procs.update(this.proc.pid, { state: 'blocked' });
@@ -605,7 +610,7 @@ export class Agent {
               const post = await this.#hooks('PostToolUse', { ...hookPayload, result: out.content }, signal, emit);
               const notes = [...post.context, ...(post.blocked !== undefined ? [post.blocked] : [])];
               if (notes.length) out = { ...out, content: `${out.content}\n\n[hook output]\n${notes.join('\n\n')}` };
-              if (before && call.name !== 'move_path' && paths.length === 1) {
+              if (before && call.name !== 'move_path' && !call.name.endsWith('_artifact') && paths.length === 1) {
                 const p = paths[0]!;
                 if (before.has(p)) {
                   const after = await this.os.fs.readText(p).catch(() => null);

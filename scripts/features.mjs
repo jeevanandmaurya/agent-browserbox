@@ -61,6 +61,9 @@ function respond(r) {
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
   if (system.includes('Your role: explorer')) return text('EXPLORER REPORT: nothing to see');
   if (lastUser.includes('weather please')) return call('mcp__weather__forecast', { city: 'Pune' });
+  if (lastUser.includes('make a sales table')) return call('create_artifact', { title: 'Sales by region', kind: 'csv', content: 'region,amount\nWest,30\nEast,120\nNorth,7\n' });
+  if (lastUser.includes('write the report')) return call('create_artifact', { title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\nAll good.' });
+  if (lastUser.includes('improve the report')) return call('update_artifact', { id: 'weekly-report', edits: [{ old: 'All good.', new: 'All good, shipped 3 features.' }], note: 'more detail' });
   if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
   if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
@@ -906,6 +909,36 @@ await check('projects: make one from the sidebar, the agent works in its folder,
     await page.locator('.sb-project', { hasText: 'General' }).waitFor();
     await page.waitForFunction((n) => document.querySelectorAll('.sb-chat').length >= n, generalChats);
     return `project folder /home/user/Projects/Demo Site; AGENTS.md read; pwd there; /remember saved; General shows its ${generalChats} chats`;
+  } finally {
+    await page.evaluate((m) => (bbx.perms.mode = m), mode);
+  }
+});
+
+await check('artifacts: a card opens the table, sorting works, and an edit makes version 2', async () => {
+  const mode = await page.evaluate(() => bbx.perms.mode);
+  try {
+    await page.evaluate(() => (bbx.perms.mode = 'auto'));
+    await page.locator('.bb-more').click();
+    await page.locator('.menu .pop-item', { hasText: 'New chat' }).click();
+    await send('make a sales table', 'Tool said');
+    await page.locator('.ag-artifact', { hasText: 'Sales by region' }).click();
+    const firstCell = () => page.locator('.af-table tbody tr').first().locator('td').first().textContent();
+    await page.locator('.af-table').waitFor({ timeout: 10000 });
+    await page.locator('.af-sort', { hasText: 'amount' }).click();
+    if ((await firstCell()) !== 'North') throw new Error(`ascending: ${await firstCell()}`);
+    await page.locator('.af-sort', { hasText: 'amount' }).click();
+    if ((await firstCell()) !== 'East') throw new Error(`descending: ${await firstCell()}`);
+    await send('write the report', 'Tool said');
+    await send('improve the report', 'Tool said');
+    await page.locator('.ag-artifact', { hasText: 'version 2' }).click();
+    await page.locator('.af-doc :is(h1, h2)', { hasText: 'Weekly report' }).waitFor({ timeout: 10000 }).catch(async (e) => {
+      const seen = await page.evaluate(() => ({ bar: document.querySelector('.af-bar')?.textContent, body: document.querySelector('.af-body')?.innerHTML.slice(0, 300), cards: [...document.querySelectorAll('.ag-artifact')].map((c) => c.textContent) }));
+      throw new Error(`${e.message.split('\n')[0]} · ${JSON.stringify(seen)}`);
+    });
+    await page.locator('.af-doc', { hasText: 'shipped 3 features' }).waitFor();
+    const versions = await page.locator('.af-bar select[aria-label="Version"] option').count();
+    if (versions !== 2) throw new Error(`${versions} versions`);
+    return 'csv card → sortable table; markdown v1 → edit → v2 rendered with both versions listed';
   } finally {
     await page.evaluate((m) => (bbx.perms.mode = m), mode);
   }

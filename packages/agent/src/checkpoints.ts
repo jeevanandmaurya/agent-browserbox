@@ -86,11 +86,19 @@ export class Checkpoints {
     return seen;
   }
 
+  /** Records that `path` did not exist before this turn (it was just created), so undo removes it. */
+  created(path: string): void {
+    const cp = this.list.at(-1);
+    if (cp && !cp.files.some((f) => f.path === path)) cp.files.push({ path, before: null });
+  }
+
   /** Files changed at or after transcript index `turn`, each with its content before the first of those changes. */
   since(turn: number): FileSnap[] {
     const out = new Map<string, FileSnap>();
     for (const cp of this.list) if (cp.turn >= turn) for (const f of cp.files) if (!out.has(f.path)) out.set(f.path, f);
-    return [...out.values()];
+    // A folder that did not exist then: nothing inside it did either, whatever later turns saved of it.
+    const absent = [...out.values()].filter((f) => f.before === null && !f.skipped).map((f) => f.path);
+    return [...out.values()].filter((f) => !absent.some((a) => f.path.startsWith(`${a}/`)));
   }
 
   /** Puts files back as they were before the turn at `turn`, and forgets the later checkpoints. */

@@ -49,7 +49,8 @@ export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { li
 - A shell with common Unix-style commands (run \`help\`). It is not bash: there is no node, apt or native compiler; \`npm install <pkg>\` only records the dependency in package.json (packages load from esm.sh when bundled). Packages add more: ${packageLine(os)}
 - Code execution in isolated sandboxes: JavaScript (run_js), Python via WebAssembly (run_python), WASI programs (run_wasm), and GPU compute shaders (gpu_compute; WebGPU is ${gpu}).
 - Web apps: build them as a project folder (index.html or src/main.tsx, package.json for npm dependencies, optional server.ts backend) and run them with dev_server; it bundles TypeScript/JSX, reloads on save and shows the app in Preview. Check your work with preview_logs (console errors, failed requests) rather than assuming it rendered. For a single self-contained page, show_html is enough.
-- A desktop the user is looking at. show_html opens a rendered page in a window — the best way to present charts, reports and interactive results. open_app opens the editor, file manager and other apps.
+- Artifacts: for anything the user will want to keep — a document, a report, a web page or small app, a diagram, an SVG, a table, a piece of code to reuse — use create_artifact; it opens beside the chat, keeps versions, and the user can edit, download and reopen it later. Change it with update_artifact (small exact edits), not a new artifact.
+- A desktop the user is looking at. show_html opens a rendered page in a window for a quick, throwaway look. open_app opens the editor, file manager and other apps.
 - Network access is limited by the browser: requests only succeed against servers that allow cross-origin access (CORS).${hasServerWebTools(cfg) ? ' For general web research use the web_search and web_fetch tools, which run server-side and are not limited by CORS.' : ''}
 
 # The sandbox: what this machine is and is not

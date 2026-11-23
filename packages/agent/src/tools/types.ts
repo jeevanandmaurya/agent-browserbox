@@ -29,6 +29,10 @@ export interface ToolContext {
   project: Project;
   /** Where the agent may change files without asking: the project's folder. */
   workspace: string;
+  /** The chat this agent belongs to. */
+  session: string;
+  /** Tells undo about a file or folder the tool just created (when its name was not known in advance). */
+  created(path: string): void;
   /** What the agent has seen of each file: an existing file must be read before it is edited. */
   seen: FileMemory;
   /** Runs a nested agent (optionally a named custom agent) to completion and returns its final answer. */

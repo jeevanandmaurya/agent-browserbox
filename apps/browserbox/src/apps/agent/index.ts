@@ -408,6 +408,8 @@ const app: AppModule = {
     shell.todoSlot.after(changesChip);
 
     // Edit an earlier message: the chat goes back to just before it (and, if you choose, so do the files).
+    log.onOpenArtifact = (id, version) => route('artifacts', { id, version });
+
     // A sub-agent's work, read-only, in a dialog: the same view as a chat.
     log.onOpenSubagent = async (id, title) => {
       const messages = (await agent.snapshot()).subagents?.[id];

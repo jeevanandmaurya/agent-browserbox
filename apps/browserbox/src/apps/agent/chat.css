@@ -248,3 +248,11 @@
 .ag-hook summary { cursor: pointer; }
 .ag-hook pre { margin: 4px 0 0; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); white-space: pre-wrap; max-height: 200px; overflow: auto; }
 .ag-hook.err { color: var(--danger, #d55); }
+
+/* An artifact the agent made: a card that opens it */
+.ag-artifact { display: flex; align-items: center; gap: 12px; width: min(420px, 100%); margin: 6px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ag-artifact:hover, .ag-artifact:focus-visible { background: var(--panel-2); }
+.ag-artifact-text { display: grid; flex: 1; min-width: 0; }
+.ag-artifact-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-artifact-text .muted { font-size: 12px; }
+.ag-artifact-open { font-size: 13px; color: var(--accent); }

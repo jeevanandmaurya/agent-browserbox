@@ -16,6 +16,9 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   agent is done; exit 2 blocks or sends it back to work.
 - **Projects**: separate workspaces with their own folder, chats, memory and
   instructions (sidebar → project picker). Your existing chats are in General.
+- **Artifacts**: documents, pages, diagrams, tables and code the agent makes
+  for you to keep, with versions, opened beside the chat (and in the
+  Artifacts app); edit, copy, download.
 - **Memory**: the agent remembers facts about you and each project between
   chats; `/remember`, `/forget`, and Settings → Memory to see and edit them.
 - Sub-agents run several at once; open one's card to see what it did. Pick a

@@ -38,6 +38,14 @@ new" part of the GitHub release notes (`agent-v*`).
   undo). `agent.memory.auto: false` removes the tool. The prompt includes
   both scopes, snapshotted per chat. `addMemory`, `removeMemory`,
   `replaceMemory` for apps.
+- **Artifacts**: `create_artifact`, `update_artifact` (exact edits or
+  whole content; earlier versions kept) and `read_artifact` (or list), for
+  html, markdown, svg, mermaid, code and csv, up to 2 MB a version. Stored
+  as files in `<project>/.artifacts/<id>/` (artifact.json + v1, v2…), so
+  undo and rewind cover them; `ToolContext.created()` tells undo about
+  files a tool creates. Helpers for apps: `listArtifacts`, `readArtifact`,
+  `updateArtifact`, `deleteArtifact`, `versionPath`.
+- Undo: files inside a folder that did not exist yet are not put back.
 - The system prompt states run_js's real time limit.
 
 ## 0.3.1
