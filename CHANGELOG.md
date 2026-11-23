@@ -5,6 +5,17 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.3.2
+
+Agent fixes (agent 0.3.1):
+
+- Two edits of one file in the same step no longer undo each other.
+- Downloads by the agent stay in its folder; deleting its whole folder,
+  saved chats, skills or memory asks first; plan mode changes nothing.
+- A model or instructions change applies to running chats.
+- OpenAI-compatible APIs: token counts are shown, cut-off tool calls are
+  not run, and no tool calls are lost.
+
 ## 0.3.1
 
 - **Profiles in the Terminal**: `profile`, `profile list | new | switch |
