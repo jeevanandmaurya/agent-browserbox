@@ -8,6 +8,16 @@ The chip next to **+** sets how the agent works on your next message. **Shift+Ta
 - **Plan**: the agent only looks (reads files, searches), then replies with a numbered plan. Choose **Run the plan** to have it carry the plan out, or keep refining it.
 - **Auto**: the agent acts without asking. Everything still happens inside the sandbox.
 
+## Permission rules
+
+**Settings → Permissions → Rules** fine-tunes the mode for particular commands, paths, URLs or tools. Each rule is **Allow** (no prompt), **Always ask** (a prompt even in Auto) or **Never allow** (blocked even in Auto). For example:
+
+- Allow command `git *` and `ls *`: everyday commands run without a prompt.
+- Always ask for URL `https://api.github.com/*`.
+- Never allow command `rm -rf *`, or path `/home/user/private/*`.
+
+`*` matches anything, and `git *` also matches plain `git`. Never allow wins over Always ask, which wins over Allow. A command line joined with `&&`, `;` or `|` is allowed only when every command in it is; one that runs `$(…)` or backticks always needs your OK.
+
 ## Seeing and undoing changes
 
 - Every file the agent writes or edits shows its **diff** in the chat.
@@ -25,7 +35,8 @@ Only changes made with the agent's file tools are tracked. Changes made by shell
 ## Giving it context
 
 - **@** picks a file from the agent's folder; its contents go with your message.
-- **+ → Attach files** uploads files from your device into `/home/agent/uploads`.
+- **+ → Attach files** uploads files from your device into `/home/agent/uploads`. You can also paste a screenshot into the message box.
+- **Images** (PNG, JPEG, GIF or WebP, up to 5 MB) that you attach or @mention are shown to the model, which can also look at image files itself (`view_image`). This needs a model that can see images: Claude, GPT and other vision models do; the small in-browser models do not.
 - **AGENTS.md** in `/home/agent` is read at the start of every chat: put how your project is built, tested and laid out there. `/init` has the agent write it.
 - **MEMORY.md** in `/home/agent` is the agent's long-term notes about you and your work.
 

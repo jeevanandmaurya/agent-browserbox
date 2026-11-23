@@ -5,6 +5,8 @@
  * plan mode, skills, custom agents, sub-agents, MCP connectors and sessions.
  */
 export { VERSION } from './version.js';
+export { imageRef, isImagePath, MAX_IMAGE_BYTES } from './images.js';
+export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCommand, type PermRule, type RuleAction, type RuleScope } from './rules.js';
 
 // The agent's view of a box, and what the app supplies.
 export { AgentOs, Settings, Shell, type FilesLike, type WithFiles, type WithSettings, type ProcTable, type AgentOsOptions, type AgentUi, type AppInfo, type Notice, type SecretsApi, type SettingsApi } from './host/os.js';
@@ -24,13 +26,13 @@ export { diffFiles, type FileDiff } from './diff.js';
 export * from './config.js';
 export { createProvider } from './providers/index.js';
 export * from './providers/webllm-store.js';
-export { ProviderError, type Block, type ContextReport, type JsonSchema, type Msg, type Provider, type ToolSpec, type TurnRequest, type TurnResult, type Usage } from './types.js';
+export { ProviderError, type Block, type ContextReport, type ImageRef, type JsonSchema, type Msg, type Provider, type ToolSpec, type TurnRequest, type TurnResult, type Usage } from './types.js';
 
 // Terminal commands an app can offer in its box's shell.
 export { AGENT_COMMANDS, pathIn, SETUP_DONE, type AgentCommand, type CommandContext, type Tty } from './commands.js';
 
 // Tools and extensions.
 export { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index.js';
-export { clip, obj, tool } from './tools/types.js';
+export { clip, obj, tool, type ToolOutput } from './tools/types.js';
 export * from './ext/library.js';
 export { McpHub, MCP_KEY, mcpTokenName, type McpServerConfig } from './ext/mcp.js';

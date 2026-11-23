@@ -1,9 +1,11 @@
 import { relayed, unreachable, type AgentConfig } from '../config.js';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types.js';
 
+type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
 interface WireMsg {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | Part[] | null;
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
   tool_call_id?: string;
 }
@@ -17,7 +19,7 @@ interface Chunk {
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 }
 
-function toWire(system: string, messages: Msg[]): WireMsg[] {
+export function toWire(system: string, messages: Msg[]): WireMsg[] {
   const out: WireMsg[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
@@ -27,7 +29,11 @@ function toWire(system: string, messages: Msg[]): WireMsg[] {
     } else {
       for (const b of m.content) if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.is_error ? `ERROR: ${b.content}` : b.content });
       const text = m.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
-      if (text) out.push({ role: 'user', content: text });
+      // Tool messages carry text only, so images a tool showed follow as a user message.
+      const shown = m.content.flatMap((b) => (b.type === 'tool_result' ? (b.images ?? []) : []));
+      const images = [...m.content.flatMap((b) => (b.type === 'image' ? [b] : [])), ...shown].flatMap((i) => (i.data ? [{ type: 'image_url' as const, image_url: { url: `data:${i.mediaType};base64,${i.data}` } }] : []));
+      if (images.length) out.push({ role: 'user', content: [{ type: 'text', text: text || 'The images from the tool results above.' }, ...images] });
+      else if (text) out.push({ role: 'user', content: text });
     }
   }
   return out;

@@ -9,6 +9,8 @@ import { listApps } from './host/os.js';
 import { Shell } from './host/os.js';
 import { describeModel, loadConfig } from './config.js';
 import { buildSystemPrompt } from './prompt.js';
+import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
+import { decide, describeRule, loadRules } from './rules.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
 import { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index.js';
@@ -79,7 +81,11 @@ function capDiff(d: FileDiff, maxLines = 600): FileDiff {
 type ToolUse = Extract<Block, { type: 'tool_use' }>;
 type ToolResult = Extract<Block, { type: 'tool_result' }>;
 
-const estimate = (os: Kernel, m: Msg) => m.content.reduce((n, b) => n + os.kcore.estimateTokens(b.type === 'tool_use' ? JSON.stringify(b.input) : b.type === 'tool_result' ? b.content : b.text), 8);
+const estimate = (os: Kernel, m: Msg) =>
+  m.content.reduce(
+    (n, b) => n + (b.type === 'image' ? IMAGE_TOKENS : os.kcore.estimateTokens(b.type === 'tool_use' ? JSON.stringify(b.input) : b.type === 'tool_result' ? b.content : b.text) + (b.type === 'tool_result' ? (b.images?.length ?? 0) * IMAGE_TOKENS : 0)),
+    8,
+  );
 
 /** For small-context providers: blank out old tool output, then drop the oldest turns. */
 function fitContext(os: Kernel, messages: Msg[], budget: number): Msg[] {
@@ -122,6 +128,8 @@ export class Agent {
   readonly shell: Shell;
   readonly id: string;
   #run: AbortController | null = null;
+  /** Image data read during a run, by path; dropped when the run ends. */
+  #images = new Map<string, string>();
   #system: string | null = null;
   #depth: number;
   #persona: Extension | null;
@@ -172,8 +180,9 @@ export class Agent {
   /**
    * Sends a user message and runs the agent until it stops. Never rejects.
    * `plan`: look but do not change anything, and answer with a plan.
+   * `images`: paths of image files in the box for the model to see with the message.
    */
-  async send(text: string, opts: { plan?: boolean } = {}): Promise<void> {
+  async send(text: string, opts: { plan?: boolean; images?: string[] } = {}): Promise<void> {
     if (this.busy) return;
     const run = (this.#run = new AbortController());
     const emit = (e: AgentEvent) => this.host.onEvent(e);
@@ -204,7 +213,19 @@ export class Agent {
       const autoCompact = cfg.autoCompact && !lite;
       if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
       this.checkpoints.begin(this.transcript.length);
-      this.#push({ role: 'user', content: [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }] });
+      const content: Block[] = [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }];
+      for (const path of opts.images ?? []) {
+        if (lite) {
+          content.push({ type: 'text', text: `(The image ${path} was attached, but this model cannot see images.)` });
+          continue;
+        }
+        try {
+          content.push({ type: 'image', ...(await imageRef(this.os, path)) });
+        } catch (err) {
+          content.push({ type: 'text', text: `(Could not attach the image: ${(err as Error).message}.)` });
+        }
+      }
+      this.#push({ role: 'user', content });
 
       for (let step = 0; ; step++) {
         if (step >= cfg.maxSteps) {
@@ -248,6 +269,7 @@ export class Agent {
       this.#repairHistory();
     } finally {
       this.#run = null;
+      this.#images.clear();
       void wake?.release().catch(() => undefined);
       this.os.procs.account(this.proc.pid, performance.now() - started);
       this.os.procs.update(this.proc.pid, { state: 'idle', detail: `${this.transcript.length} messages` });
@@ -299,7 +321,8 @@ export class Agent {
     for (const m of this.messages) {
       for (const b of m.content) {
         if (b.type === 'tool_use') parts.toolCalls += est(JSON.stringify(b.input)) + 8;
-        else if (b.type === 'tool_result') parts.toolResults += est(b.content) + 8;
+        else if (b.type === 'tool_result') parts.toolResults += est(b.content) + 8 + (b.images?.length ?? 0) * IMAGE_TOKENS;
+        else if (b.type === 'image') parts.user += IMAGE_TOKENS;
         else if (m.role === 'user') parts.user += est(b.text);
         else parts.assistant += est(b.text);
       }
@@ -355,7 +378,7 @@ export class Agent {
     const history = provider.contextBudget ? fitContext(this.os, this.messages, provider.contextBudget) : this.messages;
     const result = await provider.turn({
       system: this.#system,
-      messages: [...history, { role: 'user', content: [{ type: 'text', text: COMPACT_PROMPT }] }],
+      messages: await withImageData(this.os, [...history, { role: 'user', content: [{ type: 'text', text: COMPACT_PROMPT }] }], this.#images),
       tools: this.#tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
       signal,
       onText: () => undefined,
@@ -385,7 +408,7 @@ export class Agent {
     let first = 0;
     const result = await provider.turn({
       system: this.#system!,
-      messages: provider.contextBudget ? fitContext(this.os, this.messages, provider.contextBudget) : this.messages,
+      messages: await withImageData(this.os, provider.contextBudget ? fitContext(this.os, this.messages, provider.contextBudget) : this.messages, this.#images),
       tools: tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
       signal,
       onText: (delta) => ((first ||= performance.now()), emit({ type: 'text', delta })),
@@ -447,19 +470,24 @@ export class Agent {
           announced = true;
           try {
             const cap = def.cap(call.input, ctx);
-            let allowed = true;
-            if (cap) {
+            // The user's rules come first: deny blocks, ask always prompts, allow skips the prompt.
+            const rule = decide(loadRules(this.os), call.name, call.input, ctx.path);
+            let allowed = rule?.action !== 'deny';
+            if (rule?.action === 'ask' || (!rule && cap)) {
               this.os.procs.update(this.proc.pid, { state: 'blocked' });
-              allowed = await this.os.perms.request({ cap, actor: 'The agent', title: call.name, detail: summary }, this.host.prompter);
+              const req = { cap: cap ?? 'system', actor: 'The agent', title: call.name, detail: summary } as const;
+              allowed = rule ? (await (this.host.prompter ?? ((r) => this.os.perms.prompt(r)))(req)) !== 'deny' : await this.os.perms.request(req, this.host.prompter);
               this.os.procs.update(this.proc.pid, { state: 'running' });
             }
             signal.throwIfAborted();
-            if (!allowed) out = fail('The user denied permission for this action.');
+            if (!allowed)
+              out = fail(rule?.action === 'deny' ? `Blocked by the user's permission rule "${describeRule(rule.rule)}". Do not look for another way to do this; if it is needed, ask the user.` : 'The user denied permission for this action.');
             else {
               // Keep what the files were, for undo, and show what changed.
               const paths = changedPaths(call, ctx.path);
               const before = paths.length ? await this.checkpoints.capture(paths) : null;
-              out = { type: 'tool_result', tool_use_id: call.id, content: await def.run(call.input, ctx) };
+              const r = await def.run(call.input, ctx);
+              out = typeof r === 'string' ? { type: 'tool_result', tool_use_id: call.id, content: r } : { type: 'tool_result', tool_use_id: call.id, content: r.text, images: r.images };
               if (before && call.name !== 'move_path' && paths.length === 1) {
                 const p = paths[0]!;
                 if (before.has(p)) {

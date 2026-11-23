@@ -6,7 +6,7 @@ import { OS_URL } from '@/app/config';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
 import type { AppModule } from '@/ui/apps';
-import { loadConfig } from '@jeevanand/agent-browserbox/ui';
+import { isImagePath, loadConfig } from '@jeevanand/agent-browserbox/ui';
 import { openMenu } from '@/ui/menu';
 import { AGENT_HOME } from '@jeevanand/agent-browserbox-runtime/client';
 import { choiceDialog } from '@/ui/dialog';
@@ -21,7 +21,7 @@ import type { SlashCommand } from './slash';
 import { SettingsModal } from './settings-modal';
 import { createShell } from './shell';
 import { createSidebar } from './sidebar';
-import { renderTodos, Transcript } from './view';
+import { forDisplay, renderTodos, Transcript } from './view';
 import { TOOLS, Workbench } from './workbench';
 
 const LAST_KEY = 'bbx-agent-last-chat';
@@ -46,6 +46,7 @@ const app: AppModule = {
   async mount(ctx) {
     const { os, root, win } = ctx;
     const log = new Transcript();
+    log.readFile = (p) => os.fs.readFile(p);
     // The session lives in the kernel; this window attaches to it and can leave without stopping it.
     let agent: AgentHandle;
     let busy = false;
@@ -309,7 +310,9 @@ const app: AppModule = {
       // @mentioned files go with the message.
       const full = await attachMentions(os, text, AGENT_HOME).catch(() => text);
       log.addUser(plan ? `${full}\n\n<mode>plan</mode>` : full);
-      void agent.send(full, { plan }).catch((err: Error) => {
+      // Attached and @mentioned images go to the model as images too.
+      const images = forDisplay(full).files.filter(isImagePath).map((p) => (p.startsWith('/') ? p : `${AGENT_HOME}/${p}`));
+      void agent.send(full, { plan, ...(images.length ? { images } : {}) }).catch((err: Error) => {
         log.addNote(`Lost the agent session: ${err.message}`, 'error');
         setBusy(false);
       });

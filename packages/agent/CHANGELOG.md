@@ -24,6 +24,18 @@ and keys move across on their own.
 - `setup` asks for an API key for any service: Anthropic and OpenRouter keys
   are recognised, others ask for the address.
 
+Also new:
+
+- **Images**: `send(text, { images })` shows the model image files from the
+  box (PNG, JPEG, GIF, WebP up to 5 MB), and the new `view_image` tool lets it
+  look at images itself. Tools can return `{ text, images }`. Conversations
+  keep only the paths; image data is read when a request is sent.
+- **Permission rules** (`perms.rules`, `loadRules`/`saveRules`, `decide`):
+  allow, always ask or deny by command, path, URL or tool name, before the
+  permission mode. Deny wins over ask, ask over allow; a command line is
+  allowed only when every command in it is, and never when it substitutes
+  commands.
+
 ## 0.2.0
 
 First release of the agent as a library: the BrowserBox app's agent, moved

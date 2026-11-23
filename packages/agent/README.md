@@ -31,7 +31,7 @@ await agent.send('Make a todo app in ./todo, serve it, and check the console for
 ## What it does
 
 - **Tools**, all working in the box:
-  - files: `read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `move_path`, `delete_path`
+  - files: `read_file`, `view_image`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `move_path`, `delete_path`
   - code: `shell` (a session that keeps `cd` and variables), `run_js`, `run_python` (once `pkg install python`), `run_wasm`, `gpu_compute` (WebGPU in the page)
   - web projects: `dev_server`, `preview_logs`, `show_html`
   - shipping: `github` (clone, push, pull requests) and `deploy` (Netlify, Vercel, GitHub Pages)
@@ -52,7 +52,13 @@ await agent.send('Make a todo app in ./todo, serve it, and check the console for
   written there on first use. Memory in `/home/agent/MEMORY.md`.
 - **Permissions**: with a `prompter`, writing outside the agent's workspace,
   running code, network and system actions ask first (once, always or deny);
-  without one, everything inside the box is allowed.
+  without one, everything inside the box is allowed. Rules in the
+  `perms.rules` setting (`saveRules(os, [...])`) come first: allow, always ask
+  or deny by shell command (`git *`), path, URL or tool name; deny wins, and a
+  command line is allowed only when every command in it is.
+- **Images**: `agent.send(text, { images: ['/home/user/shot.png'] })` shows
+  the model images from the box, and the `view_image` tool lets it look at
+  image files itself (Anthropic and OpenAI-compatible vision models).
 - **Sessions**: `AgentManager` keeps several conversations, saves them in the
   box (`/home/agent/.sessions`) and resumes them; `listSessions(os)` lists them.
 - **Models**, from three sources (`provider`): `api`, a hosted model with an

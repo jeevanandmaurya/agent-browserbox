@@ -43,7 +43,8 @@ const call = (name, args) => [{ choices: [{ delta: { tool_calls: [{ index: 0, id
 function respond(r) {
   const msgs = r.messages;
   const last = msgs.at(-1);
-  const lastUser = msgs.findLast((m) => m.role === 'user')?.content ?? '';
+  const userText = (c) => (Array.isArray(c) ? c.map((p) => p.text ?? '').join('') : (c ?? ''));
+  const lastUser = userText(msgs.findLast((m) => m.role === 'user')?.content);
   const system = msgs[0].content;
   if (lastUser.includes('Your context window is nearly full')) return text('SUMMARY: the user asked about skills and weather; all done.');
   if (last.role === 'tool' && last.content.includes('installed python') && r.tools.some((t) => t.function.name === 'run_python')) return call('run_python', { code: 'print(6 * 7)' });
@@ -58,6 +59,7 @@ function respond(r) {
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
   if (system.includes('Your role: explorer')) return text('EXPLORER REPORT: nothing to see');
   if (lastUser.includes('weather please')) return call('mcp__weather__forecast', { city: 'Pune' });
+  if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
   return text(`echo: ${lastUser.slice(0, 120)}`);
 }
 const llm = createServer(async (req, res) => {
@@ -67,7 +69,7 @@ const llm = createServer(async (req, res) => {
   const r = JSON.parse(b);
   requests.push(r);
   promptTokens = Math.ceil(JSON.stringify(r.messages).length / 4);
-  const lastText = r.messages.findLast((m) => m.role === 'user')?.content ?? '';
+  const lastText = JSON.stringify(r.messages.findLast((m) => m.role === 'user')?.content ?? '');
   // "slow" messages take a while, so the tests can act while the agent works.
   if (/\bslow\b/.test(lastText) && r.messages.at(-1).role === 'user') await new Promise((ok) => setTimeout(ok, 3000));
   res.writeHead(200, { ...cors, 'content-type': 'text/event-stream' }).end(sse(respond(r)));
@@ -712,6 +714,38 @@ await check('@mentions attach files; messages queue while the agent works', asyn
   } catch (err) {
     throw new Error(`${err.message.split('\n')[0]} · ${await dump()} · last requests: ${JSON.stringify(requests.slice(-3).map((r) => (r.messages.findLast((m) => m.role === 'user')?.content ?? '').slice(0, 80)))}`);
   }
+});
+
+await check('images: attach one, the model receives it, the chat shows a thumbnail', async () => {
+  // A 1×1 PNG.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
+  await page.locator('.ag-input').locator('xpath=..').locator('input[type=file]').setInputFiles({ name: 'dot.png', mimeType: 'image/png', buffer: png });
+  await page.locator('.cp-chip', { hasText: 'dot.png' }).waitFor();
+  const sent = await send('what colour is this image');
+  const parts = sent.flatMap((r) => r.messages).filter((m) => m.role === 'user' && Array.isArray(m.content)).flatMap((m) => m.content);
+  const image = parts.find((p) => p.type === 'image_url');
+  if (!image?.image_url.url.startsWith('data:image/png;base64,iVBOR')) throw new Error(`no image sent: ${JSON.stringify(parts).slice(0, 300)}`);
+  await page.locator('.ag-msg.user img.ag-thumb').last().waitFor({ timeout: 5000 });
+  return 'image_url part sent; thumbnail shown';
+});
+
+await check('permission rules: a deny rule added in Settings blocks part of a command line', async () => {
+  await page.evaluate(() => bbx.fs.writeFile('/home/user/keep/a.txt', 'keep me'));
+  await page.evaluate(() => bbx.openApp('settings', { section: 'permissions' }));
+  await page.getByRole('button', { name: 'Add rule' }).click();
+  const rule = page.locator('.st-rule').last();
+  await rule.getByLabel('Action').selectOption('deny');
+  await rule.getByLabel('Pattern').fill('rm -rf *');
+  await rule.getByLabel('Pattern').press('Tab');
+  await page.waitForFunction(() => JSON.stringify(bbx.settings.get('perms.rules', [])).includes('rm -rf *'));
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.waitForSelector('.sm-overlay', { state: 'detached' });
+  const sent = await send('run the risky command', 'Tool said:');
+  const result = sent.flatMap((r) => r.messages).findLast((m) => m.role === 'tool')?.content ?? '';
+  if (!result.includes('Blocked by the user') || !result.includes('rm -rf *')) throw new Error(`not blocked: ${result}`);
+  if ((await page.evaluate(() => bbx.fs.readText('/home/user/keep/a.txt')).catch(() => null)) !== 'keep me') throw new Error('the file was deleted');
+  await page.evaluate(() => bbx.settings.set('perms.rules', []));
+  return result.slice(0, 80);
 });
 
 await check('chats keep working in the background, shown in the sidebar', async () => {

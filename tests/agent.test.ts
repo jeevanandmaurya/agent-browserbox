@@ -254,4 +254,57 @@ describe('agent package', () => {
     }
     expect(bad).toEqual([]);
   });
+
+  it('sends attached images to the model and lets it look at image files', async () => {
+    const png = `${AGENT_HOME}/shot.png`;
+    const { model, agent } = await setup(
+      [
+        (req) => {
+          const first = req.messages[0]!.content;
+          expect(first.find((b) => b.type === 'image')).toMatchObject({ path: png, mediaType: 'image/png', data: btoa('PNGDATA') });
+          return { content: [use('v', 'view_image', { path: 'chart.webp' })] };
+        },
+        (req) => {
+          const r = resultsOf(req).find((b) => b.tool_use_id === 'v')!;
+          expect(r.images?.[0]).toMatchObject({ path: `${AGENT_HOME}/chart.webp`, mediaType: 'image/webp', data: btoa('WEBP') });
+          return { content: [say('A chart.')] };
+        },
+      ],
+      { files: { [png]: 'PNGDATA', [`${AGENT_HOME}/chart.webp`]: 'WEBP' } },
+    );
+    await agent.send('what is this?', { images: [png, `${AGENT_HOME}/notes.txt`] });
+    expect(model.requests).toHaveLength(2);
+    // Image data goes to the model but is not kept in the conversation.
+    expect(JSON.stringify(agent.messages)).not.toContain(btoa('PNGDATA'));
+    expect(agent.messages[0]!.content.some((b) => b.type === 'text' && b.text.includes('not a PNG, JPEG, GIF or WebP'))).toBe(true);
+  });
+
+  it('applies permission rules before the permission mode', async () => {
+    const asked: string[] = [];
+    const { model, agent, box } = await setup(
+      [
+        () => ({ content: [use('a', 'shell', { command: 'git status && ls' }), use('b', 'shell', { command: 'rm -rf /home/user' }), use('c', 'shell', { command: 'curl https://x.test' }), use('d', 'shell', { command: 'git log; npm test' })] }),
+        () => ({ content: [say('ok')] }),
+      ],
+      {
+        settings: {
+          'perms.mode': 'ask',
+          'perms.rules': [
+            { scope: 'shell', pattern: 'git *', action: 'allow' },
+            { scope: 'shell', pattern: 'ls', action: 'allow' },
+            { scope: 'shell', pattern: 'rm -rf *', action: 'deny' },
+            { scope: 'shell', pattern: 'curl *', action: 'ask' },
+          ],
+        },
+        prompter: async (r) => (asked.push(r.detail), 'once'),
+      },
+    );
+    await agent.send('go');
+    const results = resultsOf(model.requests[1]!);
+    expect(results.find((r) => r.tool_use_id === 'a')!.is_error).toBeFalsy();
+    expect(results.find((r) => r.tool_use_id === 'b')!.content).toMatch(/Blocked by the user's permission rule "deny command rm -rf \*"/);
+    expect(box.commands).not.toContain('rm -rf /home/user');
+    // Only the ask rule and the partly-allowed command line prompted.
+    expect(asked).toEqual(['curl https://x.test', 'git log; npm test']);
+  });
 });

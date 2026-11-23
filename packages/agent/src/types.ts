@@ -1,10 +1,22 @@
 /** Provider-neutral conversation model. Each provider adapter maps to and from its wire format. */
 
+/**
+ * An image in the box, by path. Messages keep only the reference; the agent
+ * reads the file (`data`, base64) when it sends the conversation to a model.
+ */
+export interface ImageRef {
+  path: string;
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+  data?: string;
+}
+
 export type Block =
   | { type: 'text'; text: string }
+  /** An image the user attached. */
+  | ({ type: 'image' } & ImageRef)
   | { type: 'thinking'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown>; /** Set when the model produced unparseable arguments. */ invalid?: string }
-  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean; /** Images the tool showed the model (view_image). */ images?: ImageRef[] }
   /** Something the provider did on its side (e.g. a web search). Display only. */
   | { type: 'server_note'; text: string };
 

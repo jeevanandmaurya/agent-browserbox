@@ -41,7 +41,8 @@ export interface AgentHandle {
   readonly sid: string;
   readonly pid: number;
   /** Resolves when the agent has finished responding. `plan`: look, change nothing, answer with a plan. */
-  send(text: string, opts?: { plan?: boolean }): Promise<void>;
+  /** `images`: paths of image files in the box for the model to see with the message. */
+  send(text: string, opts?: { plan?: boolean; images?: string[] }): Promise<void>;
   /** Back to just before the user message at transcript index `index`; with `files`, undoing the agent's file changes since. */
   rewind(index: number, files: boolean): Promise<{ restored: string[]; skipped: string[] }>;
   /** The files each turn changed (file tools only). */

@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@jeevanand/agent-browserbox/ui';
-import { MODE_TAG } from '@jeevanand/agent-browserbox/ui';
+import { isImagePath, MODE_TAG } from '@jeevanand/agent-browserbox/ui';
 import type { FileDiff } from '@jeevanand/agent-browserbox/ui';
 import type { Msg } from '@jeevanand/agent-browserbox/ui';
 import type { PermDecision, PermRequest } from '@jeevanand/agent-browserbox-runtime/client';
@@ -13,12 +13,16 @@ import { icon } from './icons';
 
 /** Files attached with @mentions travel inside the message; the chat shows them as chips. */
 const FILE_BLOCK = /\n*<file path="([^"]+)"[^>]*?(?:\/>|>[\s\S]*?<\/file>)/g;
+/** Uploads are listed at the end of the message (see the composer). */
+const UPLOADS = /\n*Attached files:\n((?:- [^\n]+\n?)+)\s*$/;
 
 /** What a user message looks like in the chat: without hidden instructions and attached file contents. */
 export function forDisplay(text: string): { text: string; files: string[]; plan: boolean } {
-  const files = [...text.matchAll(FILE_BLOCK)].map((m) => m[1]!);
   const plan = MODE_TAG.test(text);
-  return { text: text.replace(MODE_TAG, '').replace(FILE_BLOCK, '').trim(), files, plan };
+  text = text.replace(MODE_TAG, '');
+  const uploads = text.match(UPLOADS)?.[1]?.split('\n').flatMap((l) => (l.startsWith('- ') ? [l.slice(2).trim()] : [])) ?? [];
+  const files = [...[...text.matchAll(FILE_BLOCK)].map((m) => m[1]!), ...uploads];
+  return { text: text.replace(UPLOADS, '').replace(FILE_BLOCK, '').trim(), files, plan };
 }
 
 export { renderTodos } from './cards';
@@ -48,6 +52,8 @@ export class Transcript {
   #dirty = false;
   #cost = 0;
   #diffs = new Map<string, FileDiff>();
+  /** Reads a file from the box, to show attached images. */
+  readFile?: (path: string) => Promise<Uint8Array>;
   /** Called with the message's position among your messages (0 = first) and its text, to edit and resend it. */
   onEdit: ((ordinal: number, text: string) => void) | null = null;
 
@@ -147,6 +153,21 @@ export class Transcript {
     this.#scroll(true);
   };
 
+  /** An attached image, loaded from the box; a file chip when it cannot be read. */
+  #thumb(path: string): HTMLElement {
+    const name = path.split('/').pop() ?? path;
+    const el = h('span', { class: 'ag-file-chip', title: path }, icon('file', 13), name);
+    const full = path.startsWith('/') ? path : `/home/agent/${path}`;
+    void this.readFile?.(full)
+      .then((bytes) => {
+        const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+        const img = h('img', { class: 'ag-thumb', src: url, alt: name, title: path, onload: () => URL.revokeObjectURL(url) });
+        el.replaceWith(img);
+      })
+      .catch(() => undefined);
+    return el;
+  }
+
   #userMsg(raw: string): HTMLElement {
     const { text, files, plan } = forDisplay(raw);
     const el = h(
@@ -154,7 +175,7 @@ export class Transcript {
       { class: 'ag-msg user' },
       plan ? h('span', { class: 'ag-mode-tag' }, icon('fileText', 13), 'Plan') : null,
       h('div', { class: 'ag-bubble' }, text),
-      files.length ? h('div', { class: 'ag-attach' }, files.map((f) => h('span', { class: 'ag-file-chip', title: f }, icon('file', 13), f.split('/').pop()))) : null,
+      files.length ? h('div', { class: 'ag-attach' }, files.map((f) => (isImagePath(f) ? this.#thumb(f) : h('span', { class: 'ag-file-chip', title: f }, icon('file', 13), f.split('/').pop())))) : null,
     );
     const copyBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Copy', 'aria-label': 'Copy message', onclick: () => void navigator.clipboard?.writeText(text) }, icon('copy', 15));
     const editBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Edit and resend from here', 'aria-label': 'Edit message', onclick: () => this.onEdit?.([...this.el.querySelectorAll('.ag-msg.user')].indexOf(el), text) }, icon('edit', 15));

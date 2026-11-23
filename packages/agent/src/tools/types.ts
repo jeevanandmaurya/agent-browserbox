@@ -1,7 +1,7 @@
 import type { KernelCore as Kernel } from '../host/os.js';
 import type { Capability } from '../host/perms.js';
 import type { Shell } from '../host/os.js';
-import type { JsonSchema } from '../types.js';
+import type { ImageRef, JsonSchema } from '../types.js';
 
 export interface TodoItem {
   text: string;
@@ -38,7 +38,14 @@ export interface ToolDef<I = Record<string, unknown>> {
   cap(input: I, tc: ToolContext): Capability | null;
   /** One-line description of this call for the UI and the permission prompt. */
   describe(input: I): string;
-  run(input: I, tc: ToolContext): Promise<string>;
+  /** The result for the model: text, or text with images for it to look at. */
+  run(input: I, tc: ToolContext): Promise<string | ToolOutput>;
+}
+
+/** A tool result that shows the model images too. */
+export interface ToolOutput {
+  text: string;
+  images: ImageRef[];
 }
 
 /** Helper that keeps each tool's input type attached to its implementation. */

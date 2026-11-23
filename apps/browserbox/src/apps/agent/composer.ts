@@ -202,9 +202,20 @@ export function createComposer(
     );
   }
 
-  file.addEventListener('change', async () => {
+  file.addEventListener('change', () => {
     const files = [...(file.files ?? [])];
     file.value = '';
+    void attachFiles(files);
+  });
+  // Pasted files (a screenshot from the clipboard) are attached like uploads.
+  input.addEventListener('paste', (e) => {
+    const files = [...(e.clipboardData?.files ?? [])];
+    if (!files.length) return;
+    e.preventDefault();
+    void attachFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `pasted-${Date.now()}${i ? `-${i}` : ''}.${f.type.split('/')[1] || 'png'}`, { type: f.type }))));
+  });
+
+  async function attachFiles(files: File[]): Promise<void> {
     for (const f of files) {
       try {
         const path = await freePath(os, f.name);
@@ -217,7 +228,7 @@ export function createComposer(
     renderChips();
     grow();
     input.focus();
-  });
+  }
 
   function submit(): void {
     rec?.stop();

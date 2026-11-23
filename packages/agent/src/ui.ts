@@ -14,6 +14,8 @@ export { MODE_TAG } from './mode.js';
 export { ProviderError, type Block, type ContextReport, type JsonSchema, type Msg, type ToolSpec, type Usage } from './types.js';
 export { AGENT_HOME, HOME } from './host/paths.js';
 export { VERSION } from './version.js';
+export { isImagePath, MAX_IMAGE_BYTES } from './images.js';
+export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCommand, type PermRule, type RuleAction, type RuleScope } from './rules.js';
 export type { AgentEvent, AgentHost, TurnStats } from './agent.js';
 export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, TurnChanges } from './api.js';
 export type { TodoItem } from './tools/types.js';

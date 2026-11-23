@@ -90,6 +90,7 @@ export function toChat(req: TurnRequest, window = 4096, reserve = 768, fill = 1)
   for (const m of req.messages as Msg[]) {
     for (const b of m.content) {
       if (b.type === 'text' && b.text) push(m.role, b.text);
+      else if (b.type === 'image') push(m.role, `[image ${b.path}: this model cannot see images]`);
       else if (b.type === 'tool_use') push('assistant', `<tool_call>${JSON.stringify({ name: b.name, arguments: b.input })}</tool_call>`);
       else if (b.type === 'tool_result') push('user', `<tool_result>${b.is_error ? 'ERROR: ' : ''}${b.content.slice(0, 2000)}</tool_result>`);
     }

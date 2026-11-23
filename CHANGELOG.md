@@ -11,6 +11,10 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   OpenRouter, Groq and others, each with its own key), **Local server** and
   **In this browser**. The Claude-only settings (model list, effort, web
   search switch) are gone; your model and key carry over.
+- **Images**: attach or paste images and the agent sees them (with a vision
+  model); the chat shows thumbnails. The agent can also look at image files.
+- **Permission rules** in Settings → Permissions: allow, always ask or never
+  allow particular commands (`git *`, `rm -rf *`), paths, URLs or tools.
 
 ## 0.2.0
 

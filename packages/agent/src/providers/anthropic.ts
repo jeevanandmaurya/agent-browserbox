@@ -9,6 +9,8 @@ const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-fab
 /** Models known to take adaptive thinking + effort; custom ids get a plain request. */
 const ADAPTIVE = /^claude-(opus|sonnet|haiku|fable|mythos)-[5-9]/;
 
+const image = (media_type: string, data: string) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: media_type as 'image/png', data } });
+
 function toParams(messages: Msg[]): Anthropic.Beta.BetaMessageParam[] {
   return messages.map((m): Anthropic.Beta.BetaMessageParam => {
     // Our own earlier turns go back byte-for-byte: thinking and server-tool
@@ -17,8 +19,15 @@ function toParams(messages: Msg[]): Anthropic.Beta.BetaMessageParam[] {
     const content: Anthropic.Beta.BetaContentBlockParam[] = [];
     for (const b of m.content) {
       if (b.type === 'text' && b.text) content.push({ type: 'text', text: b.text });
+      else if (b.type === 'image' && b.data) content.push(image(b.mediaType, b.data));
       else if (b.type === 'tool_use') content.push({ type: 'tool_use', id: b.id, name: b.name, input: b.input });
-      else if (b.type === 'tool_result') content.push({ type: 'tool_result', tool_use_id: b.tool_use_id, content: b.content, is_error: b.is_error });
+      else if (b.type === 'tool_result')
+        content.push({
+          type: 'tool_result',
+          tool_use_id: b.tool_use_id,
+          content: b.images?.some((i) => i.data) ? [{ type: 'text', text: b.content }, ...b.images.flatMap((i) => (i.data ? [image(i.mediaType, i.data)] : []))] : b.content,
+          is_error: b.is_error,
+        });
     }
     return { role: m.role, content: content.length ? content : [{ type: 'text', text: '(empty)' }] };
   });

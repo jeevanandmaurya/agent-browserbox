@@ -114,3 +114,8 @@
 [data-app="settings"] .wl-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 [data-app="settings"] .wl-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
 [data-app="settings"] .wl-progress progress { width: 120px; accent-color: var(--accent); }
+
+/* Permission rules: action · scope · pattern · remove */
+.st-rules { display: grid; gap: 6px; margin: 8px 0; }
+.st-rule { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; }
+@media (max-width: 560px) { .st-rule { grid-template-columns: 1fr 1fr; } .st-rule .input { grid-column: 1 / -1; } }

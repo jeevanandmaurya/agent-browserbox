@@ -369,7 +369,7 @@ last reply's speed and time to first token, and a Compact button.
 
 ### Agent tools
 
-`read_file` `write_file` `edit_file` `list_dir` `glob` `grep` `delete_path`
+`read_file` `view_image` `write_file` `edit_file` `list_dir` `glob` `grep` `delete_path`
 `move_path` · `shell` `run_js` `run_python` `run_wasm` `gpu_compute` ·
 `http_fetch` `open_app` `show_html` · `list_processes` `kill_process`
 `system_info` · `notify` `clipboard_read` `clipboard_write` `speak` ·
@@ -385,6 +385,8 @@ last reply's speed and time to first token, and a Compact button.
 | Custom agents | `/home/agent/agents/<name>.md`; Settings → Agents | A role prompt and an optional `tools:` allow-list. The main agent delegates with `spawn_agent` and the sub-agent runs with a fresh context. |
 | Slash commands | Type `/`; `/home/agent/commands/<name>.md` | Built-ins act on the window; custom commands are prompt templates (`$ARGUMENTS`). |
 | Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Anthropic* has Anthropic's API connect to it (Anthropic models only). Local stdio servers cannot run in a browser. |
+| Images | **+** → Attach files, paste, or `@file.png` | PNG, JPEG, GIF and WebP images (up to 5 MB) go to the model as images, with thumbnails in the chat; `view_image` lets the agent look at image files itself. Needs a vision model. |
+| Permission rules | Settings → Permissions → Rules | Allow, always ask or never allow by command (`git *`), path, URL or tool, before the Ask/Auto mode. Never allow wins; a command line with `&&`, `;` or `|` is allowed only when every command in it is. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
 
 Example skills, an `explorer` agent and an `/explain` command are created on first run; edit or delete them freely.

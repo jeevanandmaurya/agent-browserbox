@@ -1,6 +1,7 @@
 import { AGENT_HOME } from '../host/paths.js';
 import { isInside } from '../host/path.js';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types.js';
+import { imageRef } from '../images.js';
 
 /** Writes inside the agent's workspace and /tmp are free; anywhere else needs a grant. */
 const writeCap = (paths: string[], tc: ToolContext) => (paths.every((p) => isInside(AGENT_HOME, tc.path(p)) || isInside('/tmp', tc.path(p))) ? null : 'fs.write');
@@ -12,6 +13,17 @@ function looksBinary(data: Uint8Array): boolean {
 }
 
 export const fsTools: ToolDef[] = [
+  tool<{ path: string }>({
+    name: 'view_image',
+    description: 'Look at an image file (PNG, JPEG, GIF or WebP, up to 5 MB): one the user attached, a chart or picture you made, a screenshot. The image is shown to you with the result. Works only with models that can see images.',
+    input_schema: obj({ path: { type: 'string', description: 'Path of the image file' } }, ['path']),
+    cap: () => null,
+    describe: (i) => `View ${i.path}`,
+    async run(i, tc) {
+      const ref = await imageRef(tc.os, tc.path(i.path));
+      return { text: `Showing ${ref.path}.`, images: [ref] };
+    },
+  }),
   tool<{ path: string; offset?: number; limit?: number }>({
     name: 'read_file',
     description: 'Read a text file from the virtual filesystem. Returns lines prefixed with line numbers. Use offset/limit (in lines) for large files.',
