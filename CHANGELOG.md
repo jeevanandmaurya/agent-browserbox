@@ -19,6 +19,9 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 - **Artifacts**: documents, pages, diagrams, tables and code the agent makes
   for you to keep, with versions, opened beside the chat (and in the
   Artifacts app); edit, copy, download.
+- **Scheduled tasks** (Settings → Scheduled, `/schedule`): prompts the agent
+  runs on a schedule while BrowserBox is open, each as a chat, with what it
+  may do chosen up front and a notification when done.
 - **Memory**: the agent remembers facts about you and each project between
   chats; `/remember`, `/forget`, and Settings → Memory to see and edit them.
 - Sub-agents run several at once; open one's card to see what it did. Pick a

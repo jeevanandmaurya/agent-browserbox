@@ -1,5 +1,5 @@
 import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
-import { AGENT_COMMANDS, AgentManager, AgentOs, BrowserSecrets, pathIn, type AgentHandle, type PermDecision, type PermRequest, type ProcTable, type SettingsApi } from '@jeevanand/agent-browserbox';
+import { AGENT_COMMANDS, AgentManager, AgentOs, BrowserSecrets, Scheduler, pathIn, type AgentHandle, type PermDecision, type PermRequest, type ProcTable, type SettingsApi } from '@jeevanand/agent-browserbox';
 import { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { Peer } from '@jeevanand/agent-browserbox-runtime/client';
 import { APP_MANIFESTS } from '@/ui/app-manifest';
@@ -164,11 +164,36 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
       },
     });
     await offerCommands(kernel, os);
-    return { os, agents: new AgentManager(os) };
+    const agents = new AgentManager(os);
+    startScheduler(os, agents);
+    return { os, agents };
   })().catch((err) => {
     world = null;
     throw err;
   }));
+}
+
+/**
+ * Scheduled tasks run here, in the profile's agent worker, while any window of
+ * the profile is open. One worker per profile (a SharedWorker), and a Web Lock
+ * per task where SharedWorker is missing, so a task never runs twice at once.
+ */
+let scheduler: Scheduler | null = null;
+function startScheduler(os: AgentOs, agents: AgentManager): void {
+  scheduler?.stop();
+  scheduler = new Scheduler(os, agents, {
+    notify: (n) => {
+      kernel?.notify({ title: n.title, body: n.body, level: n.error ? 'warn' : 'ok' });
+      // A system notification too, when the user allowed them (Settings → Permissions).
+      try {
+        if (globalThis.Notification?.permission === 'granted') new Notification(n.title, { body: n.body, tag: n.session });
+      } catch {
+        /* not available in this kind of worker */
+      }
+    },
+    exclusive: (name, fn) => (navigator.locks ? navigator.locks.request(name, { ifAvailable: true }, (lock) => (lock ? fn() : undefined)) : fn()),
+  });
+  scheduler.start();
 }
 
 /**

@@ -944,6 +944,28 @@ await check('artifacts: a card opens the table, sorting works, and an edit makes
   }
 });
 
+await check('scheduled tasks: /schedule prefills one, Run now runs it as a chat, and its outcome is recorded', async () => {
+  const input = page.locator('.ag-input');
+  await input.fill('/schedule say scheduled ping');
+  await input.press('Enter');
+  const dlg = page.locator('.pj-modal', { hasText: 'New scheduled task' });
+  await dlg.waitFor();
+  if ((await dlg.getByLabel('Prompt').inputValue()) !== 'say scheduled ping') throw new Error('the prompt was not prefilled');
+  await dlg.getByLabel('Name').fill('Ping');
+  await dlg.getByRole('button', { name: 'Create' }).click();
+  const item = page.locator('.st-sched-item', { hasText: 'Ping' });
+  await item.waitFor();
+  await item.getByRole('button', { name: 'Run now' }).click();
+  await page.waitForFunction(() => (bbx.settings.get('agent.schedules', [])[0] ?? {}).lastRun?.outcome === 'ok', null, { timeout: 45000 }).catch(async () => {
+    throw new Error(`no run recorded: ${JSON.stringify(await page.evaluate(() => bbx.settings.get('agent.schedules', [])))}`);
+  });
+  const note = await page.evaluate(() => bbx.settings.get('agent.schedules', [])[0].lastRun.note);
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.locator('.sb-chat-title', { hasText: '⏱ Ping' }).first().waitFor({ timeout: 10000 });
+  await page.evaluate(() => bbx.settings.set('agent.schedules', []));
+  return `ran as a chat "⏱ Ping …"; recorded: ${note.slice(0, 60)}`;
+});
+
 await check('profile commands: a person can switch and exit in the terminal; the agent cannot change profiles', async () => {
   // Auto mode: no approval prompt, so only the profile rule itself can stop the agent.
   const mode = await page.evaluate(() => bbx.perms.mode);

@@ -46,6 +46,12 @@ new" part of the GitHub release notes (`agent-v*`).
   files a tool creates. Helpers for apps: `listArtifacts`, `readArtifact`,
   `updateArtifact`, `deleteArtifact`, `versionPath`.
 - Undo: files inside a folder that did not exist yet are not put back.
+- **Scheduled tasks** (`agent.schedules`, `Scheduler`, `nextRunAfter`):
+  every N minutes (15 at least), hourly, daily, weekdays or weekly, in a
+  project; each run is a chat; unattended permissions from the task
+  (`allow.edits/commands/network`), questions answered with a fixed note;
+  missed runs run on next start or are skipped; 30-minute limit, 2 at a
+  time; optional exclusive lock across workers; outcome in `lastRun`.
 - The system prompt states run_js's real time limit.
 
 ## 0.3.1

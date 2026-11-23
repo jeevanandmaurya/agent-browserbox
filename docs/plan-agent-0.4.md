@@ -1,7 +1,7 @@
 # Plan: the agent's next features (0.4)
 
-Status: Phase 1 done (agent, runtime and app 0.4.0). Decisions 10.2–10.5 use
-the proposals below unless changed. Written after the agent review (agent 0.3.1).
+Status: all five phases done (agent, runtime and app 0.4.0). Decisions 10.2–10.5
+use the proposals below unless changed. "Later" items (section 7) remain. Written after the agent review (agent 0.3.1).
 Covers the gaps against Claude Code (an agent working on code) and the Claude
 desktop app (projects, artifacts, memory, scheduled work), designed for what
 BrowserBox actually is: everything runs in one browser tab, per profile, with

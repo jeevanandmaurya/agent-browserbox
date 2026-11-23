@@ -550,4 +550,37 @@ describe('agent package', () => {
     await agent.rewind(0, true);
     expect([...box.files.keys()].some((k) => k.startsWith(dir))).toBe(false);
   });
+
+  describe('scheduled tasks', () => {
+    const task = (o: Record<string, unknown> = {}) => ({ id: 't1', name: 'Morning check', prompt: 'check the build', schedule: { every: 'day', at: '08:00' }, allow: { edits: true, commands: false, network: false }, missed: 'run', notify: true, enabled: true, nextRun: Date.now() - 1000, ...o });
+
+    it('runs a due task as a chat, within what it allows, and records the outcome', async () => {
+      const box = fakeBox();
+      const model = scripted([() => ({ content: [use('w', 'write_file', { path: 'status.md', content: 'ok' }), use('s', 'shell', { command: 'build' })] }), () => ({ content: [say('Build checked: all fine.')] })]);
+      const os = await AgentOs.create(box, { provider: model, seed: false, settings: { 'perms.mode': 'ask', 'agent.schedules': [task()] } });
+      const { AgentManager, Scheduler, listSessions } = await import('../packages/agent/src/index');
+      const notes: Array<{ title: string; body: string }> = [];
+      const scheduler = new Scheduler(os, new AgentManager(os), { notify: (n) => notes.push(n) });
+      await scheduler.tick();
+      expect(box.files.get(`${AGENT_HOME}/status.md`)).toBe('ok'); // edits allowed
+      expect(resultsOf(model.requests[1]!).find((r) => r.tool_use_id === 's')!.content).toMatch(/denied/); // commands not
+      const t = (os.settings.get('agent.schedules', []) as Array<{ lastRun: { outcome: string; note: string }; nextRun: number }>)[0]!;
+      expect(t.lastRun).toMatchObject({ outcome: 'ok', note: 'Build checked: all fine.' });
+      expect(t.nextRun).toBeGreaterThan(Date.now());
+      expect(notes).toEqual([{ title: 'Morning check: done', body: 'Build checked: all fine.', session: expect.any(String), error: false }]);
+      await new Promise((r) => setTimeout(r, 20));
+      expect((await listSessions(os))[0]!.title).toMatch(/^⏱ Morning check · /);
+    });
+
+    it('skips a run missed while BrowserBox was closed when the task says so', async () => {
+      const box = fakeBox();
+      const model = scripted([]);
+      const missed = task({ missed: 'skip', nextRun: Date.now() - 3 * 3600_000, lastRun: { at: 1, outcome: 'ok', note: '' } });
+      const os = await AgentOs.create(box, { provider: model, seed: false, settings: { 'agent.schedules': [missed] } });
+      const { AgentManager, Scheduler } = await import('../packages/agent/src/index');
+      await new Scheduler(os, new AgentManager(os)).tick();
+      expect(model.requests).toHaveLength(0);
+      expect((os.settings.get('agent.schedules', []) as Array<{ lastRun: { outcome: string } }>)[0]!.lastRun.outcome).toBe('skipped');
+    });
+  });
 });

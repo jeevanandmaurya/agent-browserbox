@@ -12,6 +12,7 @@ import { permissionsSection } from './permissions';
 import { profileSection } from './profile';
 import { hooksSection } from './hooks';
 import { memorySection } from './memory';
+import { scheduledSection } from './scheduled';
 import './style.css';
 
 const app: AppModule = {
@@ -38,6 +39,7 @@ const app: AppModule = {
       { id: 'skills', label: 'Skills', build: () => extensionSection(ctx, 'skill', saved) },
       { id: 'agents', label: 'Agents', build: () => extensionSection(ctx, 'agent', saved) },
       { id: 'commands', label: 'Commands', build: () => extensionSection(ctx, 'command', saved) },
+      { id: 'scheduled', label: 'Scheduled', build: () => scheduledSection(ctx, saved) },
       { id: 'memory', label: 'Memory', build: () => memorySection(ctx, saved) },
       { id: 'hooks', label: 'Hooks', build: () => hooksSection(ctx, saved) },
       { id: 'environment', label: 'Environment', build: () => environmentSection(ctx, saved) },

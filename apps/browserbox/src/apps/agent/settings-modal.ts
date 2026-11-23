@@ -24,7 +24,8 @@ export class SettingsModal {
   }
 
   /** No section: the list of sections on phones, Model on wide screens. */
-  open(section?: SettingsSection | string): void {
+  /** `extra`: arguments for the section, e.g. a prompt for a new scheduled task. */
+  open(section?: SettingsSection | string, extra: Record<string, unknown> = {}): void {
     if (!this.#overlay) this.#returnFocus = document.activeElement as HTMLElement | null;
     this.#teardown(false);
     const pane = h('div', { class: 'sm-body' });
@@ -42,7 +43,7 @@ export class SettingsModal {
     });
     document.body.append(overlay);
     this.#overlay = overlay;
-    const app: PanelApp = mountPanelApp(this.os, 'settings', pane, section ? { section } : {}, {
+    const app: PanelApp = mountPanelApp(this.os, 'settings', pane, section ? { section, ...extra } : {}, {
       launch: (id, args) => {
         this.close();
         this.route(id, args);

@@ -47,6 +47,12 @@ When the agent makes something worth keeping (a document, a web page or small ap
 
 The agent remembers things between chats: about you (everywhere) and about the current project. It saves a fact when it learns something that will matter later; each one shows in the chat and can be undone. Type `/remember <fact>` (or `/remember me: <fact>` for everywhere) and `/forget <text>` yourself, and see or edit everything in **Settings → Memory**, where you can also stop the agent saving memories itself. New memories apply from the next chat.
 
+## Scheduled tasks
+
+**Settings → Scheduled** (or `/schedule <prompt>`) runs a prompt on a schedule: every few minutes (at least 15), every hour, every day, on weekdays or weekly, in a project you choose. Each run is a chat titled "⏱ name · date", so its result is in your chat list, and you can be notified when it finishes. Nobody is there to approve during a run, so you choose up front whether it may change files, run commands and code, or use the network; anything else is refused. **Run now**, **Pause** and **Edit** are next to each task.
+
+Tasks run only while BrowserBox is open in some window or tab: a browser cannot wake a closed web page. If BrowserBox was closed at the time, the task runs as soon as it opens again, or skips that run, as you choose.
+
 ## Giving it context
 
 - **@** picks a file from the agent's folder; its contents go with your message.

@@ -387,6 +387,12 @@ last reply's speed and time to first token, and a Compact button.
 | Connectors (MCP) | Settings → Connectors | Remote MCP servers over Streamable HTTP, with an encrypted bearer token. *Direct* calls the server from the browser (it must allow CORS). *Through Anthropic* has Anthropic's API connect to it (Anthropic models only). Local stdio servers cannot run in a browser. |
 | Images | **+** → Attach files, paste, or `@file.png` | PNG, JPEG, GIF and WebP images (up to 5 MB) go to the model as images, with thumbnails in the chat; `view_image` lets the agent look at image files itself. Needs a vision model. |
 | Profiles | Sidebar → your name; Settings → Profile | Several people in one browser, each with their own files, settings, keys and chats (a kernel each). An optional password locks the profile's API keys when you sign out. Files are not encrypted. |
+| Projects | Sidebar → project picker | Separate workspaces: each has a folder (the agent's working folder), chats, memory, AGENTS.md, a default model and pinned knowledge files. General is `/home/agent`. |
+| Memory | `memory` tool; `/remember`, `/forget`; Settings → Memory | Facts about you and each project, one entry at a time, shown in the chat with undo, given to the agent at the start of each chat. |
+| Artifacts | Cards in the chat; Artifacts app | Documents, pages, diagrams, SVGs, tables and code with versions, stored as files in `<project>/.artifacts`; HTML and Mermaid render sandboxed. |
+| Hooks | Settings → Hooks | Commands before/after tools, on messages, on start and on stop (exit 2 blocks or sends the agent back to work). |
+| Scheduled tasks | Settings → Scheduled; `/schedule` | Prompts on a schedule while BrowserBox is open, each run a chat, with unattended permissions chosen up front. |
+| Modes | Mode chip (Shift+Tab) | Ask first · Accept edits · Plan · Auto. |
 | Permission rules | Settings → Permissions → Rules | Allow, always ask or never allow by command (`git *`), path, URL or tool, before the Ask/Auto mode. Never allow wins; a command line with `&&`, `;` or `|` is allowed only when every command in it is. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
 

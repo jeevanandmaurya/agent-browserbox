@@ -125,3 +125,9 @@
 .st-hook { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .st-hook-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .st-hook-top .input { flex: 1; min-width: 160px; }
+
+/* Scheduled tasks */
+.st-sched { display: grid; gap: 8px; margin: 8px 0; }
+.st-sched-item { padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.st-sched-item.off { opacity: 0.7; }
+.st-sched-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }

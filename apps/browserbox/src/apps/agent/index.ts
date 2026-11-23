@@ -128,6 +128,7 @@ const app: AppModule = {
         },
       },
       { name: 'memory', description: 'See and edit what the agent remembers', kind: 'built-in', run: () => settings.open('memory') },
+      { name: 'schedule', description: 'Run a prompt on a schedule (/schedule <prompt>)', kind: 'built-in', run: (args) => settings.open('scheduled', args.trim() ? { prompt: args.trim() } : {}) },
       { name: 'docs', description: 'Open the documentation', kind: 'built-in', run: (args) => route('help', args ? { topic: args.trim() } : {}) },
       { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
     ];
