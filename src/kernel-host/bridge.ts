@@ -66,10 +66,14 @@ void os.handle({
 const allowed = new Set([location.origin, ...ALLOWED_ORIGINS]);
 let handed = false;
 addEventListener('message', (e) => {
-  // The window may ask twice (once eagerly, once on our ready signal); answer once.
-  if (e.source !== parent || e.data?.type !== 'bbx:connect' || handed) return;
+  if (e.source !== parent || e.data?.type !== 'bbx:connect') return;
   if (!allowed.has(e.origin)) return parent.postMessage({ type: 'bbx:refused' }, e.origin);
-  handed = true;
-  parent.postMessage({ type: 'bbx:port', lock, shared }, e.origin, [kernelPort()]);
+  // A numbered request asks for one more kernel port (the SDK runtime gives each of its
+  // connections its own kernel client). An unnumbered one is the window's first port: it may
+  // ask twice (once eagerly, once on our ready signal), so that one is answered once.
+  const req = typeof e.data.req === 'number' ? e.data.req : null;
+  if (req === null && handed) return;
+  if (req === null) handed = true;
+  parent.postMessage({ type: 'bbx:port', req, lock, shared }, e.origin, [kernelPort()]);
 });
 if (parent !== window) parent.postMessage({ type: 'bbx:ready' }, '*');

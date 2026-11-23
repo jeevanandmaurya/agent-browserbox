@@ -305,6 +305,75 @@ await check('dev servers and the process table', () =>
   }),
 );
 
+await check('share(): a worker attaches to the box, with its own shells and permission answers', () =>
+  run(async (url) => {
+    const owner = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' }); // denies network (default)
+    const port = await owner.share();
+    const src = `import { BrowserBox } from '${location.origin}/sdk/index.js';
+      onmessage = async (e) => {
+        try {
+          const box = await BrowserBox.attach(e.data.port, { permissions: () => 'once' });
+          await box.fs.writeFile('from-worker.txt', 'hello from a worker');
+          const sh = await box.openShell();
+          await sh.exec('cd /tmp');
+          const pwd = (await sh.exec('pwd')).stdout.trim();
+          const net = await box.exec('curl ' + e.data.url);
+          box.teardown();
+          postMessage({ id: box.id, pwd, net: net.stdout, code: net.exitCode });
+        } catch (err) { postMessage({ error: err.message }); }
+      };`;
+    const worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), { type: 'module' });
+    const reply = new Promise((r) => (worker.onmessage = (e) => r(e.data)));
+    worker.postMessage({ port, url }, [port]);
+    const r = await reply;
+    worker.terminate();
+    const seen = await owner.fs.readTextFile('from-worker.txt');
+    const ownerNet = await owner.exec('curl ' + url);
+    owner.teardown();
+    if (r.error) throw new Error(r.error);
+    if (seen !== 'hello from a worker' || r.pwd !== '/tmp' || r.net !== 'hello-from-the-network' || r.id !== owner.id) throw new Error(JSON.stringify({ r, seen }));
+    if (ownerNet.exitCode === 0) throw new Error("the worker's network grant answered for the owner too");
+    return `worker wrote a file the page reads; its shell kept cd; its own 'allow' let curl through while the page's 'deny' still holds`;
+  }, dataUrl),
+);
+
+await check('kernelPort(): a channel to the kernel speaking its full protocol', () =>
+  run(async () => {
+    const k = await BrowserBox.boot({ runtimeUrl: RUNTIME, storage: 'memory' });
+    const { port, lock, shared } = await k.kernelPort();
+    const call = (m, ...a) => new Promise((resolve, reject) => {
+      const id = Math.floor(Math.random() * 1e9);
+      const on = (e) => { if (e.data?.id === id && e.data.k !== 'call') { port.removeEventListener('message', on); e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.value ?? e.data.v ?? e.data.r); } };
+      port.addEventListener('message', on);
+      port.start();
+      port.postMessage({ k: 'call', id, m, a });
+    });
+    const hello = await call('hello', 'ui');
+    await k.fs.writeFile('/tmp/k.txt', 'via sdk');
+    const text = new TextDecoder().decode(await call('fs.readFile', '/tmp/k.txt'));
+    k.teardown();
+    if (typeof lock !== 'string' || typeof shared !== 'boolean' || !hello?.version || text !== 'via sdk') throw new Error(JSON.stringify({ lock, shared, hello: !!hello, text }));
+    return `kernel hello v${hello.version}, ${hello.procs.length} processes; read a file over the kernel protocol`;
+  }),
+);
+
+await check("site: true drives the site's own kernel, separate from boxes", () =>
+  run(async () => {
+    const site = await BrowserBox.boot({ runtimeUrl: RUNTIME, site: true });
+    await site.fs.writeFile('/tmp/../home/user/site-mark.txt', 'site');
+    const plain = await BrowserBox.boot({ runtimeUrl: RUNTIME, id: 'not-the-site' });
+    const leaked = await plain.fs.exists('/home/user/site-mark.txt');
+    plain.teardown();
+    const again = await BrowserBox.boot({ runtimeUrl: RUNTIME, site: true });
+    const kept = await again.fs.readTextFile('/home/user/site-mark.txt');
+    await again.fs.rm('/home/user/site-mark.txt');
+    site.teardown();
+    again.teardown();
+    if (site.id !== 'site' || leaked || kept !== 'site') throw new Error(JSON.stringify({ id: site.id, leaked, kept }));
+    return 'site kernel id=site; its files are not in boxes, and persist for the next site boot';
+  }),
+);
+
 await check('agent: the ported agent drives its tools against a real box', () =>
   run(async () => {
     // The agent package is optional here: SDK-only runs (its own CI and releases) do not build it.

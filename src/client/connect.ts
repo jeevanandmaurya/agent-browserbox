@@ -14,6 +14,8 @@ export interface KernelLink {
   lock: string;
   /** False when each window runs its own kernel (no SharedWorker support). */
   shared: boolean;
+  /** Asks the same bridge for one more port to the same kernel (a separate client). */
+  more?(): Promise<KernelLink>;
 }
 
 /**
@@ -38,14 +40,33 @@ export function connectKernel(opts: ConnectOptions = {}): Promise<KernelLink> {
       frame.hidden = true;
     }
     const timer = setTimeout(() => reject(new Error(`The kernel at ${base} did not respond.`)), 20000);
-    addEventListener('message', function onMessage(e: MessageEvent) {
+    let nextReq = 1;
+    const waiting = new Map<number, (link: KernelLink) => void>();
+    const link = (data: { lock: unknown; shared: unknown }, port: MessagePort): KernelLink => ({
+      port,
+      lock: String(data.lock),
+      shared: Boolean(data.shared),
+      more: () =>
+        new Promise<KernelLink>((res) => {
+          const req = nextReq++;
+          waiting.set(req, res);
+          frame.contentWindow!.postMessage({ type: 'bbx:connect', req }, origin);
+        }),
+    });
+    let first = true;
+    addEventListener('message', (e: MessageEvent) => {
       if (e.source !== frame.contentWindow || e.origin !== origin) return;
-      if (e.data?.type === 'bbx:ready') frame.contentWindow!.postMessage({ type: 'bbx:connect' }, origin);
+      if (e.data?.type === 'bbx:ready' && first) frame.contentWindow!.postMessage({ type: 'bbx:connect' }, origin);
       else if (e.data?.type === 'bbx:port' && e.ports[0]) {
-        clearTimeout(timer);
-        removeEventListener('message', onMessage);
-        resolve({ port: e.ports[0], lock: String(e.data.lock), shared: Boolean(e.data.shared) });
-      } else if (e.data?.type === 'bbx:refused') {
+        if (typeof e.data.req === 'number') {
+          waiting.get(e.data.req)?.(link(e.data, e.ports[0]));
+          waiting.delete(e.data.req);
+        } else if (first) {
+          first = false;
+          clearTimeout(timer);
+          resolve(link(e.data, e.ports[0]));
+        }
+      } else if (e.data?.type === 'bbx:refused' && first) {
         clearTimeout(timer);
         reject(new Error(`The kernel refused this origin (${location.origin}). Add it to VITE_ALLOWED_ORIGINS.`));
       }

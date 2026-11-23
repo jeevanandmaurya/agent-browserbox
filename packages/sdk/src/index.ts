@@ -8,6 +8,7 @@ import {
   type ProcessInfo,
   type FromRuntime,
   type Hello,
+  type KernelChannel,
   type Method,
   type Methods,
   type PermissionDecision,
@@ -15,7 +16,7 @@ import {
   type ToRuntime,
 } from './protocol.js';
 
-export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, PermissionDecision, PermissionRequest, ProcessInfo };
+export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, KernelChannel, PermissionDecision, PermissionRequest, ProcessInfo };
 export { PROTOCOL_VERSION };
 
 /** This SDK's version. Always released together with the runtime of the same version. */
@@ -42,6 +43,13 @@ export interface BootOptions {
   id?: string;
   /** 'persistent' (default): files survive reloads. 'memory': everything is gone when the box is torn down. */
   storage?: 'persistent' | 'memory';
+  /**
+   * Drive the site's own kernel instead of a box of its own: the one a
+   * BrowserBox app hosted on the same site uses, with its files, settings and
+   * keys. `id` and `storage` are ignored. (Other sites always get their own,
+   * separate storage: browsers partition it by the top-level site.)
+   */
+  site?: boolean;
   /** Element the hidden runtime frame is added to. Default: document.body. */
   container?: HTMLElement;
   /**
@@ -260,7 +268,7 @@ export class BrowserBox {
   readonly storage: 'opfs' | 'memory';
 
   #port: MessagePort;
-  #frame: HTMLIFrameElement;
+  #frame: HTMLIFrameElement | null;
   #permissions: PermissionHandler;
   #nextId = 1;
   #calls = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
@@ -269,7 +277,7 @@ export class BrowserBox {
   #early = new Map<number, ProcEvent[]>();
   #closed: BoxError | null = null;
 
-  private constructor(port: MessagePort, frame: HTMLIFrameElement, hello: Hello, permissions: PermissionHandler) {
+  private constructor(port: MessagePort, frame: HTMLIFrameElement | null, hello: Hello, permissions: PermissionHandler) {
     this.#port = port;
     this.#frame = frame;
     this.#permissions = permissions;
@@ -288,7 +296,7 @@ export class BrowserBox {
     const memory = opts.storage === 'memory';
     const id = opts.id ?? (memory ? `mem-${crypto.randomUUID()}` : 'default');
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return Promise.reject(new BoxError(`invalid box id "${id}": use letters, digits, '-' and '_' (at most 64)`));
-    const src = new URL(`embed/?box=${encodeURIComponent(id)}&storage=${memory ? 'memory' : 'opfs'}`, base);
+    const src = new URL(opts.site ? 'embed/?site=1' : `embed/?box=${encodeURIComponent(id)}&storage=${memory ? 'memory' : 'opfs'}`, base);
     const permissions: PermissionHandler = typeof opts.permissions === 'function' ? opts.permissions : opts.permissions === 'allow' ? () => 'once' : () => 'deny';
 
     const frame = document.createElement('iframe');
@@ -335,6 +343,46 @@ export class BrowserBox {
     return this._process(await this.call('spawn', command, opts));
   }
 
+  /**
+   * Connects to a box shared with you (`box.share()`), e.g. from a worker,
+   * which cannot create the runtime's frame itself. `teardown()` then closes
+   * only this connection.
+   */
+  static attach(port: MessagePort, opts: Pick<BootOptions, 'permissions' | 'timeoutMs'> = {}): Promise<BrowserBox> {
+    const permissions: PermissionHandler = typeof opts.permissions === 'function' ? opts.permissions : opts.permissions === 'allow' ? () => 'once' : () => 'deny';
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new BoxError(`the shared box did not respond within ${opts.timeoutMs ?? 30000} ms`)), opts.timeoutMs ?? 30000);
+      port.onmessage = (m: MessageEvent<FromRuntime>) => {
+        const msg = m.data;
+        if (msg.t === 'refused') {
+          clearTimeout(timer);
+          reject(new BoxError(`the shared box refused: ${msg.error}`));
+        } else if (msg.t === 'hello') {
+          clearTimeout(timer);
+          resolve(new BrowserBox(port, null, msg, permissions));
+        }
+      };
+      port.start();
+    });
+  }
+
+  /**
+   * A second connection to this box, with its own shells and processes, to
+   * hand to a worker (transfer the port, then `BrowserBox.attach(port)` there).
+   */
+  share(): Promise<MessagePort> {
+    return this.call('share');
+  }
+
+  /**
+   * A port to the box's kernel itself, speaking its full internal protocol,
+   * for app UIs that need more than this API (the BrowserBox app uses it).
+   * The protocol is versioned with the runtime: pin the runtime version.
+   */
+  kernelPort(): Promise<KernelChannel> {
+    return this.call('kernel.connect');
+  }
+
   /** Opens a shell session that keeps its working folder and variables between commands. */
   async openShell(opts: { cwd?: string; env?: Record<string, string> } = {}): Promise<BoxShell> {
     const { id, cwd } = await this.call('shell.open', opts);
@@ -373,7 +421,7 @@ export class BrowserBox {
     this.#calls.clear();
     for (const pid of [...this.#sinks.keys()]) this.#deliver(pid, { t: 'exit', exitCode: 130 });
     this.#port.close();
-    this.#frame.remove();
+    this.#frame?.remove();
   }
 
   /** @internal Low-level call into the runtime. */

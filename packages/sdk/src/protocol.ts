@@ -16,7 +16,7 @@ export interface Hello {
   protocol: number;
   /** Runtime version. */
   version: string;
-  /** The box's id. */
+  /** The box's id ('site' for the site's own kernel). */
   id: string;
   /** The default working directory for commands. */
   home: string;
@@ -109,6 +109,15 @@ export interface DevLogEntry {
   text: string;
 }
 
+/** A port to the kernel, and what its client needs to know. */
+export interface KernelChannel {
+  port: MessagePort;
+  /** The Web Lock the runtime holds while this connection lives. */
+  lock: string;
+  /** False when the browser has no SharedWorker (one kernel per page). */
+  shared: boolean;
+}
+
 /** Calls the SDK can make, with their arguments and results. */
 export interface Methods {
   info(): Hello;
@@ -135,6 +144,13 @@ export interface Methods {
   'dev.logs'(port: number, opts?: { after?: number; limit?: number }): DevLogEntry[];
   'procs.list'(): ProcessInfo[];
   'procs.kill'(pid: number): boolean;
+  /**
+   * A port to the box's kernel itself, speaking its full internal protocol:
+   * for app UIs that need more than this API. Versioned with the runtime.
+   */
+  'kernel.connect'(): KernelChannel;
+  /** A second connection to this box (its own shells and processes), e.g. for a worker. */
+  share(): MessagePort;
   exec(command: string, opts?: ExecOptions): ExecResult;
   /** Starts a command; its output and exit arrive as events. Returns its process id. */
   spawn(command: string, opts?: ExecOptions): number;

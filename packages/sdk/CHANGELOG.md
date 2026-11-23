@@ -17,6 +17,16 @@ New, all backward compatible:
   output, server logs, build errors and failed requests).
 - **Processes**: `box.processes()` lists the box's process table, and
   `box.killProcess(pid)` stops one.
+- **Workers**: `box.share()` gives a second connection (its own shells,
+  processes and permission answers) to hand to a worker, which connects with
+  `BrowserBox.attach(port)`.
+- **The site's own kernel**: `BrowserBox.boot({ site: true })` drives the
+  kernel a BrowserBox app on the same site uses, with its files, settings and
+  keys, instead of a separate box.
+- **Kernel channel**: `box.kernelPort()` for app UIs that need the kernel's
+  full internal protocol (versioned with the runtime; pin the runtime).
+- The runtime no longer contains the BrowserBox app's agent (1.3 MB instead
+  of 7.6 MB); `build` is a runtime shell command.
 
 ## 0.1.1
 
