@@ -5,6 +5,20 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.2.0
+
+The app now runs on the released packages instead of its own copy of the
+system: the runtime (`@jeevanand/agent-browserbox-runtime` 0.2.0), driven
+through the SDK, and the agent (`@jeevanand/agent-browserbox` 0.2.0) in a
+shared agent worker. Nothing to do on your side: your files, settings, keys
+and chats stay where they were.
+
+- The agent keeps working while you switch or close windows; terminal
+  commands it adds (`agent`, `setup`, `gh`, `deploy`) come back when it
+  reconnects.
+- The agent window loads less code up front.
+- The site serves the runtime it was built with at `/runtime/0.2.0/`.
+
 ## 0.1.0
 
 First release as a site.
