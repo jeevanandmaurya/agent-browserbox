@@ -25,6 +25,9 @@ New, all backward compatible:
   keys, instead of a separate box.
 - **Kernel channel**: `box.kernelPort()` for app UIs that need the kernel's
   full internal protocol (versioned with the runtime; pin the runtime).
+- **Runtime client**: `@jeevanand/agent-browserbox-runtime/client` exports
+  `RemoteKernel` and the kernel's types, for apps that drive the kernel over
+  `box.kernelPort()`. It contains no kernel code.
 - The runtime no longer contains the BrowserBox app's agent (1.3 MB instead
   of 7.6 MB); `build` is a runtime shell command.
 
