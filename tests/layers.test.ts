@@ -3,27 +3,23 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The source is layered so the kernel can ship without the UI (the SDK's
- * headless runtime) and the agent can ship without the desktop:
+ * The boundaries between the products, checked on every import.
  *
- *   core     kernel/ kernel-worker/ sandbox/ rpc/ config/   (headless, no UI)
+ * Inside the runtime (packages/runtime/src), lower layers never import higher ones:
+ *   core     kernel/ kernel-worker/ sandbox/ rpc/ config/   (the headless machine)
  *   shell    shell/
- *   agent    agent/
- *   packages packages/
- *   app      ui/ apps/ client/ pages/ kernel-host/          (anything)
+ *   packages packages/                                      (installable software)
+ *   client   client/ kernel-host/                           (clients of the kernel)
+ * The worker's composition root (kernel-worker/main.ts) assembles them.
  *
- * A layer may import only from its own layer and the ones above it in this
- * list. Composition roots, which assemble the layers, may import anything.
- * Services reach upward only through registration (contributeCommands,
- * registerApps, KernelServer.use, module augmentation), never by import.
+ * The app (apps/browserbox/src) uses the products only as releases: its own
+ * files and the published packages, never another package's source.
  */
-const SRC = resolve(__dirname, '../src');
-const RANK: Record<string, number> = { kernel: 0, 'kernel-worker': 0, sandbox: 0, rpc: 0, config: 0, shell: 1, agent: 2, packages: 3 };
-const APP = 9;
+const ROOT = resolve(__dirname, '..');
+const RUNTIME = join(ROOT, 'packages/runtime/src');
+const APP = join(ROOT, 'apps/browserbox/src');
+const RANK: Record<string, number> = { kernel: 0, 'kernel-worker': 0, sandbox: 0, rpc: 0, config: 0, shell: 1, packages: 2, client: 3, 'kernel-host': 3 };
 const ROOTS = new Set(['kernel-worker/main.ts']);
-
-const rankOf = (top: string) => RANK[top] ?? APP;
-const topOf = (file: string) => relative(SRC, file).split(sep)[0]!;
 
 function* files(dir: string): Generator<string> {
   for (const name of readdirSync(dir)) {
@@ -33,29 +29,39 @@ function* files(dir: string): Generator<string> {
   }
 }
 
-/** Every module a file imports: static, dynamic and type-only, through `@/` or relative paths. */
-function importsOf(file: string): string[] {
+/** Every module a file imports: static, dynamic and type-only. */
+function specifiers(file: string): string[] {
   const src = readFileSync(file, 'utf8');
-  const out: string[] = [];
-  for (const m of src.matchAll(/(?:from\s+|import\s*\(\s*|import\s+)['"]([^'"]+)['"]/g)) {
-    const spec = m[1]!;
-    if (spec.startsWith('@/')) out.push(join(SRC, spec.slice(2)));
-    else if (spec.startsWith('.')) out.push(resolve(dirname(file), spec));
-  }
-  return out;
+  const statements = /^\s*(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)|^\s*declare module ['"]([^'"]+)['"]/gm;
+  return [...src.matchAll(statements)].map((m) => (m[1] ?? m[2] ?? m[3] ?? m[4])!);
 }
 
 describe('layering', () => {
-  it('lower layers never import higher ones', () => {
+  it('inside the runtime, lower layers never import higher ones', () => {
     const violations: string[] = [];
-    for (const file of files(SRC)) {
-      const rel = relative(SRC, file).split(sep).join('/');
+    const top = (f: string) => relative(RUNTIME, f).split(sep)[0]!;
+    for (const file of files(RUNTIME)) {
+      const rel = relative(RUNTIME, file).split(sep).join('/');
       if (ROOTS.has(rel)) continue;
-      const own = rankOf(topOf(file));
-      for (const target of importsOf(file)) {
-        if (!target.startsWith(SRC + sep)) continue;
-        const theirs = rankOf(topOf(target));
-        if (theirs > own) violations.push(`${rel} -> ${relative(SRC, target).split(sep).join('/')}`);
+      const own = RANK[top(file)] ?? 9;
+      for (const spec of specifiers(file)) {
+        if (spec.startsWith('@/')) violations.push(`${rel}: '${spec}' (the runtime uses relative imports)`);
+        if (!spec.startsWith('.')) continue;
+        const target = resolve(dirname(file), spec);
+        if (!target.startsWith(RUNTIME + sep)) continue;
+        if ((RANK[top(target)] ?? 9) > own) violations.push(`${rel} -> ${relative(RUNTIME, target).split(sep).join('/')}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('the app imports only its own files and the published packages', () => {
+    const allowed = /^(@\/|\.|@jeevanand\/agent-browserbox(-sdk|-runtime\/client|\/ui)?$)/;
+    const violations: string[] = [];
+    for (const file of files(APP)) {
+      for (const spec of specifiers(file)) {
+        if (!allowed.test(spec)) violations.push(`${relative(APP, file)}: ${spec}`);
+        else if (spec.startsWith('.') && !resolve(dirname(file), spec).startsWith(APP)) violations.push(`${relative(APP, file)}: ${spec} (outside the app)`);
       }
     }
     expect(violations).toEqual([]);
@@ -65,9 +71,8 @@ describe('layering', () => {
     // We build our own sandbox; WebContainers (or similar) must not creep back in.
     const banned = /@webcontainer\/api|webcontainer|stackblitz/i;
     const hits: string[] = [];
-    for (const file of files(SRC)) if (banned.test(readFileSync(file, 'utf8'))) hits.push(relative(SRC, file));
-    const pkg = readFileSync(resolve(SRC, '../package.json'), 'utf8');
-    if (banned.test(pkg)) hits.push('package.json');
+    for (const dir of [RUNTIME, APP, join(ROOT, 'packages/sdk/src'), join(ROOT, 'packages/agent/src')]) for (const file of files(dir)) if (banned.test(readFileSync(file, 'utf8'))) hits.push(relative(ROOT, file));
+    for (const p of ['package.json', 'apps/browserbox/package.json', 'packages/runtime/package.json']) if (banned.test(readFileSync(join(ROOT, p), 'utf8'))) hits.push(p);
     expect(hits).toEqual([]);
   });
 });

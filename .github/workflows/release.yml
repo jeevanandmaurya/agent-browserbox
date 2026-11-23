@@ -214,7 +214,7 @@ jobs:
           else
             title="BrowserBox app $VERSION"
             zip="browserbox-app-$VERSION.zip"
-            (cd dist && zip -qr "../$zip" .)
+            (cd apps/browserbox/dist && zip -qr "../../../$zip" .)
             {
               echo "The BrowserBox app: an agent OS in the browser. Open it at $site/agent/."
               echo

@@ -1,6 +1,6 @@
 import * as esbuildWasm from 'esbuild-wasm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { setEsbuildLoader } from '../src/kernel/dev/bundle';
+import { setEsbuildLoader } from '../packages/runtime/src/kernel/dev/bundle';
 import { AgentOs } from '../packages/agent/src/index';
 import { kernelBox } from './helpers/kernel-box';
 import { deployFolder, pushFolder, cloneRepo, linksFor } from '../packages/agent/src/publish';
@@ -182,7 +182,7 @@ describe('deploy', () => {
     expect(uploaded).toEqual(['/index.html']);
     expect(r.note).toMatch(/server\.ts .* not deployed/);
     // The page is a production build: TypeScript compiled, dev-only code dropped, no dev runtime.
-    const { buildSite } = await import('../src/kernel/dev/build');
+    const { buildSite } = await import('../packages/runtime/src/kernel/dev/build');
     const html = new TextDecoder().decode((await buildSite(lastKernel.fs, '/w/site')).files.get('/index.html'));
     expect(html).toContain('answer');
     expect(html).not.toContain('dev only');

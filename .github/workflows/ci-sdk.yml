@@ -2,36 +2,17 @@ name: CI · SDK + runtime
 
 # Tests the SDK and the runtime when their code changes. Deploys nothing:
 # releases do that (release.yml).
-#
-# The runtime is still built from the shared kernel source in src/ (the agent
-# moves out into its own package next), so changes there run this too.
 on:
   push:
     branches: [main]
     paths:
       - 'packages/sdk/**'
       - 'packages/runtime/**'
-      - 'embed/**'
-      - 'kernel/**'
-      - 'public/**'
-      - 'crates/**'
-      - 'src/kernel/**'
-      - 'src/kernel-worker/**'
-      - 'src/kernel-host/**'
-      - 'src/sandbox/**'
-      - 'src/rpc/**'
-      - 'src/config/**'
-      - 'src/client/**'
-      - 'src/shell/**'
-      - 'src/packages/**'
-      - 'src/agent/**'
-      - 'src/ui/app-manifest.ts'
-      - 'src/apps/*/manifest.ts'
-      - 'src/env.d.ts'
       - 'tests/**'
       - 'scripts/sdk-e2e.mjs'
-      - 'vite.config.ts'
+      - 'scripts/build-wasm.mjs'
       - 'tsconfig.json'
+      - 'vitest.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci-sdk.yml'
@@ -39,27 +20,11 @@ on:
     paths:
       - 'packages/sdk/**'
       - 'packages/runtime/**'
-      - 'embed/**'
-      - 'kernel/**'
-      - 'public/**'
-      - 'crates/**'
-      - 'src/kernel/**'
-      - 'src/kernel-worker/**'
-      - 'src/kernel-host/**'
-      - 'src/sandbox/**'
-      - 'src/rpc/**'
-      - 'src/config/**'
-      - 'src/client/**'
-      - 'src/shell/**'
-      - 'src/packages/**'
-      - 'src/agent/**'
-      - 'src/ui/app-manifest.ts'
-      - 'src/apps/*/manifest.ts'
-      - 'src/env.d.ts'
       - 'tests/**'
       - 'scripts/sdk-e2e.mjs'
-      - 'vite.config.ts'
+      - 'scripts/build-wasm.mjs'
       - 'tsconfig.json'
+      - 'vitest.config.ts'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ci-sdk.yml'

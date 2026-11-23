@@ -29,6 +29,24 @@ it, build from source with `VITE_EMBED_ORIGINS=https://a.example,https://b.examp
 
 Use the same version as the SDK.
 
+## The kernel client (`/client`)
+
+Most code should use the SDK. Apps that drive the kernel directly (windows,
+desktops, the BrowserBox app itself) can use the runtime's client over the
+SDK's kernel channel:
+
+```ts
+import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
+import { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
+
+const box = await BrowserBox.boot();
+const kernel = new RemoteKernel(box.kernelPort());
+await kernel.fs.writeFile('/home/user/hi.txt', 'hello');
+```
+
+`/client` also exports the kernel's types (`Kernel`, `FsApi`, `Proc`, …) and
+small helpers (paths, file types, ANSI). It contains no kernel code.
+
 ## License
 
 MIT

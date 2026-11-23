@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Bus } from '../src/kernel/bus';
-import type { KernelEvents } from '../src/kernel/types';
-import { MemFs } from '../src/kernel/vfs/memfs';
-import { Vfs } from '../src/kernel/vfs/vfs';
+import { Bus } from '../packages/runtime/src/kernel/bus';
+import type { KernelEvents } from '../packages/runtime/src/kernel/types';
+import { MemFs } from '../packages/runtime/src/kernel/vfs/memfs';
+import { Vfs } from '../packages/runtime/src/kernel/vfs/vfs';
 
 function make() {
   const bus = new Bus<KernelEvents>();

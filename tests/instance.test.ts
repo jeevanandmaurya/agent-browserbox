@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { APP_KERNEL, dbName, fromSearch, fromWorkerName, toSearch, workerName } from '@/kernel/instance';
+import { APP_KERNEL, dbName, fromSearch, fromWorkerName, toSearch, workerName } from '../packages/runtime/src/kernel/instance';
 
 describe('kernel instances', () => {
   it('round-trips a box through the URL and the worker name', () => {

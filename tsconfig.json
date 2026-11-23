@@ -23,7 +23,7 @@
     ],
     "paths": {
       "@/*": [
-        "./src/*"
+        "./apps/browserbox/src/*"
       ],
       "@jeevanand/agent-browserbox-sdk": [
         "./packages/sdk/src/index.ts"
@@ -33,14 +33,18 @@
       ],
       "@jeevanand/agent-browserbox/ui": [
         "./packages/agent/src/ui.ts"
+      ],
+      "@jeevanand/agent-browserbox-runtime/client": [
+        "./packages/runtime/src/client/index.ts"
       ]
     }
   },
   "include": [
-    "src",
     "tests",
-    "embed",
+    "packages/runtime/src",
+    "packages/runtime/embed",
     "packages/sdk/src",
-    "packages/agent/src"
+    "packages/agent/src",
+    "apps/browserbox/src"
   ]
 }

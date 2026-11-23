@@ -8,13 +8,13 @@ browser**, with no backend. It is split into independent parts:
 | **Kernel** | `/kernel/` | Headless. A SharedWorker running the filesystem, process table, permissions, secrets, shells and agent sessions. No UI. |
 | **Agent** | `/agent/` | The complete app: chat, built-in workbench (preview, files, editor, terminal, processes…) and settings, in one browser window. This is the default entry point. |
 | **Desktop** | `/os/` | An optional GUI onto the same kernel, opened only when you ask for it (“Open desktop” in the agent window’s sidebar): a windowed desktop on wide screens, a phone home screen on phones. |
-| **Docs** | `/docs/` | The user guide, a page of its own (no kernel; deep links like `/docs/#shipping`). The same docs open inside the app from ⋮ → **Help & docs**, the Help workbench tab, `/docs [topic]`, or the Help app on the desktop. Sources: `src/apps/help/docs/*.md`. |
+| **Docs** | `/docs/` | The user guide, a page of its own (no kernel; deep links like `/docs/#shipping`). The same docs open inside the app from ⋮ → **Help & docs**, the Help workbench tab, `/docs [topic]`, or the Help app on the desktop. Sources: `apps/browserbox/src/apps/help/docs/*.md`. |
 | **Runtime** | `/embed/` (and `/runtime/` on the hosted site) | UI-less: the page the SDK loads in a hidden frame to drive a kernel from another site. |
 
 The kernel keeps running as long as any BrowserBox window is open. Close the
 agent window and its session carries on; open it again and it reattaches.
 Close the desktop and nothing is lost — it is only a view. Any other frontend
-can replace it by speaking the same protocol (`src/kernel/api.ts`).
+can replace it by speaking the same protocol (`packages/runtime/src/kernel/api.ts`).
 
 ## Use it as a library (SDK)
 
@@ -36,8 +36,8 @@ const { stdout } = await box.exec('echo hello from the box');
 ```
 
 The SDK and the runtime are built from this repository (`packages/sdk`,
-`embed/`, and the kernel in `src/`): `npm run build:sdk`, `npm run build:runtime`,
-and `npm run e2e:sdk` tests them together across two origins in headless Chromium.
+`packages/runtime`): `npm run build:sdk`, `npm run build:runtime`, and
+`npm run e2e:sdk` tests them together across two origins in headless Chromium.
 
 ## Releases and the site
 
@@ -75,7 +75,7 @@ Or run it from a clone of this repository:
 ```
 npm install
 npm run build
-node bin/browserbox.mjs
+npm run serve
 ```
 
 This serves the built app at `http://127.0.0.1:4173/agent/` and opens it.
@@ -91,14 +91,14 @@ isolation headers that SharedArrayBuffer and WebAssembly threads need.
 
 `--dir` prints the folder to point a static host at if you would rather not
 use the built-in server. The app's service worker adds the same headers
-there; keep `agent/`, `os/`, `docs/`, `kernel/` and `assets/` together.
+there; keep `agent/`, `os/`, `docs/`, `runtime/` and `assets/` together.
 
 ## Development
 
 ```
 npm install
-npm run dev        # http://localhost:5173/agent/  (desktop: /os/)
-npm run build      # static site in dist/ — host it anywhere
+npm run build      # the packages, then the app's static site in apps/browserbox/dist/
+npm run dev        # http://localhost:5173/agent/  (desktop: /os/); serves the built runtime
 npm test           # unit tests (vitest)
 npm run smoke      # drives the built system end to end in headless Chromium (two suites)
 ```
@@ -115,7 +115,7 @@ VITE_OS_URL=https://os.example.com/
 VITE_ALLOWED_ORIGINS=https://agent.example.com,https://os.example.com
 ```
 
-and serve `dist/kernel/` + `dist/assets/`, `dist/agent/`, `dist/os/` from those
+and serve the runtime, `agent/` and `os/` from those
 hosts. Nothing else changes: windows already reach the kernel only through a
 hidden bridge frame and a message port. With separate origins that port becomes
 a hard boundary — a window can no longer read the kernel's files or keys
@@ -246,7 +246,7 @@ pkg install git sqlite
 pkg remove zip
 ```
 
-A package is one folder, `src/packages/<id>/`:
+A package is one folder, `packages/runtime/src/packages/<id>/`:
 
 - `manifest.ts` — id, version, summary, the shell commands and agent tools it
   provides, and any remote files (Python's runtime comes from a CDN);
@@ -391,65 +391,56 @@ Example skills, an `explorer` agent and an `/explain` command are created on fir
 
 ## Architecture
 
+The repository is a monorepo of three released packages and the app built on them:
+
 ```
-src/
-  kernel/         the kernel: event bus, VFS (OPFS · memory · native folders · /proc),
-                  process table, permissions, settings, encrypted secrets; api.ts is its public interface
-  kernel-worker/  worker entry point and the RPC server that exposes the kernel to windows
-  kernel-host/    the hidden bridge page: starts the worker, hands out ports, hosts sandbox frames
-  client/         RemoteKernel — a window's handle on the kernel (mirrors state, forwards calls)
-  rpc/            the message protocol
-  config/         where each part is served from (paths or origins)
-  sandbox/        isolated JS / Python / WASI execution, WebGPU compute
-  shell/          parser, interpreter, commands/, kernel-side shell sessions
-  agent/          loop, sessions, providers/ (anthropic · openai · webllm), tools/
-  pages/          entry points: agent window, desktop
-  ui/             window manager, desktop, dialogs, app host, standalone page host
-  packages/       one directory per package (manifest + code), discovered automatically
-  apps/           one directory per app (manifest + code), discovered automatically;
-                  apps/agent/ is the agent window
-crates/kcore/     Rust → WebAssembly: hashing, line search, word count, token estimate
+packages/
+  sdk/            @jeevanand/agent-browserbox-sdk: BrowserBox.boot(), the client protocol (no dependencies)
+  runtime/        @jeevanand/agent-browserbox-runtime: the machine, as static files, plus /client
+    src/kernel/         event bus, VFS (OPFS · memory · native folders · /proc), processes,
+                        permissions, settings, encrypted secrets; api.ts is its public interface
+    src/kernel-worker/  worker entry and the RPC server that exposes the kernel
+    src/kernel-host/    the hidden bridge page: starts the worker, hands out ports, hosts sandbox frames
+    src/sandbox/        isolated JS / Python / WASI execution, WebGPU compute
+    src/shell/          parser, interpreter, commands/, kernel-side shell sessions, contributed commands
+    src/packages/       one directory per package (manifest + code), discovered automatically
+    src/rpc/ src/config/  the message protocol; where each part is served from
+    src/client/         RemoteKernel and the kernel types, published as /client
+    embed/              the page the SDK embeds
+    crates/kcore/       Rust → WebAssembly: hashing, line search, word count, token estimate
+  agent/          @jeevanand/agent-browserbox: loop, sessions, providers (anthropic · openai · webllm),
+                  tools, MCP, skills, publishing; drives a box through the SDK
+apps/
+  browserbox/     the BrowserBox app (private, released as a site): windows, desktop, apps,
+                  the agent worker; imports only the three packages
 ```
 
 ### Layers
 
-The source is layered so the kernel can ship without any UI (the base for
-the SDK's headless runtime) and the agent can ship without the desktop:
+The runtime is layered so the kernel ships without a shell or packages, and the
+app reaches the runtime only through its published entry points:
 
 | Layer | Folders | May import |
 |---|---|---|
-| core | `kernel/` `kernel-worker/` `sandbox/` `rpc/` `config/` | core only |
-| shell | `shell/` | core, shell |
-| agent | `agent/` | core, shell, agent |
-| packages | `packages/` | all of the above |
-| app | `ui/` `apps/` `client/` `pages/` `kernel-host/` | anything |
+| core | `runtime/src/{kernel,kernel-worker,sandbox,rpc,config}` | core only |
+| shell | `runtime/src/shell` | core, shell |
+| packages | `runtime/src/packages` | core, shell, packages |
+| client | `runtime/src/client` | the kernel's types |
+| app | `apps/browserbox` | `@jeevanand/agent-browserbox-sdk`, `…-runtime/client`, `@jeevanand/agent-browserbox` |
 
-`tests/layers.test.ts` fails the build if a lower layer imports a higher one.
-Higher layers plug into lower ones by registering, never by being imported:
+`tests/layers.test.ts` fails the build if a lower layer imports a higher one or
+the app imports package sources. Higher layers plug in by registering:
 
-- **Services** add themselves to the `Kernel` type by module augmentation
-  (`src/agent/api.ts` adds `agents`) and are installed by the composition
-  root, `src/kernel-worker/main.ts` (`installAgents(os)`).
-- **RPC methods** for a service are added with `KernelServer.use(...)`
-  (`src/agent/rpc.ts` provides `agent.*`).
-- **Shell commands** from higher layers are added with `contributeCommands`
-  (the agent adds `agent`, `setup`, `gh`, `deploy`, `build`).
-- **Packages** are handed to the kernel as a registry
-  (`new KernelCore({ packages: REGISTRY })`); what a package can contain is
-  declared by the layers that use it (`commands` by the shell, `tools` by the agent).
-- **Apps** are listed for the shell and the agent with `registerApps`; a
-  headless runtime registers none, and the agent's `open_app` tool disappears.
+- **Shell commands** from outside the runtime are contributed over the kernel
+  connection (`shell.contribute`); the agent contributes `agent`, `setup`, `gh`, `deploy`.
+- **Packages** are handed to the kernel as a registry; what a package can
+  contain is declared by the layers that use it (`commands` by the shell, `tools` by the agent).
+- **Apps** are listed for the shell and the agent with `registerApps`.
 
-Apps, the shell and the agent are written against the `Kernel` interface. The
-real kernel (`KernelCore`) implements it in the worker; `RemoteKernel`
-implements it in each window. To add an app, create `src/apps/<id>/` with a
-`manifest.ts` and an `index.ts` exporting an `AppModule`; to add a package,
-create `src/packages/<id>/` the same way. To run an app
-as its own window, mount it with `mountStandalone` as `src/pages/agent.ts` does;
-to embed it in a pane of another page, use `mountPanelApp` from
-`src/apps/agent/panel-host.ts`.
-To add a shell command or an agent tool, append it to the list in
-`src/shell/commands/*` or `src/agent/tools/*`.
+To add an app, create `apps/browserbox/src/apps/<id>/` with a `manifest.ts`
+and an `index.ts` exporting an `AppModule`; to add a package, create
+`packages/runtime/src/packages/<id>/` the same way. Shell commands live in
+`packages/runtime/src/shell/commands/*`, agent tools in `packages/agent/src/tools/*`.
 
 ### Why it boots fast
 

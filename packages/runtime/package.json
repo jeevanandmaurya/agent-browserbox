@@ -1,7 +1,7 @@
 {
   "name": "@jeevanand/agent-browserbox-runtime",
   "version": "0.2.0",
-  "description": "The self-hostable runtime for @jeevanand/agent-browserbox-sdk: static files (kernel, filesystem, shell, sandboxes) to serve from your own origin.",
+  "description": "The runtime for @jeevanand/agent-browserbox-sdk: static files to serve (kernel, filesystem, shell, sandboxes), and a client library for app UIs that drive its kernel (/client).",
   "type": "module",
   "main": "./index.js",
   "types": "./index.d.ts",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./index.d.ts",
       "import": "./index.js"
+    },
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "import": "./lib/client/index.js"
     }
   },
   "bin": {
@@ -16,6 +20,7 @@
   },
   "files": [
     "dist",
+    "lib",
     "bin",
     "index.js",
     "index.d.ts",
@@ -47,7 +52,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "cd ../.. && BBX_TARGET=runtime vite build",
+    "build": "vite build --config vite.config.ts && rm -rf lib && tsc -p tsconfig.client.json && node -e \"require('fs').copyFileSync('src/kernel/kcore.wasm','lib/kernel/kcore.wasm')\"",
     "prepack": "npm run build"
   }
 }

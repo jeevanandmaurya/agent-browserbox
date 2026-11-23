@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable",
+      "DOM.AsyncIterable"
+    ],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "outDir": "lib",
+    "rootDir": "src",
+    "types": [
+      "vite/client",
+      "@webgpu/types"
+    ]
+  },
+  "files": [
+    "src/client/index.ts",
+    "src/env.d.ts"
+  ]
+}

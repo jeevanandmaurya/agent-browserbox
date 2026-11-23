@@ -9,7 +9,7 @@ import { preview } from 'vite';
 // Resolve Playwright from the project or a global install (NODE_PATH).
 const { chromium } = createRequire(import.meta.url)('playwright');
 
-const server = await preview({ preview: { port: 4517, strictPort: true }, logLevel: 'silent' });
+const server = await preview({ configFile: 'apps/browserbox/vite.config.ts', preview: { port: 4517, strictPort: true }, logLevel: 'silent' });
 const base = 'http://localhost:4517/';
 
 // A scripted OpenAI-compatible model server. The kernel worker calls it for real.
@@ -77,10 +77,10 @@ await check('startup bundles stay within budget, with nothing loaded early that 
   // All the files with that name: Rollup may split an entry into a stub and its body.
   const read = (dir, prefix, not) => readdirSync(dir).filter((f) => f.startsWith(prefix) && !(not && f.startsWith(not)) && f.endsWith('.js')).map((f) => readFileSync(`${dir}/${f}`, 'utf8')).join('\n');
   // The kernel is the runtime release the app ships (dist/runtime/<version>/); the agent loop runs in the agent worker.
-  const runtime = readdirSync('dist/runtime').filter((v) => /^\d/.test(v)).at(-1);
-  const kernel = read(`dist/runtime/${runtime}/assets`, 'main-');
-  const agent = read('dist/assets', 'agent-', 'agent-worker-');
-  if (!read('dist/assets', 'agent-worker-').includes('Your context window is nearly full')) problems0.push('the agent worker does not contain the agent');
+  const runtime = readdirSync('apps/browserbox/dist/runtime').filter((v) => /^\d/.test(v)).at(-1);
+  const kernel = read(`apps/browserbox/dist/runtime/${runtime}/assets`, 'main-');
+  const agent = read('apps/browserbox/dist/assets', 'agent-', 'agent-worker-');
+  if (!read('apps/browserbox/dist/assets', 'agent-worker-').includes('Your context window is nearly full')) problems0.push('the agent worker does not contain the agent');
   const kb = (t) => gzipSync(t).length / 1024;
   const problems = problems0;
   // Budgets, compressed (they were 54 and 20 KB when set).

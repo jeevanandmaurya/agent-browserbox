@@ -1,10 +1,10 @@
 import type { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
-import { KernelCore } from '../../src/kernel/kernel';
-import { HOME } from '../../src/kernel/paths';
-import { MemFs } from '../../src/kernel/vfs/memfs';
-import { registerCommands } from '../../src/shell/index';
-import { plainText } from '../../src/shell/ansi';
-import { Shell } from '../../src/shell/shell';
+import { KernelCore } from '../../packages/runtime/src/kernel/kernel';
+import { HOME } from '../../packages/runtime/src/kernel/paths';
+import { MemFs } from '../../packages/runtime/src/kernel/vfs/memfs';
+import { registerCommands } from '../../packages/runtime/src/shell/index';
+import { plainText } from '../../packages/runtime/src/shell/ansi';
+import { Shell } from '../../packages/runtime/src/shell/shell';
 
 /**
  * A real kernel (in memory, in this process) behind the SDK's BrowserBox

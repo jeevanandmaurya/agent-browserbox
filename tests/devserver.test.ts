@@ -1,12 +1,12 @@
 import * as esbuildWasm from 'esbuild-wasm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { Bus } from '../src/kernel/bus';
-import { bundle, setEsbuildLoader } from '../src/kernel/dev/bundle';
-import { renderHtml } from '../src/kernel/dev/html';
-import { Npm, pinVersion, splitSpecifier } from '../src/kernel/dev/npm';
-import type { KernelEvents } from '../src/kernel/types';
-import { MemFs } from '../src/kernel/vfs/memfs';
-import { Vfs } from '../src/kernel/vfs/vfs';
+import { Bus } from '../packages/runtime/src/kernel/bus';
+import { bundle, setEsbuildLoader } from '../packages/runtime/src/kernel/dev/bundle';
+import { renderHtml } from '../packages/runtime/src/kernel/dev/html';
+import { Npm, pinVersion, splitSpecifier } from '../packages/runtime/src/kernel/dev/npm';
+import type { KernelEvents } from '../packages/runtime/src/kernel/types';
+import { MemFs } from '../packages/runtime/src/kernel/vfs/memfs';
+import { Vfs } from '../packages/runtime/src/kernel/vfs/vfs';
 
 beforeAll(async () => {
   await esbuildWasm.initialize({});

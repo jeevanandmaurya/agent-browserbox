@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parse, splitJobs, tokenize } from '../src/shell/parse';
-import { globToRegExp, isInside, normalize, resolve } from '../src/kernel/vfs/path';
+import { parse, splitJobs, tokenize } from '../packages/runtime/src/shell/parse';
+import { globToRegExp, isInside, normalize, resolve } from '../packages/runtime/src/kernel/vfs/path';
 import { validate } from '../packages/agent/src/schema';
 
 const env = { HOME: '/home/user', NAME: 'world', '?': '7' };

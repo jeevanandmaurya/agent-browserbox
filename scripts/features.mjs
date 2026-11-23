@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { preview } from 'vite';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
-const server = await preview({ preview: { port: 4521, strictPort: true }, logLevel: 'silent' });
+const server = await preview({ configFile: 'apps/browserbox/vite.config.ts', preview: { port: 4521, strictPort: true }, logLevel: 'silent' });
 const base = 'http://localhost:4521/';
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-expose-headers': 'mcp-session-id' };
 const body = (req) => new Promise((r) => { let b = ''; req.on('data', (c) => (b += c)); req.on('end', () => r(b)); });
