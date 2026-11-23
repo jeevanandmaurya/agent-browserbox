@@ -11,6 +11,9 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   go through, commands and the network still ask.
 - The agent reads a file before changing it, and never overwrites a change
   you made while it was working.
+- **Hooks** (Settings → Hooks): your commands run before or after the
+  agent's tools, when you send a message, when a chat starts and when the
+  agent is done; exit 2 blocks or sends it back to work.
 - Sub-agents run several at once; open one's card to see what it did. Pick a
   faster model for them in Settings → Model, or per agent with `model:`.
 

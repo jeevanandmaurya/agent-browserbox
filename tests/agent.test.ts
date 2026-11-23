@@ -430,4 +430,42 @@ describe('agent package', () => {
     expect(Object.keys(agent.subagents).sort()).toEqual(['s1', 's2', 's3']);
     expect(agent.subagents.s2!.at(-1)!.content).toEqual([say('task two done')]);
   });
+
+  describe('hooks', () => {
+    const hook = (event: string, command: string, matcher?: string) => ({ id: event + command, event, command, matcher, enabled: true });
+
+    it('blocks a tool before it runs, and adds output after one', async () => {
+      const { model, agent, box } = await setup(
+        [() => ({ content: [use('s', 'shell', { command: 'rm -rf /home/user' }), use('r', 'read_file', { path: 'a.txt' })] }), () => ({ content: [say('ok')] })],
+        { files: { [`${AGENT_HOME}/a.txt`]: 'hi' }, settings: { 'agent.hooks': [hook('PreToolUse', 'fail no deleting', 'shell'), hook('PostToolUse', 'lint $BBX_FILE', 'read_file|edit_*')] } },
+      );
+      await agent.send('go');
+      const r = resultsOf(model.requests[1]!);
+      expect(r.find((x) => x.tool_use_id === 's')!.content).toMatch(/Blocked by a hook: nope/);
+      expect(box.commands).not.toContain('rm -rf /home/user');
+      expect(r.find((x) => x.tool_use_id === 'r')!.content).toContain(`[hook output]\nran: lint '${AGENT_HOME}/a.txt'`);
+    });
+
+    it('adds context on session start and to messages, or blocks a message', async () => {
+      const { model, agent } = await setup([() => ({ content: [say('hello')] })], { settings: { 'agent.hooks': [hook('SessionStart', 'git status'), hook('UserPromptSubmit', 'date')] } });
+      await agent.send('hi');
+      const first = model.requests[0]!.messages[0]!.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n');
+      expect(first).toContain('<hook-context>\nran: git status\n\nran: date\n</hook-context>');
+
+      const blocked = await setup([], { settings: { 'agent.hooks': [hook('UserPromptSubmit', 'fail not now')] } });
+      await blocked.agent.send('hi');
+      expect(blocked.model.requests).toHaveLength(0);
+      expect(blocked.events.some((e) => e.type === 'note' && e.text.includes('A hook blocked this message: nope'))).toBe(true);
+    });
+
+    it('sends the agent back to work from a Stop hook, at most 3 times', async () => {
+      const { model, agent, events } = await setup([() => ({ content: [say('done')] }), () => ({ content: [say('fixed')] }), () => ({ content: [say('fixed again')] }), () => ({ content: [say('really done')] })], {
+        settings: { 'agent.hooks': [hook('Stop', 'fail tests fail')] },
+      });
+      await agent.send('do it');
+      expect(model.requests).toHaveLength(4);
+      expect(JSON.stringify(model.requests[1]!.messages.at(-1))).toContain('A Stop hook asks you to keep going');
+      expect(events.filter((e) => e.type === 'hook')).toHaveLength(3);
+    });
+  });
 });

@@ -6,6 +6,7 @@
  */
 export { VERSION } from './version.js';
 export { imageRef, isImagePath, MAX_IMAGE_BYTES } from './images.js';
+export { HOOK_EVENTS, HOOKS_KEY, loadHooks, matchesTool, runHooks, type Hook, type HookEvent, type HookOutcome, type HookPayload, type HookRun } from './hooks.js';
 export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCommand, type PermRule, type RuleAction, type RuleScope } from './rules.js';
 
 // The agent's view of a box, and what the app supplies.

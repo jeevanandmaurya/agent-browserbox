@@ -15,6 +15,7 @@ export { ProviderError, type Block, type ContextReport, type JsonSchema, type Ms
 export { AGENT_HOME, HOME } from './host/paths.js';
 export { VERSION } from './version.js';
 export { isImagePath, MAX_IMAGE_BYTES } from './images.js';
+export { HOOK_EVENTS, HOOKS_KEY, loadHooks, type Hook, type HookEvent } from './hooks.js';
 export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCommand, type PermRule, type RuleAction, type RuleScope } from './rules.js';
 export type { AgentEvent, AgentHost, TurnStats } from './agent.js';
 export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, TurnChanges } from './api.js';

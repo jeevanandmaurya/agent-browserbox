@@ -853,6 +853,29 @@ await check('accept-edits mode via Shift+Tab; a sub-agent card opens what it did
   }
 });
 
+await check('hooks: one added in Settings runs after an edit; the agent sees its output', async () => {
+  const mode = await page.evaluate(() => bbx.perms.mode);
+  try {
+    await page.evaluate(() => (bbx.perms.mode = 'auto'));
+    await page.evaluate(() => bbx.fs.writeFile('/home/agent/notes.txt', 'first\nsecond\nthird\n'));
+    await page.evaluate(() => bbx.openApp('settings', { section: 'hooks' }));
+    await page.getByRole('button', { name: 'Add hook' }).click();
+    const hk = page.locator('.st-hook').last();
+    await hk.getByLabel('Tools').fill('write_file');
+    await hk.getByLabel('Command').fill('echo checked $BBX_FILE');
+    await hk.getByLabel('Command').press('Tab');
+    await page.waitForFunction(() => JSON.stringify(bbx.settings.get('agent.hooks', [])).includes('checked'));
+    await page.getByRole('button', { name: 'Close settings' }).click();
+    const sent = await send('please change the notes once more', 'Tool said');
+    const result = sent.flatMap((r) => r.messages).filter((m) => m.role === 'tool').map((m) => m.content).join('\n');
+    if (!result.includes('[hook output]\nchecked /home/agent/notes.txt')) throw new Error(`no hook output for the model: ${result.slice(-300)}`);
+    await page.locator('.ag-hook', { hasText: 'PostToolUse' }).last().waitFor({ timeout: 5000 });
+    return 'PostToolUse hook ran on write_file; its output reached the model and the chat shows the run';
+  } finally {
+    await page.evaluate((m) => ((bbx.perms.mode = m), bbx.settings.set('agent.hooks', [])), mode);
+  }
+});
+
 await check('profile commands: a person can switch and exit in the terminal; the agent cannot change profiles', async () => {
   // Auto mode: no approval prompt, so only the profile rule itself can stop the agent.
   const mode = await page.evaluate(() => bbx.perms.mode);

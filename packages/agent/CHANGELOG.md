@@ -17,6 +17,13 @@ new" part of the GitHub release notes (`agent-v*`).
   session (`subagents`, in snapshots and saved sessions).
 - **A model per agent**: `model:` in a custom agent's file, or
   `subagentModel` in the config, for sub-agents on an API.
+- **Hooks** (`agent.hooks`, `runHooks`): PreToolUse, PostToolUse,
+  UserPromptSubmit, Stop, SubagentStop and SessionStart. A hook is a shell
+  command with `$BBX_EVENT`, `$BBX_TOOL`, `$BBX_FILE` and `$BBX_INPUT` (a
+  JSON file) substituted; exit 2 blocks (a tool, a message) or, for Stop,
+  sends the agent back to work (at most 3 times); its output is added for
+  PostToolUse, UserPromptSubmit and SessionStart. Each run is an event
+  (`hook`). Kept in settings, which no tool writes.
 - The system prompt states run_js's real time limit.
 
 ## 0.3.1

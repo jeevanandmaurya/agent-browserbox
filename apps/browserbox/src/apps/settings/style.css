@@ -119,3 +119,9 @@
 .st-rules { display: grid; gap: 6px; margin: 8px 0; }
 .st-rule { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; }
 @media (max-width: 560px) { .st-rule { grid-template-columns: 1fr 1fr; } .st-rule .input { grid-column: 1 / -1; } }
+
+/* Hooks: on · event · tools · remove, then the command */
+.st-hooks { display: grid; gap: 10px; margin: 8px 0; }
+.st-hook { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.st-hook-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.st-hook-top .input { flex: 1; min-width: 160px; }

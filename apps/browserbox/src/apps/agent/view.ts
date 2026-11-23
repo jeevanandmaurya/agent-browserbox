@@ -327,6 +327,13 @@ export class Transcript {
       case 'note':
         this.addNote(e.text);
         break;
+      case 'hook': {
+        // A quiet line per hook run; its output opens on click. A failed hook stands out.
+        const failed = e.code !== 0 && e.code !== 2;
+        const line = `hook · ${e.event} · ${e.command} · ${e.code === 2 ? 'blocked' : failed ? `failed (exit ${e.code})` : 'ok'} · ${Math.round(e.ms)} ms`;
+        this.#ensureTurn().append(e.output ? h('details', { class: `ag-hook${failed ? ' err' : ''}` }, h('summary', null, line), h('pre', null, e.output)) : h('div', { class: `ag-hook${failed ? ' err' : ''}` }, line));
+        break;
+      }
       case 'file_change':
         this.#diffs.set(e.id, e.diff);
         break;

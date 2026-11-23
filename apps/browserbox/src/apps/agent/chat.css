@@ -242,3 +242,9 @@
 .ag-sub-open { margin-top: 8px; }
 .ag-sub-modal { width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; }
 .ag-sub-log { flex: 1; min-height: 0; overflow: auto; border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; }
+
+/* Hook runs: one quiet line each */
+.ag-hook { margin: 2px 0; color: var(--muted); font: 12px var(--mono); }
+.ag-hook summary { cursor: pointer; }
+.ag-hook pre { margin: 4px 0 0; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); white-space: pre-wrap; max-height: 200px; overflow: auto; }
+.ag-hook.err { color: var(--danger, #d55); }

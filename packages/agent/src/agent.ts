@@ -12,6 +12,7 @@ import { buildSystemPrompt } from './prompt.js';
 import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
 import { decide, describeRule, loadRules } from './rules.js';
 import { FileMemory } from './seen.js';
+import { runHooks, type HookEvent, type HookPayload } from './hooks.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
 import { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index.js';
@@ -40,6 +41,8 @@ export type AgentEvent =
   | { type: 'todos'; items: TodoItem[] }
   | { type: 'usage'; usage: Usage; total: Usage; model: string; context: { used: number; window: number }; stats: TurnStats }
   | { type: 'compact'; before: number; after: number; auto: boolean }
+  /** A hook ran (see hooks.ts). */
+  | { type: 'hook'; event: HookEvent; command: string; code: number; ms: number; output: string }
   /** A file tool changed a file: what changed. */
   | { type: 'file_change'; id: string; diff: FileDiff }
   | { type: 'error'; message: string }
@@ -75,6 +78,9 @@ function changedPaths(call: { name: string; input: Record<string, unknown> }, pa
   if ((call.name === 'http_fetch' && typeof i.save_to === 'string') || (call.name === 'gpu_compute' && typeof i.output_file === 'string')) return [path((i.save_to ?? i.output_file) as string)];
   return [];
 }
+
+/** How many times Stop hooks may send the agent back to work for one message. */
+const MAX_STOP_ROUNDS = 3;
 
 /** Sub-agents that run at the same time. */
 const MAX_SUBAGENTS = 4;
@@ -175,6 +181,8 @@ export class Agent {
   diffs: Record<string, FileDiff> = {};
   /** What each sub-agent did, by the spawn_agent call id (its last messages), so the user can read it. */
   subagents: Record<string, Msg[]> = {};
+  /** SessionStart hooks have run for this session (in this process). */
+  #started = false;
   /** A model of its own (custom agents, sub-agents): the main provider with this model id. */
   #model: string | null;
 
@@ -248,8 +256,21 @@ export class Agent {
       // Tiny in-browser models summarise badly; for them the oldest turns simply drop out of view (see the provider).
       const autoCompact = cfg.autoCompact && !lite;
       if (autoCompact && this.#nearlyFull()) await this.#compact(provider, run.signal, emit, true, false);
+      // Hooks: once per session, then for every message. A UserPromptSubmit hook can block the message.
+      const hookContext: string[] = [];
+      if (!this.#started) {
+        this.#started = true;
+        hookContext.push(...(await this.#hooks('SessionStart', {}, run.signal, emit)).context);
+      }
+      const submitted = await this.#hooks('UserPromptSubmit', { prompt: text }, run.signal, emit);
+      if (submitted.blocked !== undefined) {
+        emit({ type: 'note', text: `A hook blocked this message: ${submitted.blocked}` });
+        return;
+      }
+      hookContext.push(...submitted.context);
       this.checkpoints.begin(this.transcript.length);
       const content: Block[] = [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }];
+      if (hookContext.length) content.push({ type: 'text', text: `<hook-context>\n${hookContext.join('\n\n')}\n</hook-context>` });
       for (const path of opts.images ?? []) {
         if (lite) {
           content.push({ type: 'text', text: `(The image ${path} was attached, but this model cannot see images.)` });
@@ -263,6 +284,7 @@ export class Agent {
       }
       this.#push({ role: 'user', content });
 
+      let stopRounds = 0;
       for (let step = 0; ; step++) {
         if (step >= cfg.maxSteps) {
           emit({ type: 'note', text: `Stopped after ${cfg.maxSteps} steps (the limit in Settings → Model). Send a message to continue.` });
@@ -284,6 +306,15 @@ export class Agent {
         const calls = result.content.filter((b): b is ToolUse => b.type === 'tool_use');
         if (!calls.length) {
           if (result.stop === 'max_tokens') emit({ type: 'note', text: 'The reply hit the output limit and was cut off. Ask the agent to continue.' });
+          else if (stopRounds < MAX_STOP_ROUNDS) {
+            // A Stop hook can send the agent back to work (e.g. "the tests fail: …"), a few times at most.
+            const stop = await this.#hooks(this.#depth > 0 ? 'SubagentStop' : 'Stop', { result: this.lastText() }, run.signal, emit);
+            if (stop.blocked !== undefined) {
+              stopRounds++;
+              this.#push({ role: 'user', content: [{ type: 'text', text: `<hook-feedback>\nA Stop hook asks you to keep going:\n${stop.blocked}\n</hook-feedback>` }] });
+              continue;
+            }
+          }
           break;
         }
         // A truncated turn can leave a tool input half-written; never run it.
@@ -380,6 +411,13 @@ export class Agent {
     const cfg = loadConfig(this.os);
     const rolling = cfg.provider === 'webgpu';
     return { window: this.#window, used: this.#used(), reported: this.#lastContext > 0, parts: this.#parts(), messages: this.messages.length, compactions: this.#compactions, autoCompactAt: cfg.autoCompact && !rolling ? AUTO_COMPACT_AT : 0, rolling };
+  }
+
+  /** Runs the user's hooks for an event, showing each run in the chat. */
+  async #hooks(event: HookEvent, payload: HookPayload, signal: AbortSignal, emit: (e: AgentEvent) => void) {
+    const outcome = await runHooks(this.os, event, payload, { cwd: this.shell.cwd, signal });
+    for (const r of outcome.runs) emit({ type: 'hook', ...r });
+    return outcome;
   }
 
   /** The model configuration, with this agent's own model when it has one (only an API has several). */
@@ -547,10 +585,16 @@ export class Agent {
             if (!allowed)
               out = fail(rule?.action === 'deny' ? `Blocked by the user's permission rule "${describeRule(rule.rule)}". Do not look for another way to do this; if it is needed, ask the user.` : 'The user denied permission for this action.');
             else {
+              const hookPayload: HookPayload = { tool: call.name, input: call.input, ...(paths[0] ? { file: paths[0] } : typeof call.input.path === 'string' ? { file: ctx.path(call.input.path) } : {}) };
+              const pre = await this.#hooks('PreToolUse', hookPayload, signal, emit);
+              if (pre.blocked !== undefined) throw new Error(`Blocked by a hook: ${pre.blocked}`);
               // Keep what the files were, for undo, and show what changed.
               const before = paths.length ? await this.checkpoints.capture(paths) : null;
               const r = await def.run(call.input, ctx);
               out = typeof r === 'string' ? { type: 'tool_result', tool_use_id: call.id, content: r } : { type: 'tool_result', tool_use_id: call.id, content: r.text, images: r.images };
+              const post = await this.#hooks('PostToolUse', { ...hookPayload, result: out.content }, signal, emit);
+              const notes = [...post.context, ...(post.blocked !== undefined ? [post.blocked] : [])];
+              if (notes.length) out = { ...out, content: `${out.content}\n\n[hook output]\n${notes.join('\n\n')}` };
               if (before && call.name !== 'move_path' && paths.length === 1) {
                 const p = paths[0]!;
                 if (before.has(p)) {
