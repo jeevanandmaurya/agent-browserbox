@@ -61,19 +61,15 @@ vi.mock('@mlc-ai/web-llm', () => ({
   }),
 }));
 
-const { KernelCore } = await import('../src/kernel/kernel');
-const { MemFs } = await import('../src/kernel/vfs/memfs');
-const { Agent } = await import('../src/agent/agent');
+const { Agent, AgentOs } = await import('../packages/agent/src/index');
+const { kernelBox } = await import('./helpers/kernel-box');
 
 async function setup(model = 'tiny') {
-  const os = new KernelCore();
-  os.fs.mount('/', new MemFs());
-  os.fs.markReady();
-  await os.fs.mkdir('/home/agent');
+  const { box } = await kernelBox();
+  const os = await AgentOs.create(box, { settings: { 'agent.config': { provider: 'webllm', webllmModel: model } }, seed: false });
   const gpu = os.caps.find((c) => c.id === 'webgpu');
   if (gpu) gpu.ok = true;
   else os.caps.push({ id: 'webgpu', label: 'WebGPU', ok: true } as never);
-  os.settings.set('agent.config', { provider: 'webllm', webllmModel: model });
   const events: Array<{ type: string } & Record<string, unknown>> = [];
   const agent = new Agent(os, { onEvent: (e) => events.push(e as never), ask: async () => 'yes', prompter: async () => 'always' as never });
   return { os, agent, events };
@@ -290,7 +286,7 @@ describe('in-browser model store', () => {
   };
 
   it('deleting one model keeps a GPU library another downloaded model shares', async () => {
-    const { remove, isDownloaded } = await import('../src/agent/providers/webllm-store');
+    const { remove, isDownloaded } = await import('../packages/agent/src/providers/webllm-store');
     const settings = settingsStore();
     await fakeDownload('https://example/pair-a');
     await fakeDownload('https://example/pair-b');
@@ -302,7 +298,7 @@ describe('in-browser model store', () => {
   });
 
   it('an imported model never hides behind a catalogue model of the same name', async () => {
-    const { importFolder, appConfig } = await import('../src/agent/providers/webllm-store');
+    const { importFolder, appConfig } = await import('../packages/agent/src/providers/webllm-store');
     const settings = settingsStore();
     const file = (name: string, body: string) => new File([body], name);
     const id = await importFolder(settings, [file('mlc-chat-config.json', JSON.stringify({ model_id: 'tiny' })), file('ndarray-cache.json', '{"records":[]}'), file('lib.wasm', 'w')]);
@@ -349,7 +345,7 @@ describe('changes, undo and plan mode', () => {
 
   it('undoes deletes and moves, including folders', async () => {
     const { os } = await setup();
-    const { Checkpoints } = await import('../src/agent/checkpoints');
+    const { Checkpoints } = await import('../packages/agent/src/checkpoints');
     await os.fs.writeFile('/home/agent/dir/a.txt', 'a\n');
     await os.fs.writeFile('/home/agent/dir/b.bin', new Uint8Array([0, 1, 2, 255]));
     await os.fs.writeFile('/home/agent/keep.txt', 'precious\n');
@@ -383,7 +379,7 @@ describe('changes, undo and plan mode', () => {
 
 describe('chat titles', () => {
   it('use only what the person typed', async () => {
-    const { titleFrom } = await import('../src/agent/session');
+    const { titleFrom } = await import('../packages/agent/src/session');
     const msg = { role: 'user' as const, content: [{ type: 'text' as const, text: 'Fix the bug in @app.js\n\n<file path="/home/agent/app.js">\nconst a = 1;\n</file>\n\n<mode>Plan mode: …</mode>' }] };
     expect(titleFrom([msg])).toBe('Fix the bug in @app.js');
   });

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -74,14 +74,28 @@ function packageFiles(dir: string): Record<string, Array<{ url: string; bytes: n
 const runtimeOnly = process.env.BBX_TARGET === 'runtime';
 const input = runtimeOnly
   ? { bridge: 'kernel/bridge.html', embed: 'embed/index.html' }
-  : { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', bridge: 'kernel/bridge.html', embed: 'embed/index.html' };
+  : { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html' };
+
+/**
+ * The app runs on the runtime release (through the SDK): its build has no
+ * kernel of its own, and ships the runtime it was built against, from the
+ * runtime package, at /runtime/<version>/ (where the site serves releases too).
+ */
+const shipRuntime = () => ({
+  name: 'bbx-ship-runtime',
+  async writeBundle(options: { dir?: string }) {
+    const { runtimeDir } = (await import('@jeevanand/agent-browserbox-runtime')) as { runtimeDir: string };
+    if (!existsSync(`${runtimeDir}/embed/index.html`)) throw new Error(`the runtime package is not built (${runtimeDir}): run npm run build:runtime first`);
+    cpSync(runtimeDir, `${options.dir ?? 'dist'}/runtime/${RUNTIME_VERSION}`, { recursive: true });
+  },
+});
 
 /** The runtime's version, reported by the kernel (and to the SDK). One source of truth: packages/runtime/package.json. */
 const RUNTIME_VERSION: string = JSON.parse(readFileSync(new URL('./packages/runtime/package.json', import.meta.url), 'utf8')).version;
 
 export default defineConfig({
-  plugins: [kernelChain()],
-  define: { __BBX_RUNTIME_VERSION__: JSON.stringify(RUNTIME_VERSION), __BBX_APP_BUILD__: JSON.stringify(!runtimeOnly) },
+  plugins: runtimeOnly ? [kernelChain()] : [shipRuntime()],
+  define: { __BBX_RUNTIME_VERSION__: JSON.stringify(RUNTIME_VERSION) },
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {

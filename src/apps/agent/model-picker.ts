@@ -1,4 +1,4 @@
-import { ANTHROPIC_MODELS, describeModel, loadConfig, saveConfig, type AgentConfig, type Effort } from '@/agent/config';
+import { ANTHROPIC_MODELS, describeModel, loadConfig, saveConfig, type AgentConfig, type Effort } from '@jeevanand/agent-browserbox/ui';
 import type { Kernel } from '@/kernel/api';
 import { h } from '@/ui/dom';
 import type { MenuEntry } from '@/ui/menu';

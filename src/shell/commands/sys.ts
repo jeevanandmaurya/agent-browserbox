@@ -1,3 +1,4 @@
+import { contributedNames, findContributed } from '../contrib';
 import { listApps } from '@/kernel/apps';
 import { fmtBytes, fmtDuration } from '@/kernel/format';
 import type { Command } from '../shell';
@@ -9,11 +10,12 @@ export const sysCommands: Command[] = [
     summary: 'list commands',
     usage: 'help [command]',
     async run({ args, shell, out }) {
-      const one = args[0] ? shell.commands.get(args[0]) : undefined;
+      const one = args[0] ? (shell.commands.get(args[0]) ?? findContributed(args[0])) : undefined;
       if (args[0] && !one) throw new Error(`no such command: ${args[0]}`);
       if (one) return void out(`${C.bold}${one.name}${C.reset} — ${one.summary}\n${one.usage ? `usage: ${one.usage}\n` : ''}`);
       out(`${C.bold}BrowserBox shell${C.reset} — pipes (|), redirects (> >> <), && || ;, $VARS, globs, quotes.\n\n`);
-      for (const c of [...shell.commands.values()].sort((a, b) => a.name.localeCompare(b.name))) out(`  ${C.cyan}${c.name.padEnd(10)}${C.reset} ${c.summary}\n`);
+      const all = new Map([...contributedNames().map((n) => [n, findContributed(n)!] as const), ...shell.commands]);
+      for (const c of [...all.values()].sort((a, b) => a.name.localeCompare(b.name))) out(`  ${C.cyan}${c.name.padEnd(10)}${C.reset} ${c.summary}\n`);
     },
   },
   {

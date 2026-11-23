@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffFiles, diffLines, unified } from '../src/agent/diff';
+import { diffFiles, diffLines, unified } from '../packages/agent/src/diff';
 
 const apply = (a: string[], lines: NonNullable<ReturnType<typeof diffLines>>) => {
   // Rebuilding both sides from the script proves it is a correct edit script.

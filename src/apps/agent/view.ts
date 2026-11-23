@@ -1,7 +1,7 @@
-import type { AgentEvent } from '@/agent/agent';
-import { MODE_TAG } from '@/agent/mode';
-import type { FileDiff } from '@/agent/diff';
-import type { Msg } from '@/agent/types';
+import type { AgentEvent } from '@jeevanand/agent-browserbox/ui';
+import { MODE_TAG } from '@jeevanand/agent-browserbox/ui';
+import type { FileDiff } from '@jeevanand/agent-browserbox/ui';
+import type { Msg } from '@jeevanand/agent-browserbox/ui';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import { fmtDuration, h } from '@/ui/dom';
 import { loader } from '@/ui/icons';

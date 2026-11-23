@@ -1,11 +1,12 @@
+import { agentsOf } from '@/app/agents';
 import './style.css';
 import './chat.css';
 import './workbench.css';
 import { OS_URL } from '@/config/origins';
-import type { AgentHandle } from '@/agent/api';
-import type { TodoItem } from '@/agent/tools/types';
+import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
+import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
 import type { AppModule } from '@/ui/apps';
-import { loadConfig } from '@/agent/config';
+import { loadConfig } from '@jeevanand/agent-browserbox/ui';
 import { openMenu } from '@/ui/menu';
 import { AGENT_HOME } from '@/kernel/paths';
 import { choiceDialog } from '@/ui/dialog';
@@ -240,7 +241,7 @@ const app: AppModule = {
       shell.closeDrawer();
       return switchTo(async () => {
         leave();
-        adopt(await os.agents.create());
+        adopt(await agentsOf(os).create());
         await showState();
         composer.focus();
       });
@@ -252,7 +253,7 @@ const app: AppModule = {
       return switchTo(async () => {
         const snap = await agent.snapshot();
         leave();
-        adopt(await os.agents.create({ private: !snap.private }));
+        adopt(await agentsOf(os).create({ private: !snap.private }));
         await showState();
         composer.focus();
       });
@@ -262,7 +263,7 @@ const app: AppModule = {
       if (id === agent.sid) return Promise.resolve(shell.closeDrawer());
       return switchTo(async () => {
         try {
-          const next = await os.agents.create({ resume: id });
+          const next = await agentsOf(os).create({ resume: id });
           leave();
           adopt(next);
           await showState();
@@ -380,9 +381,9 @@ const app: AppModule = {
     // Rejoin a session that is already running in the kernel; failing that, reopen the chat
     // this window last showed (the kernel restarts when every window closes, e.g. on reload,
     // and phones discard background tabs); failing that, start a new one.
-    const [live] = await os.agents.live();
+    const [live] = await agentsOf(os).live();
     const last = readLast();
-    adopt(live ? await os.agents.attach(live.sid) : last ? await os.agents.create({ resume: last }).catch(() => os.agents.create()) : await os.agents.create());
+    adopt(live ? await agentsOf(os).attach(live.sid) : last ? await agentsOf(os).create({ resume: last }).catch(() => agentsOf(os).create()) : await agentsOf(os).create());
     await showState();
     composer.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);

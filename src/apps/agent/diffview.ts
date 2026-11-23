@@ -1,4 +1,4 @@
-import type { FileDiff } from '@/agent/diff';
+import type { FileDiff } from '@jeevanand/agent-browserbox/ui';
 import { h } from '@/ui/dom';
 
 /** "+12 −3", for headers and tool cards. */

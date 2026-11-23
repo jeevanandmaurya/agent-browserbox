@@ -111,7 +111,17 @@ export interface ShellHandle {
   close(): void;
 }
 
+/** A command run by someone else (a kernel client), offered in every shell. */
+export interface ContributedCommand {
+  name: string;
+  summary: string;
+  usage?: string;
+  run(io: { args: string[]; stdin: string; cwd: string; out(text: string): void; err(text: string): void; signal: AbortSignal; readLine?(prompt: string, secret: boolean): Promise<string | null> }): Promise<number>;
+}
+
 export interface ShellsApi {
+  /** Offers a command in every shell; returns a function that withdraws it. (Kernel side only.) */
+  contribute?(cmd: ContributedCommand): () => void;
   /**
    * `confined`: the shell runs code for someone else (the SDK runtime), so network access needs a permission grant.
    * `prompter`: who answers its permission requests (kernel side only; it cannot cross RPC).

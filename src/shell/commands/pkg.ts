@@ -27,7 +27,7 @@ async function install(ctx: CommandContext, ids: string[]): Promise<void> {
 export const pkgCommand: Command = {
   name: 'pkg',
   summary: 'package manager: list, info, install, remove',
-  usage: 'pkg list | pkg info <name> | pkg install <name>… | pkg remove <name>…',
+  usage: 'pkg list | pkg info <name> | pkg install <name>… | pkg install --defaults | pkg remove <name>…',
   async run(ctx) {
     const { os, out } = ctx;
     const [verb = 'list', ...names] = ctx.args;
@@ -44,7 +44,9 @@ export const pkgCommand: Command = {
       return;
     }
     if (verb === 'install') {
-      if (!names.length) throw new Error('usage: pkg install <name>…');
+      // --defaults: the packages a new system gets (Python only on request).
+      if (names.includes('--defaults')) return install(ctx, defaultPackages(os).filter((id) => !os.packages.isInstalled(id)));
+      if (!names.length) throw new Error('usage: pkg install <name>… | pkg install --defaults');
       return install(ctx, names);
     }
     if (verb === 'remove') {

@@ -1,4 +1,5 @@
-import { deleteSession, listSessions, type SessionInfo } from '@/agent/session';
+import { agentsOf } from '@/app/agents';
+import { deleteSession, listSessions, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
 import type { Kernel } from '@/kernel/api';
 import { fmtTime, h } from '@/ui/dom';
 import { icon } from './icons';
@@ -111,7 +112,7 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
   const updateLive = () => {
     clearTimeout(pending);
     pending = window.setTimeout(async () => {
-      const sessions = await os.agents.live().catch(() => []);
+      const sessions = await agentsOf(os).live().catch(() => []);
       const next = new Map<string, 'running' | 'waiting'>();
       for (const s of sessions) {
         const state = os.procs.get(s.pid)?.state;

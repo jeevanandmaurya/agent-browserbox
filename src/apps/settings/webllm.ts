@@ -1,5 +1,5 @@
-import type { AgentConfig } from '@/agent/config';
-import { catalogue, download, downloadedIds, importFolder, remove, type ModelEntry } from '@/agent/providers/webllm-store';
+import type { AgentConfig } from '@jeevanand/agent-browserbox/ui';
+import { catalogue, download, downloadedIds, importFolder, remove, type ModelEntry } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { fmtBytes, h } from '@/ui/dom';
 import { loader } from '@/ui/icons';

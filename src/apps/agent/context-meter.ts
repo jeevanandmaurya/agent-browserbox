@@ -1,4 +1,4 @@
-import type { ContextReport } from '@/agent/types';
+import type { ContextReport } from '@jeevanand/agent-browserbox/ui';
 import { h } from '@/ui/dom';
 
 const PARTS: Array<{ key: keyof ContextReport['parts']; label: string; color: string }> = [

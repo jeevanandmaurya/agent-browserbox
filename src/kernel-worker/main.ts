@@ -21,10 +21,7 @@ const instance = fromWorkerName(self.name);
 const os = new KernelCore({ packages: REGISTRY, instance });
 os.shells = new ShellManager(os);
 const server = new KernelServer(os, shared);
-// The runtime release is a pure machine. Only the app's own build (until the app
-// moves onto the runtime release) adds its agent and apps to this worker.
-const ready = __BBX_APP_BUILD__ ? import('./app-services').then((m) => m.installAppServices(os, server)) : Promise.resolve();
-void ready.then(() => os.start()).then(() => os.mark('kernel-ready'));
+const ready = os.start().then(() => os.mark('kernel-ready'));
 
 if (!shared) {
   // Kernels in different windows share IndexedDB/OPFS; keep their settings replicas in step.
@@ -33,7 +30,6 @@ if (!shared) {
   channel.onmessage = (e: MessageEvent<{ key: string; value: unknown }>) => os.settings.applyRemote(e.data.key, e.data.value);
 }
 
-// Connections wait until the services are installed, so every client sees all their methods.
-const accept = (port: MessagePort) => void ready.then(() => server.connect(port));
+const accept = (port: MessagePort) => server.connect(port);
 if (shared) scope.onconnect = (e) => accept(e.ports[0]!);
 else scope.onmessage = (e) => e.data?.type === 'connect' && accept(e.ports[0]!);

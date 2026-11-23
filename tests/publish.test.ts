@@ -1,24 +1,22 @@
 import * as esbuildWasm from 'esbuild-wasm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { setEsbuildLoader } from '../src/kernel/dev/bundle';
-import { KernelCore } from '../src/kernel/kernel';
-import { MemFs } from '../src/kernel/vfs/memfs';
-import { deployFolder, pushFolder, cloneRepo, linksFor } from '../src/agent/publish';
-import { gitBlobSha, sha1, fromBase64 } from '../src/agent/publish/files';
+import { AgentOs } from '../packages/agent/src/index';
+import { kernelBox } from './helpers/kernel-box';
+import { deployFolder, pushFolder, cloneRepo, linksFor } from '../packages/agent/src/publish';
+import { gitBlobSha, sha1, fromBase64 } from '../packages/agent/src/publish/files';
 
 beforeAll(async () => {
   await esbuildWasm.initialize({});
 });
 
+/** The agent's view of a real (in-memory) kernel, with the publishing tokens. */
+let lastKernel: Awaited<ReturnType<typeof kernelBox>>['kernel'];
 async function kernel() {
-  const os = new KernelCore();
+  const { box, kernel: k } = await kernelBox();
+  lastKernel = k;
   setEsbuildLoader(async () => esbuildWasm); // the kernel installs its own loader; tests use the npm build
-  os.fs.mount('/', new MemFs());
-  os.fs.markReady();
-  await os.secrets.set('github.token', 'gh-token');
-  await os.secrets.set('netlify.token', 'nf-token');
-  await os.secrets.set('vercel.token', 'vc-token');
-  return os;
+  return AgentOs.create(box, { secrets: { 'github.token': 'gh-token', 'netlify.token': 'nf-token', 'vercel.token': 'vc-token' }, seed: false });
 }
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -154,7 +152,7 @@ describe('GitHub', () => {
 });
 
 describe('deploy', () => {
-  const project = async (os: KernelCore) => {
+  const project = async (os: AgentOs) => {
     await os.fs.writeFile('/w/site/index.html', '<!doctype html><html><head><title>S</title></head><body><div id="root"></div><script type="module" src="/src/main.ts"></script></body></html>');
     await os.fs.writeFile('/w/site/src/main.ts', 'const n: number = 40 + 2;\ndocument.getElementById("root")!.textContent = `answer ${n}`;\nif (import.meta.env.DEV) console.log("dev only");');
     await os.fs.writeFile('/w/site/logo.svg', '<svg/>');
@@ -185,7 +183,7 @@ describe('deploy', () => {
     expect(r.note).toMatch(/server\.ts .* not deployed/);
     // The page is a production build: TypeScript compiled, dev-only code dropped, no dev runtime.
     const { buildSite } = await import('../src/kernel/dev/build');
-    const html = new TextDecoder().decode((await buildSite(os.fs, '/w/site')).files.get('/index.html'));
+    const html = new TextDecoder().decode((await buildSite(lastKernel.fs, '/w/site')).files.get('/index.html'));
     expect(html).toContain('answer');
     expect(html).not.toContain('dev only');
     expect(html).not.toContain('__bbxDev');

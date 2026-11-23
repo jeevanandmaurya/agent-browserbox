@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error plain JavaScript Worker, no types
 import worker from '../relay/worker.js';
-import { relayed, unreachable } from '../src/agent/config';
+import { relayed, unreachable } from '../packages/agent/src/config';
 
 const env = { ALLOWED_HOSTS: 'ollama.com', ALLOWED_ORIGINS: 'https://me.github.io' };
 const call = (url: string, init: RequestInit & { origin?: string } = {}) =>

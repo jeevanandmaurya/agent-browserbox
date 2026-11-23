@@ -1,4 +1,4 @@
-import type { Kernel } from './host/os.js';
+import type { Kernel, WithFiles, WithSettings } from './host/os.js';
 
 /**
  * anthropic: Claude via Anthropic's API. local: a model server on your own
@@ -94,7 +94,7 @@ const isLocalUrl = (url: string) => {
   }
 };
 
-export function loadConfig(os: Kernel): AgentConfig {
+export function loadConfig(os: WithSettings): AgentConfig {
   const stored = os.settings.get<Partial<AgentConfig>>(KEY, {});
   // Older configs kept local servers under the "openai" provider; move them across.
   if (stored.provider === 'openai' && stored.localBaseUrl === undefined && stored.openaiBaseUrl && isLocalUrl(stored.openaiBaseUrl)) {
@@ -103,7 +103,7 @@ export function loadConfig(os: Kernel): AgentConfig {
   return { ...DEFAULT_CONFIG, ...stored };
 }
 
-export function saveConfig(os: Kernel, patch: Partial<AgentConfig>): AgentConfig {
+export function saveConfig(os: WithSettings, patch: Partial<AgentConfig>): AgentConfig {
   const next = { ...loadConfig(os), ...patch };
   os.settings.set(KEY, next);
   return next;

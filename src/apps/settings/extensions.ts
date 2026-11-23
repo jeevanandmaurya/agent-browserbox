@@ -1,4 +1,4 @@
-import { EXT_DIRS, extId, loadExtensions, setEnabled, template, validName, type ExtKind, type Extension } from '@/agent/ext/library';
+import { EXT_DIRS, extId, loadExtensions, setEnabled, template, validName, type ExtKind, type Extension } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog, promptDialog } from '@/ui/dialog';
 import { h } from '@/ui/dom';

@@ -51,7 +51,7 @@ class Connection {
 
   constructor(port: MessagePort, link: Promise<KernelLink>) {
     this.#port = port;
-    this.os = new RemoteKernel(link);
+    this.os = new RemoteKernel(link, 'sdk');
     // Permission questions for this connection's shells: asked of the page (or worker) on the other end.
     this.os.perms.setPrompter(
       (req: PermRequest, signal?: AbortSignal) =>

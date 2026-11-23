@@ -1,4 +1,4 @@
-import type { Kernel } from './host/os.js';
+import type { Kernel, WithFiles, WithSettings } from './host/os.js';
 import { AGENT_HOME } from './host/paths.js';
 import type { TodoItem } from './tools/index.js';
 import type { Checkpoint } from './checkpoints.js';
@@ -29,19 +29,19 @@ export interface SessionInfo {
 }
 
 /** Sessions are plain JSON files in the agent's home, so they survive reloads and are inspectable. */
-export async function saveSession(os: Kernel, s: SessionFile): Promise<void> {
+export async function saveSession(os: WithFiles, s: SessionFile): Promise<void> {
   await os.fs.writeFile(`${DIR}/${s.id}.json`, JSON.stringify(s));
 }
 
-export async function loadSession(os: Kernel, id: string): Promise<SessionFile> {
+export async function loadSession(os: WithFiles, id: string): Promise<SessionFile> {
   return JSON.parse(await os.fs.readText(`${DIR}/${id}.json`)) as SessionFile;
 }
 
-export async function deleteSession(os: Kernel, id: string): Promise<void> {
+export async function deleteSession(os: WithFiles, id: string): Promise<void> {
   await os.fs.rm(`${DIR}/${id}.json`).catch(() => undefined);
 }
 
-export async function listSessions(os: Kernel): Promise<SessionInfo[]> {
+export async function listSessions(os: WithFiles): Promise<SessionInfo[]> {
   const entries = await os.fs.readdir(DIR).catch(() => []);
   const infos = await Promise.all(
     entries

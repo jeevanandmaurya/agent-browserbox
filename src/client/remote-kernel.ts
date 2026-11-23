@@ -1,6 +1,6 @@
 import type { DevApi } from '@/kernel/dev/types';
-import type { AgentEvent } from '@/agent/agent';
-import type { AgentHandle, AgentsApi } from '@/agent/api';
+import type { AgentEvent } from '@jeevanand/agent-browserbox/ui';
+import type { AgentHandle, AgentsApi } from '@jeevanand/agent-browserbox/ui';
 import type { FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
 import { Bus } from '@/kernel/bus';
 import { detectCaps, type PlatformCap } from '@/kernel/caps';
@@ -64,7 +64,7 @@ export class RemoteKernel implements Kernel {
   #nextRun = 1;
   #asking = new Map<number, AbortController>();
 
-  constructor(link: Promise<KernelLink>, role: 'ui' | 'host' = 'ui') {
+  constructor(link: Promise<KernelLink>, role: 'ui' | 'sdk' | 'host' = 'ui') {
     this.#peer = link.then(({ port, lock, shared }) => {
       this.shared = shared;
       const peer = new Peer(port);
@@ -73,6 +73,33 @@ export class RemoteKernel implements Kernel {
       return peer;
     });
     this.ready = this.#peer.then(async (peer) => this.#hydrate(await peer.call<Hello>('hello', role)));
+  }
+
+  #agentPeer: Promise<Peer> | null = null;
+
+  /**
+   * Sends this window's agent calls (`agents.*`) to an agent service, the app's
+   * agent worker, instead of the kernel. Its events and questions (permissions,
+   * ask_user) are answered here as before.
+   */
+  useAgentService(port: Promise<MessagePort>, lock?: string): void {
+    this.#agentPeer = port.then((p) => {
+      const peer = new Peer(p);
+      peer.on<{ sid: string; event: AgentEvent }>('agent', ({ sid, event }) => {
+        for (const fn of [...(this.#agents.get(sid)?.events ?? [])]) fn(event);
+      });
+      peer.on<Ask>('ask', (ask) => void this.#answer(peer, ask));
+      peer.on<number>('ask:done', (askId) => {
+        this.#asking.get(askId)?.abort();
+        this.#asking.delete(askId);
+      });
+      if (lock) peer.emit('alive', lock);
+      return peer;
+    });
+  }
+
+  #agentCall<T = unknown>(method: string, ...args: unknown[]): Promise<T> {
+    return this.#agentPeer ? this.#agentPeer.then((p) => p.call<T>(method, ...args)) : this.call<T>(method, ...args);
   }
 
   /** Calls a kernel method once connected. */
@@ -273,11 +300,11 @@ export class RemoteKernel implements Kernel {
   };
 
   readonly agents: AgentsApi = {
-    create: async (opts) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.create', opts)),
-    attach: async (sid) => this.#agentHandle(await this.call<{ sid: string; pid: number }>('agent.attach', sid)),
-    live: () => this.call('agent.live'),
-    probeModels: (baseUrl, kind) => this.call('agent.probeModels', baseUrl, kind),
-    probeMcp: (name) => this.call('agent.probeMcp', name),
+    create: async (opts) => this.#agentHandle(await this.#agentCall<{ sid: string; pid: number }>('agent.create', opts)),
+    attach: async (sid) => this.#agentHandle(await this.#agentCall<{ sid: string; pid: number }>('agent.attach', sid)),
+    live: () => this.#agentCall('agent.live'),
+    probeModels: (baseUrl, kind) => this.#agentCall('agent.probeModels', baseUrl, kind),
+    probeMcp: (name) => this.#agentCall('agent.probeMcp', name),
   };
 
   #agentHandle({ sid, pid }: { sid: string; pid: number }): AgentHandle {
@@ -289,13 +316,13 @@ export class RemoteKernel implements Kernel {
     return {
       sid,
       pid,
-      send: (text, opts) => this.call('agent.send', sid, text, opts),
-      rewind: (index, files) => this.call('agent.rewind', sid, index, files),
-      changes: () => this.call('agent.changes', sid),
-      stop: () => void this.call('agent.stop', sid),
-      snapshot: () => this.call('agent.snapshot', sid),
-      context: () => this.call('agent.context', sid),
-      compact: () => this.call('agent.compact', sid),
+      send: (text, opts) => this.#agentCall('agent.send', sid, text, opts),
+      rewind: (index, files) => this.#agentCall('agent.rewind', sid, index, files),
+      changes: () => this.#agentCall('agent.changes', sid),
+      stop: () => void this.#agentCall('agent.stop', sid),
+      snapshot: () => this.#agentCall('agent.snapshot', sid),
+      context: () => this.#agentCall('agent.context', sid),
+      compact: () => this.#agentCall('agent.compact', sid),
       onEvent: (fn) => {
         local.events.add(fn);
         return () => local.events.delete(fn);
@@ -311,11 +338,11 @@ export class RemoteKernel implements Kernel {
       },
       detach: () => {
         forget();
-        void this.call('agent.detach', sid);
+        void this.#agentCall('agent.detach', sid);
       },
       dispose: () => {
         forget();
-        void this.call('agent.dispose', sid);
+        void this.#agentCall('agent.dispose', sid);
       },
     };
   }

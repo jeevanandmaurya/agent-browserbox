@@ -1,3 +1,4 @@
+import { agentsOf } from '@/app/agents';
 import {
   ANTHROPIC_MODELS,
   DEFAULT_CONFIG,
@@ -9,7 +10,7 @@ import {
   type AgentConfig,
   type Effort,
   type ProviderId,
-} from '@/agent/config';
+} from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { keyField } from './keyfield';
@@ -193,7 +194,7 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
       probeStatus.textContent = 'Connecting…';
       try {
         // The kernel probes with the stored key; windows can never read secrets back.
-        const ids = await Promise.race([os.agents.probeModels(get().url, kind), new Promise<never>((_, no) => setTimeout(() => no(new Error(`No answer from ${get().url} within 10 seconds.`)), 10_000))]);
+        const ids = await Promise.race([agentsOf(os).probeModels(get().url, kind), new Promise<never>((_, no) => setTimeout(() => no(new Error(`No answer from ${get().url} within 10 seconds.`)), 10_000))]);
         datalist.replaceChildren(...ids.map((id) => h('option', { value: id })));
         found.replaceChildren(h('option', { value: '' }, `Choose from ${ids.length} model${ids.length === 1 ? '' : 's'}…`), ...ids.map((id) => h('option', { value: id }, id)));
         found.hidden = ids.length === 0;

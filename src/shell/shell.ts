@@ -2,6 +2,7 @@ import type { Prompter } from '@/kernel/perms';
 import type { KernelCore as Kernel } from '@/kernel/kernel';
 import { AGENT_HOME, HOME } from '@/kernel/paths';
 import { resolve } from '@/kernel/vfs/path';
+import { contributedNames, findContributed } from './contrib';
 import { parse, ShellSyntaxError, splitJobs, type Stage, type Word } from './parse';
 
 /** An interactive terminal, when the shell has one. */
@@ -142,7 +143,7 @@ export class Shell {
       const last = i === stages.length - 1;
       const argv = await this.#expand(stage.argv);
       const name = argv[0]!;
-      let cmd = this.commands.get(name);
+      let cmd = this.commands.get(name) ?? findContributed(name);
       if (!cmd) {
         // Not built in: an installed package may provide it.
         try {
@@ -203,7 +204,7 @@ export class Shell {
     const start = Math.max(line.lastIndexOf(' '), line.lastIndexOf('|'), line.lastIndexOf(';')) + 1;
     const word = line.slice(start);
     const first = !/\S/.test(line.slice(0, start).split(/[|;&]/).pop() ?? '');
-    if (first && !word.includes('/')) return { start, options: [...this.commands.keys()].filter((c) => c.startsWith(word)).sort() };
+    if (first && !word.includes('/')) return { start, options: [...new Set([...this.commands.keys(), ...contributedNames()])].filter((c) => c.startsWith(word)).sort() };
     const slash = word.lastIndexOf('/');
     const dirPart = slash >= 0 ? word.slice(0, slash + 1) : '';
     const base = word.slice(slash + 1);

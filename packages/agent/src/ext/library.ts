@@ -1,5 +1,5 @@
 import { SEED_FILES } from './seed.js';
-import type { Kernel } from '../host/os.js';
+import type { Kernel, WithFiles, WithSettings } from '../host/os.js';
 import { AGENT_HOME } from '../host/paths.js';
 import { parseFrontmatter, parseList } from './frontmatter.js';
 
@@ -33,14 +33,14 @@ const NAME = /^[a-z0-9][a-z0-9-]{0,47}$/;
 export const extId = (e: Pick<Extension, 'kind' | 'name'>) => `${e.kind}:${e.name}`;
 export const validName = (name: string) => NAME.test(name);
 
-export function setEnabled(os: Kernel, e: Pick<Extension, 'kind' | 'name'>, on: boolean): void {
+export function setEnabled(os: WithSettings, e: Pick<Extension, 'kind' | 'name'>, on: boolean): void {
   const off = new Set(os.settings.get<string[]>(DISABLED_KEY, []));
   if (on) off.delete(extId(e));
   else off.add(extId(e));
   os.settings.set(DISABLED_KEY, [...off]);
 }
 
-export async function loadExtensions(os: Kernel, kind: ExtKind): Promise<Extension[]> {
+export async function loadExtensions(os: WithFiles & WithSettings, kind: ExtKind): Promise<Extension[]> {
   const root = EXT_DIRS[kind];
   const off = new Set(os.settings.get<string[]>(DISABLED_KEY, []));
   const entries = await os.fs.readdir(root).catch(() => []);

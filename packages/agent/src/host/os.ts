@@ -92,7 +92,7 @@ export interface AgentOsOptions {
    * permission mode and grants ('perms.*'), MCP connectors, … Pass your stored
    * values; `onSettingsChange` receives every write so you can store them.
    */
-  settings?: Record<string, unknown>;
+  settings?: Record<string, unknown> | SettingsApi;
   onSettingsChange?(key: string, value: unknown): void;
   /** API keys and tokens by name (see SECRET in config): a map, or your own store. */
   secrets?: Record<string, string> | SecretsApi;
@@ -108,6 +108,12 @@ export interface AgentOsOptions {
    * anything implementing Provider (one turn of the conversation per call).
    */
   provider?: Provider | (() => Provider | Promise<Provider>);
+  /**
+   * Where the agent's own processes (the agent, a model download) are listed,
+   * e.g. a kernel client's process table so they show in a task manager.
+   * Default: kept in the agent.
+   */
+  procs?: ProcTable;
   /** Write the example skills, agents and commands to the agent's home if it has none. Default: true. */
   seed?: boolean;
 }
@@ -165,7 +171,10 @@ class MapSecrets implements SecretsApi {
 /** The box's filesystem, with the kernel's method names (and a few it builds from others). */
 class BoxFs {
   readonly ready = Promise.resolve();
-  constructor(private box: BrowserBox) {}
+  constructor(private at: () => BrowserBox) {}
+  private get box(): BrowserBox {
+    return this.at();
+  }
   readFile = (p: string) => this.box.fs.readFile(p);
   readText = (p: string) => this.box.fs.readTextFile(p);
   writeFile = (p: string, d: string | Uint8Array) => this.box.fs.writeFile(p, d);
@@ -201,7 +210,10 @@ class BoxFs {
  */
 class BoxPackages {
   #list: Array<PackageManifest & { installed: boolean }> = [];
-  constructor(private box: BrowserBox) {}
+  constructor(private at: () => BrowserBox) {}
+  private get box(): BrowserBox {
+    return this.at();
+  }
 
   async refresh(): Promise<void> {
     const r = await this.box.exec('pkg list');
@@ -230,8 +242,18 @@ class BoxPackages {
   }
 }
 
-/** The agent's own processes. The box's process table is `box.processes()`. */
-class LocalProcs {
+/** What the agent needs from a process table for its own processes. */
+export interface ProcTable {
+  spawn(o: { name: string; kind: string; ppid?: number; detail?: string; onKill?: () => void }): Proc;
+  update(pid: number, patch: Partial<Pick<Proc, 'state' | 'detail' | 'memBytes'>>): void;
+  account(pid: number, ms: number): void;
+  exit(pid: number): void;
+  kill(pid: number): boolean;
+  list(): Proc[];
+}
+
+/** The agent's own processes, kept in the agent. The box's process table is `box.processes()`. */
+class LocalProcs implements ProcTable {
   #next = 1;
   #onExit = new Set<(pid: number) => void>();
   /** Called with each process that exits (or is killed). */
@@ -273,6 +295,26 @@ class LocalProcs {
   }
 }
 
+/** Adds exit notifications to a process table (the session manager forgets sessions whose agent exited). */
+function withExitEvents(t: ProcTable): ProcTable & { onExit(fn: (pid: number) => void): () => void } {
+  if (t instanceof LocalProcs) return t;
+  const listeners = new Set<(pid: number) => void>();
+  const fire = (pid: number) => listeners.forEach((fn) => fn(pid));
+  return {
+    spawn: (o) => t.spawn(o),
+    update: (pid, patch) => t.update(pid, patch),
+    account: (pid, ms) => t.account(pid, ms),
+    exit: (pid) => (t.exit(pid), fire(pid)),
+    kill: (pid) => {
+      const ok = t.kill(pid);
+      if (ok) fire(pid);
+      return ok;
+    },
+    list: () => t.list(),
+    onExit: (fn) => (listeners.add(fn), () => listeners.delete(fn)),
+  };
+}
+
 /** Token estimates and line search (the kernel's WebAssembly core has the same in JS). */
 const enc = new TextEncoder();
 const kcore = {
@@ -296,10 +338,10 @@ const kcore = {
 
 export class AgentOs {
   readonly fs: BoxFs;
-  readonly settings: Settings;
+  readonly settings: SettingsApi;
   readonly secrets: SecretsApi;
   readonly perms: Permissions;
-  readonly procs = new LocalProcs();
+  readonly procs: ProcTable & { onExit(fn: (pid: number) => void): () => void };
   readonly packages: BoxPackages;
   readonly kcore = kcore;
   readonly mcp: McpHub;
@@ -309,19 +351,40 @@ export class AgentOs {
   readonly rootKind: 'opfs' | 'memory';
   readonly ui: { call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak', ...args: unknown[]): Promise<T> } | null;
 
+  #box: BrowserBox;
+  /** The agent's shells, reopened on a new box after setBox(). */
+  readonly shells = new Set<Shell>();
+
+  /** The box the agent works in. */
+  get box(): BrowserBox {
+    return this.#box;
+  }
+
+  /**
+   * Moves the agent to a new connection to its box (e.g. after the window that
+   * shared it closed). Shell sessions reopen there, in the same folders.
+   */
+  setBox(box: BrowserBox): void {
+    this.#box = box;
+    for (const s of this.shells) s.reset();
+  }
+
   private constructor(
-    readonly box: BrowserBox,
+    box: BrowserBox,
     private opts: AgentOsOptions,
   ) {
-    this.fs = new BoxFs(box);
-    this.settings = new Settings(opts.settings, opts.onSettingsChange);
+    this.#box = box;
+    this.procs = withExitEvents(opts.procs ?? new LocalProcs());
+    this.fs = new BoxFs(() => this.#box);
+    const given = opts.settings;
+    this.settings = given && typeof (given as SettingsApi).get === 'function' && typeof (given as SettingsApi).keys === 'function' ? (given as SettingsApi) : new Settings(given as Record<string, unknown> | undefined, opts.onSettingsChange);
     if (!opts.prompter && !this.settings.keys().includes('perms.mode')) this.settings.set('perms.mode', 'auto');
     this.secrets = !opts.secrets ? new MapSecrets({}) : 'get' in opts.secrets && typeof opts.secrets.get === 'function' ? (opts.secrets as SecretsApi) : new MapSecrets(opts.secrets as Record<string, string>);
     this.perms = new Permissions(this.settings);
     if (opts.prompter) this.perms.setPrompter(opts.prompter);
-    this.packages = new BoxPackages(box);
+    this.packages = new BoxPackages(() => this.#box);
     this.mcp = new McpHub(this);
-    this.dev = { start: (o) => box.dev.start(o.root, { port: o.port, network: o.network }), stop: (p) => box.dev.stop(p), list: () => box.dev.list(), logs: (p, o) => box.dev.logs(p, o) };
+    this.dev = { start: (o) => this.#box.dev.start(o.root, { port: o.port, network: o.network }), stop: (p) => this.#box.dev.stop(p), list: () => this.#box.dev.list(), logs: (p, o) => this.#box.dev.logs(p, o) };
     const gpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
     this.caps = [...box.caps.filter((c) => c !== 'webgpu').map((id) => ({ id, label: id, ok: true })), { id: 'webgpu', label: 'WebGPU', ok: gpu }];
     this.version = box.version;
@@ -383,6 +446,22 @@ export class AgentOs {
   }
 }
 
+/** The files part of a box or kernel that the agent's helpers need (sessions, extensions). */
+export interface FilesLike {
+  readText(path: string): Promise<string>;
+  writeFile(path: string, data: string | Uint8Array): Promise<void>;
+  readdir(path: string): Promise<Array<{ path: string; name: string; kind: 'file' | 'dir'; size: number; mtime: number }>>;
+  rm(path: string, opts?: { recursive?: boolean }): Promise<void>;
+}
+
+/** Settings alone (model config) / settings and files (extensions, sessions): what an app's kernel client can pass to the helpers. */
+export interface WithSettings {
+  settings: SettingsApi;
+}
+export interface WithFiles {
+  fs: FilesLike;
+}
+
 /** The names the agent's code uses for the kernel: here, the agent's view of a box. */
 export type KernelCore = AgentOs;
 export type Kernel = AgentOs;
@@ -410,6 +489,12 @@ export class Shell {
   ) {
     this.cwd = opts.cwd ?? HOME;
     this.env = { HOME, USER: 'user' };
+    os.shells.add(this);
+  }
+
+  /** Forgets the session (the box changed); the next command opens a new one in the same folder. */
+  reset(): void {
+    this.#session = null;
   }
 
   #open(): Promise<BoxShell> {
@@ -450,6 +535,7 @@ export class Shell {
   close(): void {
     void this.#session?.then((s) => s.close()).catch(() => undefined);
     this.#session = null;
+    this.os.shells.delete(this);
   }
 }
 

@@ -1,7 +1,7 @@
 import '../ui/base.css';
 import agentApp from '@/apps/agent/index';
-import { connectKernel } from '@/client/connect';
-import { RemoteKernel } from '@/client/remote-kernel';
+import { appKernel } from '@/app/boot';
+import type { RemoteKernel } from '@/client/remote-kernel';
 import { bootConsole } from '@/ui/boot';
 import { followTheme, mountStandalone } from '@/ui/standalone';
 
@@ -10,7 +10,7 @@ import { followTheme, mountStandalone } from '@/ui/standalone';
  * chat, built-in workbench (files, terminal, preview…) and settings. The
  * desktop GUI is a separate page, opened only when the user asks for it.
  */
-const os = new RemoteKernel(connectKernel());
+const os = appKernel();
 followTheme(os);
 os.mark('page');
 

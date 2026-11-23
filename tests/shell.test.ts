@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse, splitJobs, tokenize } from '../src/shell/parse';
 import { globToRegExp, isInside, normalize, resolve } from '../src/kernel/vfs/path';
-import { validate } from '../src/agent/schema';
+import { validate } from '../packages/agent/src/schema';
 
 const env = { HOME: '/home/user', NAME: 'world', '?': '7' };
 const words = (line: string) => tokenize(line, env).map((t) => (t.kind === 'word' ? t.word.text : `<${t.op}>`));

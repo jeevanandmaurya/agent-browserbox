@@ -1,6 +1,6 @@
 import '../ui/base.css';
-import { connectKernel } from '@/client/connect';
-import { RemoteKernel } from '@/client/remote-kernel';
+import { appKernel } from '@/app/boot';
+import type { RemoteKernel } from '@/client/remote-kernel';
 import { createDesktop } from '@/ui/desktop';
 import { bootConsole } from '@/ui/boot';
 import { followTheme } from '@/ui/standalone';
@@ -10,7 +10,7 @@ import { followTheme } from '@/ui/standalone';
  * closing this window leaves the kernel, running agents and shells untouched,
  * and any other frontend could take its place by speaking the same protocol.
  */
-const os = new RemoteKernel(connectKernel());
+const os = appKernel();
 followTheme(os);
 os.mark('page');
 

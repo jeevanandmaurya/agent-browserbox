@@ -1,4 +1,4 @@
-import { loadExtensions } from '@/agent/ext/library';
+import { loadExtensions } from '@jeevanand/agent-browserbox/ui';
 import type { Kernel } from '@/kernel/api';
 import { h } from '@/ui/dom';
 

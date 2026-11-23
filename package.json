@@ -33,7 +33,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && npm run build:agent && npm run build:runtime && vite build",
     "build:sdk": "npm run build -w @jeevanand/agent-browserbox-sdk",
     "build:agent": "npm run build:sdk && npm run build -w @jeevanand/agent-browserbox",
     "build:runtime": "BBX_TARGET=runtime vite build",
@@ -60,5 +60,10 @@
   },
   "workspaces": [
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "@jeevanand/agent-browserbox": "^0.2.0",
+    "@jeevanand/agent-browserbox-sdk": "^0.2.0",
+    "@jeevanand/agent-browserbox-runtime": "^0.2.0"
+  }
 }

@@ -23,7 +23,6 @@
     <!-- Painted before any script runs; replaced when the app mounts. -->
     <div id="desk"><div class="boot" role="status" aria-label="Starting BrowserBox"><svg viewBox="0 0 32 32" width="40" height="40" aria-hidden="true"><path d="M16 3l12 6.5-12 6.5L4 9.5z" fill="currentColor" opacity="1"/><path d="M4 12.5l11 6v10.5L4 23z" fill="currentColor" opacity="0.72"/><path d="M28 12.5l-11 6v10.5L28 23z" fill="currentColor" opacity="0.45"/></svg></div></div>
     <!-- Starts the kernel while the page's own script is still downloading. See src/client/connect.ts. -->
-    <iframe id="bbx-bridge" src="../kernel/bridge.html" title="BrowserBox kernel bridge" aria-hidden="true" hidden></iframe>
     <script type="module" src="/src/pages/os.ts"></script>
   </body>
 </html>

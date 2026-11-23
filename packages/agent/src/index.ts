@@ -7,8 +7,9 @@
 export { VERSION } from './version.js';
 
 // The agent's view of a box, and what the app supplies.
-export { AgentOs, Settings, Shell, type AgentOsOptions, type AgentUi, type AppInfo, type Notice, type SecretsApi, type SettingsApi } from './host/os.js';
+export { AgentOs, Settings, Shell, type FilesLike, type WithFiles, type WithSettings, type ProcTable, type AgentOsOptions, type AgentUi, type AppInfo, type Notice, type SecretsApi, type SettingsApi } from './host/os.js';
 export type { Capability, PermDecision, PermRequest, Prompter } from './host/perms.js';
+export { BrowserSecrets } from './host/secrets.js';
 export { AGENT_HOME, HOME } from './host/paths.js';
 
 // The agent and its sessions.
@@ -24,6 +25,9 @@ export * from './config.js';
 export { createProvider } from './providers/index.js';
 export * from './providers/webllm-store.js';
 export { ProviderError, type Block, type ContextReport, type JsonSchema, type Msg, type Provider, type ToolSpec, type TurnRequest, type TurnResult, type Usage } from './types.js';
+
+// Terminal commands an app can offer in its box's shell.
+export { AGENT_COMMANDS, pathIn, SETUP_DONE, type AgentCommand, type CommandContext, type Tty } from './commands.js';
 
 // Tools and extensions.
 export { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } from './tools/index.js';

@@ -1,4 +1,6 @@
-import type { ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
+import type { ContributedCommand, ShellHandle, ShellIo, ShellsApi } from '@/kernel/api';
+import { contribute, withdraw } from './contrib';
+import type { Command } from './shell';
 import type { KernelCore } from '@/kernel/kernel';
 import type { Prompter } from '@/kernel/perms';
 import { registerCommands } from './index';
@@ -9,6 +11,26 @@ export class ShellManager implements ShellsApi {
   #next = 1;
 
   constructor(private os: KernelCore) {}
+
+  contribute(c: ContributedCommand): () => void {
+    const command: Command = {
+      name: c.name,
+      summary: c.summary,
+      usage: c.usage,
+      run: (ctx) =>
+        c.run({
+          args: ctx.args,
+          stdin: ctx.stdin,
+          cwd: ctx.shell.cwd,
+          out: ctx.out,
+          err: ctx.err,
+          signal: ctx.signal,
+          readLine: ctx.tty ? (prompt, secret) => ctx.tty!.readLine(prompt, { secret }) : undefined,
+        }),
+    };
+    contribute(command);
+    return () => withdraw(c.name, command);
+  }
 
   async open(opts: { cwd?: string; ppid?: number; confined?: boolean; prompter?: Prompter } = {}): Promise<ShellHandle> {
     const os = this.os;

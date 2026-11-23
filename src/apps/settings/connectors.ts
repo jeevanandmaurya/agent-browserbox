@@ -1,4 +1,5 @@
-import { MCP_KEY, mcpTokenName, type McpServerConfig } from '@/agent/ext/mcp';
+import { agentsOf } from '@/app/agents';
+import { MCP_KEY, mcpTokenName, type McpServerConfig } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog } from '@/ui/dialog';
 import { h } from '@/ui/dom';
@@ -36,7 +37,7 @@ export function connectorsSection(ctx: AppContext, saved: () => void): HTMLEleme
       result.replaceChildren(h('span', { class: 'muted' }, s.via === 'anthropic' ? 'Connectors used through Claude are reached by Anthropic’s servers, so they can only be tested by sending a message.' : 'Connecting…'));
       if (s.via === 'anthropic') return;
       try {
-        const tools = await os.agents.probeMcp(s.name);
+        const tools = await agentsOf(os).probeMcp(s.name);
         result.replaceChildren(
           h('span', { class: 'st-ok' }, `Connected · ${tools.length} tool${tools.length === 1 ? '' : 's'}`),
           h('ul', { class: 'cn-tools' }, tools.map((t) => h('li', null, h('code', null, t.name), t.description ? h('span', { class: 'muted' }, ` — ${t.description.split('\n')[0]!.slice(0, 140)}`) : null))),

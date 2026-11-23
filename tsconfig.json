@@ -27,6 +27,12 @@
       ],
       "@jeevanand/agent-browserbox-sdk": [
         "./packages/sdk/src/index.ts"
+      ],
+      "@jeevanand/agent-browserbox": [
+        "./packages/agent/src/index.ts"
+      ],
+      "@jeevanand/agent-browserbox/ui": [
+        "./packages/agent/src/ui.ts"
       ]
     }
   },

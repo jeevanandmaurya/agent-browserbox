@@ -73,13 +73,16 @@ async function firstBoot(page, answers) {
 }
 // ---- Startup stays lean: what loads before you can type ---------------------
 await check('startup bundles stay within budget, with nothing loaded early that is not needed', async () => {
-  const assets = readdirSync('dist/assets');
+  const problems0 = [];
   // All the files with that name: Rollup may split an entry into a stub and its body.
-  const read = (prefix) => assets.filter((f) => f.startsWith(prefix) && f.endsWith('.js')).map((f) => readFileSync(`dist/assets/${f}`, 'utf8')).join('\n');
-  const kernel = read('main-');
-  const agent = read('agent-');
+  const read = (dir, prefix, not) => readdirSync(dir).filter((f) => f.startsWith(prefix) && !(not && f.startsWith(not)) && f.endsWith('.js')).map((f) => readFileSync(`${dir}/${f}`, 'utf8')).join('\n');
+  // The kernel is the runtime release the app ships (dist/runtime/<version>/); the agent loop runs in the agent worker.
+  const runtime = readdirSync('dist/runtime').filter((v) => /^\d/.test(v)).at(-1);
+  const kernel = read(`dist/runtime/${runtime}/assets`, 'main-');
+  const agent = read('dist/assets', 'agent-', 'agent-worker-');
+  if (!read('dist/assets', 'agent-worker-').includes('Your context window is nearly full')) problems0.push('the agent worker does not contain the agent');
   const kb = (t) => gzipSync(t).length / 1024;
-  const problems = [];
+  const problems = problems0;
   // Budgets, compressed (they were 54 and 20 KB when set).
   if (kb(kernel) > 60) problems.push(`kernel worker ${kb(kernel).toFixed(1)} KB > 60 KB`);
   if (kb(agent) > 24) problems.push(`agent window ${kb(agent).toFixed(1)} KB > 24 KB`);
@@ -252,6 +255,9 @@ await check('agent: tool loop, approvals across windows, validation', async () =
 await check('agent session survives its window closing', async () => {
   await agent.close();
   await desk.waitForFunction(() => !bbx.procs.list().some((p) => p.name === 'Agent window'), null, { timeout: 10000 });
+  // The agent runs in the app's agent worker. If the closed window had lent it the box, the
+  // worker moves to this window's box and re-registers its process: wait for that (about a second).
+  await desk.waitForFunction(() => bbx.procs.list().filter((p) => p.kind === 'agent').length === 1, null, { timeout: 10000 }).catch(() => undefined);
   const still = await desk.evaluate(() => bbx.procs.list().filter((p) => p.kind === 'agent').length);
   if (still !== 1) throw new Error(`agent processes: ${still}`);
   agent = watch(await context.newPage(), 'agent');
@@ -292,6 +298,8 @@ if (process.env.SHOTS) {
 await check('closing the desktop leaves the kernel and agent running', async () => {
   await desk.close();
   await agent.waitForFunction(() => !bbx.procs.list().some((p) => ['desktop', 'Files', 'Terminal', 'bbsh'].includes(p.name)), null, { timeout: 10000 });
+  // If the desktop had lent the agent worker its box, the agent re-registers through this window.
+  await agent.waitForFunction(() => bbx.procs.list().some((p) => p.kind === 'agent'), null, { timeout: 10000 }).catch(() => undefined);
   const out = await agent.evaluate(async () => `${bbx.procs.list().map((p) => `${p.name}[${p.kind}]`).join(' ')} | ${await bbx.fs.readText('/home/agent/report.md')}`);
   if (!out.includes('agent[agent]') || !out.includes('# Report')) throw new Error(out);
   return out.split(' | ')[0];

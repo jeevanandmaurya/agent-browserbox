@@ -1,5 +1,4 @@
-import { report, userEnv } from '@/agent/tools/exec';
-import { obj, tool } from '@/agent/tools/types';
+import { userEnv } from '@/shell/commands/exec';
 import { PIP_KEY, runPython } from '@/sandbox/sandbox';
 import type { Command, CommandContext } from '@/shell/shell';
 import { flags } from '@/shell/shell';
@@ -79,17 +78,4 @@ const pip: Command = {
 
 export default {
   commands: [python, { ...python, name: 'python3' }, pip, { ...pip, name: 'pip3' }],
-  tools: [
-    tool<{ code: string; packages?: string[] }>({
-      name: 'run_python',
-      description:
-        'Run Python 3 (CPython compiled to WebAssembly via Pyodide) in an isolated sandbox. Files in the working directory are visible to the script and files it writes are saved back. Imports of bundled scientific packages (numpy, pandas, matplotlib, scipy, sympy…) load automatically; list pure-Python PyPI packages in `packages`. The interpreter persists between calls. No sockets or subprocesses.',
-      input_schema: obj({ code: { type: 'string' }, packages: { type: 'array', items: { type: 'string' }, description: 'extra PyPI packages to install with micropip' } }, ['code']),
-      cap: () => 'exec',
-      describe: (i) => i.code,
-      async run(i, tc) {
-        return report(await runPython(tc.os, i.code, { cwd: tc.shell.cwd, env: userEnv(tc.shell.env), packages: i.packages, signal: tc.signal, onStdout: tc.progress, onStderr: tc.progress }));
-      },
-    }),
-  ],
 } satisfies PackageModule;

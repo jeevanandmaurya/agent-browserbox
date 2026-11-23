@@ -1,4 +1,4 @@
-import type { ShellHandle } from '@/kernel/api';
+import type { ContributedCommand, ShellHandle } from '@/kernel/api';
 import type { KernelCore } from '@/kernel/kernel';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import type { Proc } from '@/kernel/proc';
@@ -39,7 +39,12 @@ interface Client {
   id: number;
   peer: Peer;
   /** 'new' until the client says hello. Only 'ui' clients are windows a person can see. */
-  role: 'ui' | 'host' | 'new';
+  /**
+   * 'new' until the client says hello. 'ui': a window a person sees (asked general questions,
+   * clipboard, …). 'sdk': an SDK connection (gets events; asked only about its own shells).
+   * 'host': a bridge hosting sandboxes.
+   */
+  role: 'ui' | 'sdk' | 'host' | 'new';
   shells: Map<string, ShellHandle>;
   /** Cleanups from services, run when the client goes. */
   drops: Array<() => void>;
@@ -77,6 +82,9 @@ export class KernelServer {
   #nextRun = 1;
   #asks = new Map<number, { ask: Ask; resolve: (v: unknown) => void; targets: Set<number> }>();
   #runs = new Map<number, RunOptions>();
+  /** Contributed commands running in a client: their I/O, by run id. */
+  #cmdRuns = new Map<number, Parameters<ContributedCommand['run']>[0]>();
+  #nextCmd = 1;
   /** Suppresses echoing an event back to the client that caused it. */
   #origin: number | null = null;
   #services: ServerService[] = [];
@@ -103,7 +111,7 @@ export class KernelServer {
   }
 
   #broadcast(name: string, payload: unknown, except: number | null = null): void {
-    for (const c of this.#clients.values()) if (c.id !== except && c.role === 'ui') c.peer.emit(name, payload);
+    for (const c of this.#clients.values()) if (c.id !== except && (c.role === 'ui' || c.role === 'sdk')) c.peer.emit(name, payload);
   }
 
   /** Asks windows something and waits for the first answer. */
@@ -181,7 +189,7 @@ export class KernelServer {
       return h;
     };
     peer.handle({
-      async hello(role: 'ui' | 'host'): Promise<Hello> {
+      async hello(role: 'ui' | 'sdk' | 'host'): Promise<Hello> {
         client.role = role;
         await fs.ready;
         return {
@@ -273,6 +281,30 @@ export class KernelServer {
         client.shells.get(id)?.close();
         client.shells.delete(id);
       },
+      // Commands this client runs for every shell (the app's agent offers agent, setup, gh, deploy).
+      'shell.contribute': (defs: Array<{ name: string; summary: string; usage?: string }>) => {
+        for (const d of defs) {
+          const off = os.shells.contribute?.({
+            name: d.name,
+            summary: d.summary,
+            usage: d.usage,
+            run: async (io) => {
+              const runId = this.#nextCmd++;
+              this.#cmdRuns.set(runId, io);
+              const abort = () => peer.emit('cmd:abort', runId);
+              io.signal.addEventListener('abort', abort);
+              try {
+                return await peer.call<number>('cmd.run', runId, d.name, { args: io.args, stdin: io.stdin, cwd: io.cwd, tty: !!io.readLine });
+              } finally {
+                io.signal.removeEventListener('abort', abort);
+                this.#cmdRuns.delete(runId);
+              }
+            },
+          });
+          if (off) client.drops.push(off);
+        }
+      },
+      'cmd.readLine': (runId: number, prompt: string, secret: boolean) => this.#cmdRuns.get(runId)?.readLine?.(prompt, secret) ?? null,
 
       // Answers to kernel questions
       answer: (askId: number, value: unknown) => {
@@ -291,6 +323,12 @@ export class KernelServer {
       peer.handle(handlers);
       if (drop) client.drops.push(drop);
     }
+
+    // Output of contributed commands running in this client.
+    peer.on<{ runId: number; s: 'o' | 'e'; t: string }>('cmd:out', ({ runId, s, t }) => {
+      const io = this.#cmdRuns.get(runId);
+      (s === 'o' ? io?.out : io?.err)?.(t);
+    });
 
     // Sandbox output streamed back from a host bridge.
     peer.on<{ runId: number; s: 'o' | 'e'; t: string }>('host:out', ({ runId, s, t }) => {

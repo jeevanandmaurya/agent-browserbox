@@ -1,4 +1,4 @@
-import type { TodoItem } from '@/agent/tools/types';
+import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
 import type { PermDecision, PermRequest } from '@/kernel/perms';
 import { h } from '@/ui/dom';
 import { icon } from './icons';

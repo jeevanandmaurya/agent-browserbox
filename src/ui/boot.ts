@@ -1,3 +1,4 @@
+import { agentsOf } from '@/app/agents';
 import type { RemoteKernel } from '@/client/remote-kernel';
 import type { KernelLogLine } from '@/kernel/types';
 import { Terminal } from './terminal';
@@ -40,6 +41,8 @@ export async function bootConsole(os: RemoteKernel, root: HTMLElement): Promise<
   term.write(`\x1b[2m[  window ]\x1b[0m connected to ${os.shared ? 'the shared kernel' : 'a private kernel (no SharedWorker)'}\n`);
 
   if (!os.settings.get(SETUP_DONE, false)) {
+    // `setup` is the agent's command: wait until the agent worker has offered it.
+    await agentsOf(os).live().catch(() => []);
     term.write('\nfirst boot\n\n');
     const shell = await os.shells.open({ cwd: '/home/user' });
     term.attach(shell);
