@@ -1,7 +1,6 @@
 import { Checkpoints } from './checkpoints.js';
 import { diffFiles, type FileDiff } from './diff.js';
 import type { KernelCore as Kernel } from './host/os.js';
-import { AGENT_HOME } from './host/paths.js';
 import type { Prompter } from './host/perms.js';
 import type { Proc } from './host/os.js';
 import { isInside, resolve } from './host/path.js';
@@ -12,6 +11,8 @@ import { buildSystemPrompt } from './prompt.js';
 import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
 import { decide, describeRule, loadRules } from './rules.js';
 import { FileMemory } from './seen.js';
+import { GENERAL, GENERAL_ID, type Project } from './projects.js';
+import { autoMemory, memoryPath, type MemoryScope } from './memory.js';
 import { runHooks, type HookEvent, type HookPayload } from './hooks.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
@@ -71,8 +72,10 @@ const PLAN_NOTE =
 export { MODE_TAG } from './mode.js';
 
 /** Files a tool call will change, resolved to absolute paths. */
-function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string): string[] {
+function changedPaths(call: { name: string; input: Record<string, unknown> }, path: (p: string) => string, project = GENERAL_ID): string[] {
   const i = call.input;
+  // Memory files are files: changes to them show as diffs and can be undone.
+  if (call.name === 'memory' && i.action !== 'view') return [memoryPath((i.scope as MemoryScope | undefined) ?? 'project', project)];
   if (call.name === 'write_file' || call.name === 'edit_file' || call.name === 'delete_path') return typeof i.path === 'string' ? [path(i.path)] : [];
   if (call.name === 'move_path') return [i.copy ? null : i.from, i.to].filter((p): p is string => typeof p === 'string').map(path);
   if ((call.name === 'http_fetch' && typeof i.save_to === 'string') || (call.name === 'gpu_compute' && typeof i.output_file === 'string')) return [path((i.save_to ?? i.output_file) as string)];
@@ -181,6 +184,8 @@ export class Agent {
   diffs: Record<string, FileDiff> = {};
   /** What each sub-agent did, by the spawn_agent call id (its last messages), so the user can read it. */
   subagents: Record<string, Msg[]> = {};
+  /** The project this agent works in (General: /home/agent). */
+  readonly project: Project;
   /** SessionStart hooks have run for this session (in this process). */
   #started = false;
   /** A model of its own (custom agents, sub-agents): the main provider with this model id. */
@@ -189,15 +194,17 @@ export class Agent {
   constructor(
     private os: Kernel,
     private host: AgentHost,
-    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension; model?: string } = {},
+    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension; model?: string; project?: Project } = {},
   ) {
     this.#depth = opts.depth ?? 0;
-    this.#model = opts.model || null;
+    this.project = opts.project ?? GENERAL;
+    // A project can name a default model for its chats; a custom agent's own comes first.
+    this.#model = opts.model || this.project.model || null;
     this.#persona = opts.persona ?? null;
     this.id = opts.id ?? `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
     this.proc = os.procs.spawn({ name: this.#persona ? `agent:${this.#persona.name}` : this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
     os.procs.update(this.proc.pid, { state: 'idle' });
-    this.shell = new Shell(os, { cwd: AGENT_HOME });
+    this.shell = new Shell(os, { cwd: this.project.folder });
     this.checkpoints = new Checkpoints(os);
   }
 
@@ -247,6 +254,7 @@ export class Agent {
           .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
           .filter((t) => t.name !== 'open_app' || listApps().length > 0) // a headless runtime has no apps
           .filter((t) => !allowed || allowed.has(t.name))
+          .filter((t) => t.name !== 'memory' || autoMemory(this.os)) // the user can turn off memories the agent saves itself
           .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));
       let tools = (this.#tools = await toolset());
       this.#window = provider.contextWindow;
@@ -434,7 +442,7 @@ export class Agent {
   async #ensureSystem(cfg: ReturnType<typeof loadConfig>, lite: boolean): Promise<void> {
     const key = JSON.stringify([lite, hasServerWebTools(cfg), cfg.instructions]);
     if (this.#system !== null && key === this.#systemKey) return;
-    this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona });
+    this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona, project: this.project });
     this.#systemKey = key;
   }
 
@@ -542,6 +550,8 @@ export class Agent {
       },
       progress: (chunk) => emit({ type: 'tool_progress', id, chunk }),
       seen: this.#seen,
+      project: this.project,
+      workspace: this.project.folder,
       setTodos: (items) => {
         this.todos = items;
         emit({ type: 'todos', items });
@@ -573,7 +583,7 @@ export class Agent {
             const rule = decide(loadRules(this.os), call.name, call.input, ctx.path);
             let allowed = rule?.action !== 'deny';
             // Accept-edits mode: the agent's file changes go through, except in the user's real folders (/mnt).
-            const paths = changedPaths(call, ctx.path);
+            const paths = changedPaths(call, ctx.path, this.project.id);
             const editAccepted = !rule && cap === 'fs.write' && this.os.perms.mode === 'edits' && paths.length > 0 && paths.every((p) => !isInside('/mnt', p));
             if (rule?.action === 'ask' || (!rule && cap && !editAccepted)) {
               this.os.procs.update(this.proc.pid, { state: 'blocked' });
@@ -651,7 +661,7 @@ export class Agent {
         prompter: this.host.prompter,
       },
       // Its model: the custom agent's own, else the one set for sub-agents, else this agent's.
-      { ppid: this.proc.pid, depth: this.#depth + 1, persona, model: persona?.model || loadConfig(this.os).subagentModel || this.#model || undefined },
+      { ppid: this.proc.pid, depth: this.#depth + 1, persona, project: this.project, model: persona?.model || loadConfig(this.os).subagentModel || this.#model || undefined },
     );
     const abort = () => child.stop();
     signal.addEventListener('abort', abort);

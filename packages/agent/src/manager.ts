@@ -4,6 +4,7 @@ import type { Prompter } from './host/perms.js';
 import { Agent, type AgentEvent } from './agent.js';
 import { apiKeyFor, loadConfig, migrateKeys, probeModels, SECRET } from './config.js';
 import { loadSession, saveSession, titleFrom } from './session.js';
+import { GENERAL_ID, getProject } from './projects.js';
 
 interface Session {
   agent: Agent;
@@ -33,7 +34,7 @@ export class AgentManager implements AgentsApi {
     });
   }
 
-  async create(opts: { resume?: string; ppid?: number; private?: boolean } = {}): Promise<AgentHandle> {
+  async create(opts: { resume?: string; ppid?: number; private?: boolean; project?: string } = {}): Promise<AgentHandle> {
     const saved = opts.resume ? await loadSession(this.os, opts.resume) : null;
     const live = saved && this.#sessions.get(saved.id);
     if (live) return this.#handle(saved.id, live);
@@ -52,7 +53,7 @@ export class AgentManager implements AgentsApi {
           return session.prompter;
         },
       },
-      { ppid: opts.ppid, id: saved?.id },
+      { ppid: opts.ppid, id: saved?.id, project: getProject(this.os, saved ? (saved.project ?? GENERAL_ID) : opts.project) },
     );
     session.agent = agent;
     if (saved) {
@@ -77,7 +78,7 @@ export class AgentManager implements AgentsApi {
     return [...this.#sessions.entries()]
       .filter(([, s]) => !s.private)
       .sort((a, b) => b[1].created - a[1].created)
-      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript) }));
+      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), project: s.agent.project.id }));
   }
 
   probeMcp(name: string): Promise<Array<{ name: string; description: string }>> {
@@ -91,7 +92,7 @@ export class AgentManager implements AgentsApi {
 
   async #save(s: Session): Promise<void> {
     if (s.private || !s.agent.transcript.length) return;
-    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents }).catch((err: Error) =>
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), project: s.agent.project.id, messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
   }
@@ -119,7 +120,7 @@ export class AgentManager implements AgentsApi {
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents, project: s.agent.project.id };
       },
       onEvent(fn) {
         mine.add(fn);

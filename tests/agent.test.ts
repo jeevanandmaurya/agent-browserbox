@@ -468,4 +468,65 @@ describe('agent package', () => {
       expect(events.filter((e) => e.type === 'hook')).toHaveLength(3);
     });
   });
+
+  describe('projects and memory', () => {
+    it('works in the project folder: its AGENTS.md, writes free there, and its chats listed apart', async () => {
+      const box = fakeBox();
+      await box.fs.writeFile('/home/user/Projects/Site/AGENTS.md', 'Use tabs.');
+      const model = scripted([() => ({ content: [use('w', 'write_file', { path: 'index.html', content: '<h1>' }), use('o', 'write_file', { path: '/home/agent/x.txt', content: 'x' })] }), () => ({ content: [say('built')] })]);
+      const asked: string[] = [];
+      const os = await AgentOs.create(box, { provider: model, seed: false, settings: { 'perms.mode': 'ask' }, prompter: async (r) => (asked.push(r.detail), 'deny') });
+      const { createProject, listSessions, AgentManager } = await import('../packages/agent/src/index');
+      const site = await createProject(os, { name: 'Site', folder: '/home/user/Projects/Site' });
+      const agents = new AgentManager(os);
+      const chat = await agents.create({ project: site.id });
+      await chat.send('build it');
+      expect(model.requests[0]!.system).toContain('Use tabs.');
+      expect(model.requests[0]!.system).toContain('Your working directory is /home/user/Projects/Site (the folder of the project "Site")');
+      expect(box.files.get('/home/user/Projects/Site/index.html')).toBe('<h1>');
+      expect(asked).toEqual(['Write /home/agent/x.txt (1 chars)']); // outside the project: asks
+      await new Promise((r) => setTimeout(r, 20));
+      expect((await listSessions(os, site.id)).map((s) => s.project)).toEqual(['site']);
+      expect(await listSessions(os, 'general')).toEqual([]);
+      expect((await chat.snapshot()).project).toBe('site');
+    });
+
+    it('rebuilds the session index from the files when it is missing', async () => {
+      const box = fakeBox();
+      await box.fs.writeFile(`${AGENT_HOME}/.sessions/a.json`, JSON.stringify({ id: 'a', title: 'old chat', updated: 5, messages: [], todos: [] }));
+      const { listSessions } = await import('../packages/agent/src/index');
+      const os = await AgentOs.create(box, { seed: false });
+      expect(await listSessions(os)).toEqual([{ id: 'a', title: 'old chat', updated: 5, project: 'general' }]);
+      expect(box.files.has(`${AGENT_HOME}/.sessions/index.json`)).toBe(true);
+    });
+
+    it('remembers one entry at a time, per scope, within a budget, and the next chat sees it', async () => {
+      const { model, agent, box } = await setup([
+        () => ({ content: [use('a', 'memory', { action: 'add', scope: 'user', text: 'Prefers British English' }), use('b', 'memory', { action: 'add', text: 'Builds with build --prod' })] }),
+        () => ({ content: [use('c', 'memory', { action: 'replace', scope: 'user', old: 'British', text: 'Prefers British spelling' }), use('d', 'memory', { action: 'remove', text: 'nothing like this' })] }),
+        () => ({ content: [say('saved')] }),
+      ]);
+      await agent.send('remember things');
+      const user = box.files.get(`${AGENT_HOME}/MEMORY.md`)!;
+      expect(user).toMatch(/^# Memory[\s\S]*- Prefers British spelling \(\d{4}-\d{2}-\d{2}\)\n$/);
+      expect(box.files.get(`${AGENT_HOME}/.memory/general.md`)).toContain('- Builds with build --prod');
+      expect(resultsOf(model.requests[2]!).find((r) => r.tool_use_id === 'd')!.content).toMatch(/No memory entry contains/);
+      expect(agent.diffs.a).toBeDefined(); // a memory change is a file change: shown and undoable
+
+      const { addMemory } = await import('../packages/agent/src/index');
+      const { AgentOs: A } = await import('../packages/agent/src/index');
+      const os2 = await A.create(box, { seed: false });
+      await expect(addMemory(os2, 'user', 'general', 'x'.repeat(7000))).rejects.toThrow(/memory is full/);
+      const next = await setup([() => ({ content: [say('hi')] })], { files: Object.fromEntries(box.files) });
+      await next.agent.send('hello');
+      expect(next.model.requests[0]!.system).toContain('# Memory: about the user\n- Prefers British spelling');
+      expect(next.model.requests[0]!.system).toContain('# Memory: this project\n- Builds with build --prod');
+    });
+
+    it('offers no memory tool when the user turned automatic memories off', async () => {
+      const { model, agent } = await setup([() => ({ content: [say('ok')] })], { settings: { 'agent.memory.auto': false } });
+      await agent.send('hi');
+      expect(model.requests[0]!.tools.map((t) => t.name)).not.toContain('memory');
+    });
+  });
 });

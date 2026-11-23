@@ -3,7 +3,6 @@ import { fmtBytes } from '../host/format.js';
 import { loadExtensions } from '../ext/library.js';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types.js';
 import { writeCap } from './fs.js';
-import { AGENT_HOME } from '../host/paths.js';
 
 /** Clipboard and speech exist only in windows, so the kernel borrows one. */
 function ui(tc: ToolContext) {
@@ -41,7 +40,7 @@ export const systemTools: ToolDef[] = [
     describe: (i) => `${i.method ?? 'GET'} ${i.url}${i.save_to ? ` → ${i.save_to}` : ''}`,
     async run(i, tc) {
       // Network permission is not permission to write anywhere: downloads land in the workspace or /tmp.
-      if (i.save_to && writeCap([i.save_to], tc) !== null) throw new Error(`save_to must be inside ${AGENT_HOME} or /tmp. Save it there, then move it with move_path (which asks the user).`);
+      if (i.save_to && writeCap([i.save_to], tc) !== null) throw new Error(`save_to must be inside ${tc.workspace} or /tmp. Save it there, then move it with move_path (which asks the user).`);
       const url = new URL(i.url);
       if (!/^https?:$/.test(url.protocol)) throw new Error('only http and https URLs are supported');
       let res: Response;

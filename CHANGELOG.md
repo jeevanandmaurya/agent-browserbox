@@ -14,6 +14,10 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 - **Hooks** (Settings → Hooks): your commands run before or after the
   agent's tools, when you send a message, when a chat starts and when the
   agent is done; exit 2 blocks or sends it back to work.
+- **Projects**: separate workspaces with their own folder, chats, memory and
+  instructions (sidebar → project picker). Your existing chats are in General.
+- **Memory**: the agent remembers facts about you and each project between
+  chats; `/remember`, `/forget`, and Settings → Memory to see and edit them.
 - Sub-agents run several at once; open one's card to see what it did. Pick a
   faster model for them in Settings → Model, or per agent with `model:`.
 

@@ -4,11 +4,29 @@ import { icon, type IconName } from './icons';
 import { mountPanelApp, type PanelApp } from './panel-host';
 
 /** Apps the workbench can host, in launcher order. */
+/** The current project's folder: where Files and Terminal open. */
+let workspace = '/home/agent';
+export const setWorkspace = (folder: string) => void (workspace = folder);
+
 export const TOOLS: Array<{ id: string; label: string; icon: IconName; defaults?: Record<string, unknown> }> = [
   { id: 'preview', label: 'Preview', icon: 'eye' },
-  { id: 'files', label: 'Files', icon: 'folder', defaults: { path: '/home/agent' } },
+  {
+    id: 'files',
+    label: 'Files',
+    icon: 'folder',
+    get defaults() {
+      return { path: workspace };
+    },
+  },
   { id: 'editor', label: 'Editor', icon: 'edit' },
-  { id: 'terminal', label: 'Terminal', icon: 'terminal', defaults: { cwd: '/home/agent' } },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    icon: 'terminal',
+    get defaults() {
+      return { cwd: workspace };
+    },
+  },
   { id: 'taskmgr', label: 'Processes', icon: 'activity' },
   { id: 'browser', label: 'Browser', icon: 'globe' },
   { id: 'gpulab', label: 'GPU Lab', icon: 'cube' },

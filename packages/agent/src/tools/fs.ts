@@ -3,18 +3,18 @@ import { isInside } from '../host/path.js';
 import { clip, obj, tool, type ToolContext, type ToolDef } from './types.js';
 import { imageRef } from '../images.js';
 
-/** Writes inside the agent's workspace and /tmp are free; anywhere else needs a grant. */
-export const writeCap = (paths: string[], tc: ToolContext) => (paths.every((p) => isInside(AGENT_HOME, tc.path(p)) || isInside('/tmp', tc.path(p))) ? null : 'fs.write');
+/** Writes inside the workspace (the project's folder) and /tmp are free; anywhere else needs a grant. */
+export const writeCap = (paths: string[], tc: ToolContext) => (paths.every((p) => isInside(tc.workspace, tc.path(p)) || isInside('/tmp', tc.path(p))) ? null : 'fs.write');
 
 /**
  * Deleting is free only for things inside the workspace: never the workspace
  * itself, /tmp itself, or the agent's own records (saved chats, skills,
  * agents, commands, memory), which hold more than one task's work.
  */
-const KEPT = ['.sessions', 'skills', 'agents', 'commands', 'MEMORY.md', 'AGENTS.md'].map((n) => `${AGENT_HOME}/${n}`);
+const KEPT = ['.sessions', '.memory', 'skills', 'agents', 'commands', 'MEMORY.md', 'AGENTS.md'].map((n) => `${AGENT_HOME}/${n}`);
 const deleteCap = (path: string, tc: ToolContext) => {
   const p = tc.path(path);
-  if (p === AGENT_HOME || p === '/tmp' || KEPT.some((k) => isInside(p, k))) return 'fs.write';
+  if (p === AGENT_HOME || p === tc.workspace || p === '/tmp' || KEPT.some((k) => isInside(p, k))) return 'fs.write';
   return writeCap([path], tc);
 };
 

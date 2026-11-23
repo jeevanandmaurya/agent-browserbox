@@ -7,9 +7,10 @@ import { profileWindow, withProfile } from '@/app/boot';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
 import type { AppModule } from '@/ui/apps';
-import { isImagePath, loadConfig } from '@jeevanand/agent-browserbox/ui';
+import { addMemory, GENERAL_ID, isImagePath, loadConfig, removeMemory } from '@jeevanand/agent-browserbox/ui';
+import { currentProject, setCurrentProject } from '@/app/project';
+import { newProjectDialog, projectSettingsDialog } from './projects';
 import { openMenu } from '@/ui/menu';
-import { AGENT_HOME } from '@jeevanand/agent-browserbox-runtime/client';
 import { choiceDialog, modal } from '@/ui/dialog';
 import { h } from '@/ui/dom';
 import { icon } from './icons';
@@ -23,21 +24,21 @@ import { SettingsModal } from './settings-modal';
 import { createShell } from './shell';
 import { createSidebar } from './sidebar';
 import { forDisplay, renderTodos, Transcript } from './view';
-import { TOOLS, Workbench } from './workbench';
+import { setWorkspace, TOOLS, Workbench } from './workbench';
 
 const LAST_KEY = 'bbx-agent-last-chat';
 
-/** The chat this window showed last (per browser, not synced: it is a navigation convenience). */
-function readLast(): string | null {
+/** The chat this window showed last in a project (per browser, not synced: a navigation convenience). */
+function readLast(project: string): string | null {
   try {
-    return localStorage.getItem(LAST_KEY);
+    return localStorage.getItem(`${LAST_KEY}:${project}`) ?? (project === GENERAL_ID ? localStorage.getItem(LAST_KEY) : null);
   } catch {
     return null;
   }
 }
-function writeLast(sid: string): void {
+function writeLast(project: string, sid: string): void {
   try {
-    localStorage.setItem(LAST_KEY, sid);
+    localStorage.setItem(`${LAST_KEY}:${project}`, sid);
   } catch {
     /* storage blocked */
   }
@@ -46,6 +47,7 @@ function writeLast(sid: string): void {
 const app: AppModule = {
   async mount(ctx) {
     const { os, root, win } = ctx;
+    const project = () => currentProject(os);
     const log = new Transcript();
     log.readFile = (p) => os.fs.readFile(p);
     // The session lives in the kernel; this window attaches to it and can leave without stopping it.
@@ -97,6 +99,35 @@ const app: AppModule = {
       { name: 'plan', description: 'Plan first: look around and propose, change nothing', kind: 'built-in', run: (args) => (setMode('plan'), args ? submit(args) : composer.focus()) },
       { name: 'changes', description: 'Review and undo what the agent changed in this chat', kind: 'built-in', run: () => showChanges() },
       { name: 'init', description: 'Write AGENTS.md: how this project is built, tested and laid out', kind: 'built-in', run: () => submit('Look at the project in your working directory and write AGENTS.md there: what it is, how to build, run and test it, how the code is laid out, and the conventions to follow. Keep it short and specific; it is read at the start of every chat.') },
+      {
+        name: 'remember',
+        description: 'Remember a fact in this project (/remember me: … for everywhere)',
+        kind: 'built-in',
+        run: (args) => {
+          const all = /^me:\s*/i.test(args.trim());
+          const fact = args.trim().replace(/^me:\s*/i, '');
+          if (!fact) return void settings.open('memory');
+          void addMemory(os, all ? 'user' : 'project', project().id, fact).then(
+            (m) => os.notify({ title: m, body: all ? 'About you, in every project' : `In ${project().name}`, level: 'ok' }),
+            (err: Error) => os.notify({ title: 'Not remembered', body: err.message, level: 'warn' }),
+          );
+        },
+      },
+      {
+        name: 'forget',
+        description: 'Forget the memory entry containing this text',
+        kind: 'built-in',
+        run: (args) => {
+          if (!args.trim()) return void settings.open('memory');
+          void removeMemory(os, 'project', project().id, args)
+            .catch(() => removeMemory(os, 'user', project().id, args))
+            .then(
+              (m) => os.notify({ title: m, level: 'ok' }),
+              (err: Error) => os.notify({ title: 'Nothing forgotten', body: err.message, level: 'warn' }),
+            );
+        },
+      },
+      { name: 'memory', description: 'See and edit what the agent remembers', kind: 'built-in', run: () => settings.open('memory') },
       { name: 'docs', description: 'Open the documentation', kind: 'built-in', run: (args) => route('help', args ? { topic: args.trim() } : {}) },
       { name: 'help', description: 'List commands', kind: 'built-in', run: () => composer.setText('/') },
     ];
@@ -113,7 +144,7 @@ const app: AppModule = {
       openModelMenu: openModel,
       commands,
       mode: { get: getMode, set: setMode },
-      cwd: () => AGENT_HOME,
+      cwd: () => project().folder,
       queue: {
         remove: (i) => (queue.splice(i, 1), composer.setQueue(queue)),
         // Stop now; the queue is sent as soon as the agent has stopped.
@@ -126,6 +157,16 @@ const app: AppModule = {
       openChat: (id) => void openSession(id),
       settings: () => settings.open(),
       profileSettings: () => settings.open('profile'),
+      switchProject: (id) => void switchProject(id),
+      newProject: async () => {
+        const p = await newProjectDialog(os);
+        if (p) await switchProject(p.id);
+      },
+      projectSettings: async () => {
+        const r = await projectSettingsDialog(os, project());
+        if (r === 'deleted') await switchProject(GENERAL_ID);
+        else if (r === 'saved') await sidebar.refresh(agent.sid);
+      },
       processes: () => route('taskmgr'),
       openDesktop: embedded ? openTab : openDesktop,
       embedded,
@@ -177,7 +218,7 @@ const app: AppModule = {
     function adopt(handle: AgentHandle): void {
       agent = handle;
       // A private chat is never reopened after a reload.
-      void handle.snapshot().then((snap) => !snap.private && writeLast(handle.sid));
+      void handle.snapshot().then((snap) => !snap.private && writeLast(snap.project, handle.sid));
       handle.onAsk((question, options) => log.ask(question, options));
       handle.prompter = (req, signal) => log.approve(req, signal);
       handle.onEvent((e) => {
@@ -244,8 +285,24 @@ const app: AppModule = {
       shell.closeDrawer();
       return switchTo(async () => {
         leave();
-        adopt(await agentsOf(os).create());
+        adopt(await agentsOf(os).create({ project: project().id }));
         await showState();
+        composer.focus();
+      });
+    }
+
+    /** Opens another project in this window: its chats, its folder, its last chat. */
+    function switchProject(id: string): Promise<void> {
+      setCurrentProject(os, id);
+      setWorkspace(project().folder);
+      shell.closeDrawer();
+      return switchTo(async () => {
+        const last = readLast(project().id);
+        const next = last ? await agentsOf(os).create({ resume: last }).catch(() => null) : null;
+        leave();
+        adopt(next && (await next.snapshot()).project === project().id ? next : await agentsOf(os).create({ project: project().id }));
+        await showState();
+        await sidebar.refresh(agent.sid);
         composer.focus();
       });
     }
@@ -256,7 +313,7 @@ const app: AppModule = {
       return switchTo(async () => {
         const snap = await agent.snapshot();
         leave();
-        adopt(await agentsOf(os).create({ private: !snap.private }));
+        adopt(await agentsOf(os).create({ private: !snap.private, project: project().id }));
         await showState();
         composer.focus();
       });
@@ -310,10 +367,10 @@ const app: AppModule = {
       setBusy(true);
       composer.focus();
       // @mentioned files go with the message.
-      const full = await attachMentions(os, text, AGENT_HOME).catch(() => text);
+      const full = await attachMentions(os, text, project().folder).catch(() => text);
       log.addUser(plan ? `${full}\n\n<mode>plan</mode>` : full);
       // Attached and @mentioned images go to the model as images too.
-      const images = forDisplay(full).files.filter(isImagePath).map((p) => (p.startsWith('/') ? p : `${AGENT_HOME}/${p}`));
+      const images = forDisplay(full).files.filter(isImagePath).map((p) => (p.startsWith('/') ? p : `${project().folder}/${p}`));
       void agent.send(full, { plan, ...(images.length ? { images } : {}) }).catch((err: Error) => {
         log.addNote(`Lost the agent session: ${err.message}`, 'error');
         setBusy(false);
@@ -402,9 +459,11 @@ const app: AppModule = {
     // Rejoin a session that is already running in the kernel; failing that, reopen the chat
     // this window last showed (the kernel restarts when every window closes, e.g. on reload,
     // and phones discard background tabs); failing that, start a new one.
-    const [live] = await agentsOf(os).live();
-    const last = readLast();
-    adopt(live ? await agentsOf(os).attach(live.sid) : last ? await agentsOf(os).create({ resume: last }).catch(() => agentsOf(os).create()) : await agentsOf(os).create());
+    setWorkspace(project().folder);
+    const live = (await agentsOf(os).live()).find((l) => (l.project ?? GENERAL_ID) === project().id);
+    const last = readLast(project().id);
+    const fresh = () => agentsOf(os).create({ project: project().id });
+    adopt(live ? await agentsOf(os).attach(live.sid) : last ? await agentsOf(os).create({ resume: last }).catch(fresh) : await fresh());
     await showState();
     composer.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);

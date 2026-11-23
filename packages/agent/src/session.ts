@@ -11,6 +11,8 @@ export interface SessionFile {
   id: string;
   title: string;
   updated: number;
+  /** The project it belongs to (absent: General, from before projects). */
+  project?: string;
   /** The model's context (a summary after compaction). */
   messages: Msg[];
   /** The full conversation for display; absent in files saved before compaction existed. */
@@ -28,11 +30,54 @@ export interface SessionInfo {
   id: string;
   title: string;
   updated: number;
+  project: string;
+}
+
+/**
+ * The list of sessions, kept next to them so listing does not read every
+ * transcript. Rebuilt from the files when it is missing or unreadable.
+ */
+const INDEX = `${DIR}/index.json`;
+const GENERAL_ID = 'general';
+
+async function readIndex(os: WithFiles): Promise<SessionInfo[] | null> {
+  try {
+    const list = JSON.parse(await os.fs.readText(INDEX)) as unknown;
+    return Array.isArray(list) ? (list as SessionInfo[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rebuildIndex(os: WithFiles): Promise<SessionInfo[]> {
+  const entries = await os.fs.readdir(DIR).catch(() => []);
+  const infos = await Promise.all(
+    entries
+      .filter((e) => e.name.endsWith('.json') && e.name !== 'index.json')
+      .map(async (e): Promise<SessionInfo | null> => {
+        try {
+          const s = JSON.parse(await os.fs.readText(e.path)) as SessionFile;
+          return { id: s.id, title: s.title, updated: s.updated, project: s.project ?? GENERAL_ID };
+        } catch {
+          return null;
+        }
+      }),
+  );
+  const list = infos.filter((i): i is SessionInfo => i !== null);
+  await os.fs.writeFile(INDEX, JSON.stringify(list)).catch(() => undefined);
+  return list;
+}
+
+async function updateIndex(os: WithFiles, change: (list: SessionInfo[]) => SessionInfo[]): Promise<void> {
+  const list = (await readIndex(os)) ?? (await rebuildIndex(os));
+  await os.fs.writeFile(INDEX, JSON.stringify(change(list)));
 }
 
 /** Sessions are plain JSON files in the agent's home, so they survive reloads and are inspectable. */
 export async function saveSession(os: WithFiles, s: SessionFile): Promise<void> {
   await os.fs.writeFile(`${DIR}/${s.id}.json`, JSON.stringify(s));
+  const info: SessionInfo = { id: s.id, title: s.title, updated: s.updated, project: s.project ?? GENERAL_ID };
+  await updateIndex(os, (list) => [...list.filter((i) => i.id !== s.id), info]).catch(() => undefined);
 }
 
 export async function loadSession(os: WithFiles, id: string): Promise<SessionFile> {
@@ -41,24 +86,13 @@ export async function loadSession(os: WithFiles, id: string): Promise<SessionFil
 
 export async function deleteSession(os: WithFiles, id: string): Promise<void> {
   await os.fs.rm(`${DIR}/${id}.json`).catch(() => undefined);
+  await updateIndex(os, (list) => list.filter((i) => i.id !== id)).catch(() => undefined);
 }
 
-export async function listSessions(os: WithFiles): Promise<SessionInfo[]> {
-  const entries = await os.fs.readdir(DIR).catch(() => []);
-  const infos = await Promise.all(
-    entries
-      .filter((e) => e.name.endsWith('.json'))
-      .map(async (e): Promise<SessionInfo | null> => {
-        try {
-          // Titles live at the start of the file; parsing the whole transcript just for a list is fine at this scale.
-          const s = JSON.parse(await os.fs.readText(e.path)) as SessionFile;
-          return { id: s.id, title: s.title, updated: s.updated };
-        } catch {
-          return null;
-        }
-      }),
-  );
-  return infos.filter((i): i is SessionInfo => i !== null).sort((a, b) => b.updated - a.updated);
+/** Sessions, newest first; only one project's when `project` is given. */
+export async function listSessions(os: WithFiles, project?: string): Promise<SessionInfo[]> {
+  const list = (await readIndex(os)) ?? (await rebuildIndex(os));
+  return list.filter((i) => !project || (i.project ?? GENERAL_ID) === project).sort((a, b) => b.updated - a.updated);
 }
 
 export function titleFrom(messages: Msg[]): string {

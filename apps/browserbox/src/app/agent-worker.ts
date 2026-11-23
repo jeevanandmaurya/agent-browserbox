@@ -265,7 +265,7 @@ function connect(port: MessagePort): void {
   const agents = async () => (await ensureWorld()).agents;
 
   peer.handle({
-    'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean }) => adopt(await (await agents()).create(opts)),
+    'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean; project?: string }) => adopt(await (await agents()).create(opts)),
     'agent.attach': async (sid: string) => adopt(await (await agents()).attach(sid)),
     'agent.live': async () => (await agents()).live(),
     'agent.probeModels': async (baseUrl: string, kind?: 'local' | 'api') => (await agents()).probeModels(baseUrl, kind),

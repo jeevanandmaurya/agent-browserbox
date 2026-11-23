@@ -1,5 +1,6 @@
 import { agentsOf } from '@/app/agents';
-import { deleteSession, listSessions, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
+import { deleteSession, listSessions, loadProjects, PROJECTS_KEY, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
+import { currentProject } from '@/app/project';
 import type { Kernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { getProfile } from '@jeevanand/agent-browserbox-runtime/client';
 import { PROFILE } from '@/app/boot';
@@ -14,6 +15,10 @@ export interface SidebarActions {
   settings(): void;
   /** Settings → Profile. */
   profileSettings(): void;
+  /** Projects: switch to one, make one, or open the current one's settings. */
+  switchProject(id: string): void;
+  newProject(): void;
+  projectSettings(): void;
   processes(): void;
   openDesktop(): void;
   /** Inside the desktop: the button offers a tab of its own instead. */
@@ -71,6 +76,39 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
   };
   void showProfile();
   os.bus.on('settings:change', () => void showProfile());
+  // The project picker: which workspace these chats belong to.
+  const projectName = h('span', { class: 'sb-project-name' });
+  const projectBtn = h(
+    'button',
+    {
+      class: 'sb-row sb-project',
+      type: 'button',
+      title: 'Project',
+      'aria-haspopup': 'menu',
+      onclick: () => {
+        const here = currentProject(os).id;
+        openMenu(
+          projectBtn,
+          [
+            { group: 'Projects' },
+            ...loadProjects(os).map((p) => ({ label: p.name, hint: p.folder.replace(/^\/home\/user\//, '~/'), checked: p.id === here, onSelect: () => act.switchProject(p.id) })),
+            { separator: true as const },
+            { label: 'New project…', onSelect: act.newProject },
+            { label: 'Project settings…', onSelect: act.projectSettings },
+          ],
+          'Projects',
+        );
+      },
+    },
+    icon('folder', 18),
+    projectName,
+    icon('chevron', 14),
+  );
+  const showProject = () => {
+    projectName.textContent = currentProject(os).name;
+  };
+  showProject();
+  os.bus.on('settings:change', ({ key }) => key === PROJECTS_KEY && showProject());
   let all: SessionInfo[] = [];
   let active = '';
   /** Chats running in the kernel right now: working, or waiting for you (an approval or a question). */
@@ -92,6 +130,7 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
       h('div', { class: 'brand' }, h('span', { class: 'brand-mark', 'aria-hidden': 'true' }, icon('cube', 16)), h('span', { class: 'brand-name' }, 'BrowserBox')),
       h('button', { class: 'icon-btn', type: 'button', title: 'Close sidebar', 'aria-label': 'Close sidebar', onclick: act.collapse }, icon('sidebar', 18)),
     ),
+    projectBtn,
     row('New chat', 'plus', act.newChat, { class: 'sb-row sb-new' }),
     h('label', { class: 'sb-search-wrap' }, icon('search', 16), search),
     h('div', { class: 'sb-scroll' }, list),
@@ -143,7 +182,8 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
 
   async function refresh(current = active): Promise<void> {
     active = current;
-    all = await listSessions(os).catch(() => []);
+    showProject();
+    all = await listSessions(os, currentProject(os).id).catch(() => []);
     render();
   }
 

@@ -19,6 +19,8 @@ export interface AgentSnapshot {
   context: ContextReport;
   /** What each file tool call changed, by tool call id. */
   diffs: Record<string, FileDiff>;
+  /** The project this chat belongs to. */
+  project: string;
   /** What each sub-agent did, by its spawn_agent call id. */
   subagents?: Record<string, Msg[]>;
 }
@@ -36,6 +38,7 @@ export interface AgentInfo {
   pid: number;
   busy: boolean;
   title: string;
+  project: string;
 }
 
 /** A window's view of an agent session that lives in the kernel. */
@@ -68,7 +71,8 @@ export interface AgentHandle {
 
 export interface AgentsApi {
   /** `resume` loads a saved session file by id. */
-  create(opts?: { resume?: string; ppid?: number; private?: boolean }): Promise<AgentHandle>;
+  /** `project`: the project a new chat belongs to (default General); a resumed chat keeps its own. */
+  create(opts?: { resume?: string; ppid?: number; private?: boolean; project?: string }): Promise<AgentHandle>;
   attach(sid: string): Promise<AgentHandle>;
   /** Sessions currently alive in the kernel, most recent first. */
   live(): Promise<AgentInfo[]>;

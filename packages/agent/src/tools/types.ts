@@ -3,6 +3,7 @@ import type { Capability } from '../host/perms.js';
 import type { Shell } from '../host/os.js';
 import type { ImageRef, JsonSchema } from '../types.js';
 import type { FileMemory } from '../seen.js';
+import type { Project } from '../projects.js';
 
 export interface TodoItem {
   text: string;
@@ -24,6 +25,10 @@ export interface ToolContext {
   /** Streams partial output of a running tool to the UI. */
   progress(chunk: string): void;
   setTodos(items: TodoItem[]): void;
+  /** The project this agent works in; its folder is the workspace. */
+  project: Project;
+  /** Where the agent may change files without asking: the project's folder. */
+  workspace: string;
   /** What the agent has seen of each file: an existing file must be read before it is edited. */
   seen: FileMemory;
   /** Runs a nested agent (optionally a named custom agent) to completion and returns its final answer. */

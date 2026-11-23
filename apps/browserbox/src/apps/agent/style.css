@@ -117,3 +117,16 @@
 .sb-live.waiting { background: var(--warn); }
 @keyframes sb-live { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .sb-live.running { animation: none; } }
+
+/* The project picker, above New chat */
+.sb-project { font-weight: 500; }
+.sb-project-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* Project dialogs */
+.pj-modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.pj-field { display: grid; gap: 4px; margin: 10px 0; }
+.pj-field > span:first-child { font-weight: 500; }
+.pj-note { font-size: 12px; }
+.pj-folder { font-size: 12px; margin-top: -4px; }
+.pj-danger { margin: 12px 0; }
+.pj-danger summary { cursor: pointer; color: var(--muted); }
+.pj-danger .btn { margin-top: 6px; }

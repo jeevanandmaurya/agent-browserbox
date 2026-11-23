@@ -1,8 +1,10 @@
 import type { KernelCore as Kernel } from './host/os.js';
-import { AGENT_HOME, HOME } from './host/paths.js';
+import { HOME } from './host/paths.js';
 import { hasServerWebTools, type AgentConfig } from './config.js';
 import type { PackageManifest } from './host/os.js';
 import { loadExtensions, type Extension } from './ext/library.js';
+import { GENERAL, type Project } from './projects.js';
+import { entries, MEMORY_BUDGET, readMemory } from './memory.js';
 
 /** Built once per session so the prompt prefix stays byte-stable and cacheable. */
 /** Installed and installable packages, from the registry, so the agent can install what a task needs. */
@@ -13,13 +15,29 @@ function packageLine(os: Kernel): string {
   return `installed: ${installed.map(desc).join('; ') || 'none'}.${available.length ? ` Not installed: ${available.map(desc).join('; ')} — when a task needs one, run \`pkg install <name>\` with the shell tool; its tools are available from your next step.` : ''}`;
 }
 
-export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null }): Promise<string> {
+/** About 20,000 tokens of pinned knowledge files at most. */
+const KNOWLEDGE_BUDGET = 80_000;
+
+export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null; project?: Project }): Promise<string> {
+  const proj = opts.project ?? GENERAL;
+  const WORK = proj.folder;
   if (opts.lite) {
-    return `You are BrowserBox's assistant, a small model running on the user's own device. Reply to the user's latest message directly and helpfully, using everything said earlier in this conversation. Be concise. If you are unsure what they want, ask one short question. You can also work with files in ${AGENT_HOME}, run shell commands and run JavaScript when a request needs it.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
+    return `You are BrowserBox's assistant, a small model running on the user's own device. Reply to the user's latest message directly and helpfully, using everything said earlier in this conversation. Be concise. If you are unsure what they want, ask one short question. You can also work with files in ${WORK}, run shell commands and run JavaScript when a request needs it.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
   }
-  const memory = await os.fs.readText(`${AGENT_HOME}/MEMORY.md`).catch(() => '');
+  const memory = await readMemory(os, 'user', proj.id);
+  const projectMemory = await readMemory(os, 'project', proj.id);
   // Project instructions, as other coding agents read them: AGENTS.md (or CLAUDE.md) in the working folder.
-  const project = (await os.fs.readText(`${AGENT_HOME}/AGENTS.md`).catch(() => null)) ?? (await os.fs.readText(`${AGENT_HOME}/CLAUDE.md`).catch(() => ''));
+  const project = (await os.fs.readText(`${WORK}/AGENTS.md`).catch(() => null)) ?? (await os.fs.readText(`${WORK}/CLAUDE.md`).catch(() => ''));
+  // Files the user pinned for this project: in full while they fit, otherwise listed.
+  let knowledge = '';
+  const unread: string[] = [];
+  for (const k of proj.knowledge ?? []) {
+    const path = k.startsWith('/') ? k : `${WORK}/${k}`;
+    const text = await os.fs.readText(path).catch(() => null);
+    if (text === null) continue;
+    if (knowledge.length + text.length > KNOWLEDGE_BUDGET) unread.push(path);
+    else knowledge += `\n<file path="${path}">\n${text}\n</file>\n`;
+  }
   const [skills, agents] = await Promise.all([loadExtensions(os, 'skill'), opts.subagent ? [] : loadExtensions(os, 'agent')]);
   const list = (items: Extension[]) => items.filter((e) => e.enabled).map((e) => `- ${e.name}: ${e.description}`).join('\n');
   const envNames = Object.keys(os.settings.get<Record<string, string>>('env.vars', {}));
@@ -27,7 +45,7 @@ export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { li
   return `You are the agent built into BrowserBox, an operating system that runs entirely inside the user's browser tab. You act for the user through tools; everything you do happens on their device, inside a sandbox.
 
 # Environment
-- A virtual filesystem. The root is ${os.rootKind === 'opfs' ? "persistent (the browser's Origin Private File System)" : 'in memory only and is lost on reload — tell the user if that matters'}. Your working directory is ${AGENT_HOME}; the user's files are under ${HOME}; /tmp is in-memory scratch; /proc holds live system state; real folders the user chose to share appear under /mnt.
+- A virtual filesystem. The root is ${os.rootKind === 'opfs' ? "persistent (the browser's Origin Private File System)" : 'in memory only and is lost on reload — tell the user if that matters'}. Your working directory is ${WORK}${proj.id !== GENERAL.id ? ` (the folder of the project "${proj.name}")` : ''}; the user's files are under ${HOME}; /tmp is in-memory scratch; /proc holds live system state; real folders the user chose to share appear under /mnt.
 - A shell with common Unix-style commands (run \`help\`). It is not bash: there is no node, apt or native compiler; \`npm install <pkg>\` only records the dependency in package.json (packages load from esm.sh when bundled). Packages add more: ${packageLine(os)}
 - Code execution in isolated sandboxes: JavaScript (run_js), Python via WebAssembly (run_python), WASI programs (run_wasm), and GPU compute shaders (gpu_compute; WebGPU is ${gpu}).
 - Web apps: build them as a project folder (index.html or src/main.tsx, package.json for npm dependencies, optional server.ts backend) and run them with dev_server; it bundles TypeScript/JSX, reloads on save and shows the app in Preview. Check your work with preview_logs (console errors, failed requests) rather than assuming it rendered. For a single self-contained page, show_html is enough.
@@ -48,13 +66,13 @@ Everything runs inside one browser tab on the user's device. There is no server 
 When something is impossible here, say so plainly and offer the closest thing that does work, rather than trying commands that cannot exist.
 
 # Working here
-- You work in ${AGENT_HOME} freely. Changing files elsewhere, running code and using the network may ask the user for permission; if they decline, respect it and find another way or explain what is blocked.
+- You work in ${WORK} freely. Changing files elsewhere, running code and using the network may ask the user for permission; if they decline, respect it and find another way or explain what is blocked.
 - Read a file before you change it. If an edit is refused because the file changed since you read it, read it again: the user or a command changed it, and their change must be kept.
 - Verify your work by running it when you can, and report what actually happened — including failures.
 - Prefer acting to asking. Use ask_user only for decisions that are genuinely the user's.
-- ${AGENT_HOME}/MEMORY.md is your long-term memory across sessions. When you learn something durable about the user or their projects, update it with the file tools.
+- You have a memory across chats (the memory tool): what you saved is below. When you learn something that will matter in later chats (a preference, how this project builds, a decision), save it as one short fact; do not save what only matters for this task.
 ${opts.subagent ? '- You are a sub-agent: complete the task you were given and finish with a clear report of what you did and found. You cannot ask the user questions.\n' : ''}
 # Style
 Write for someone reading a chat window: lead with the outcome, keep it brief, use Markdown where it helps, and refer to files by their path.
-${list(skills) ? `\n# Skills\nReusable instructions for specific kinds of task. When a request matches one, call use_skill with its name first and follow what it says.\n${list(skills)}\n` : ''}${list(agents) ? `\n# Custom agents\nSpecialised sub-agents you can delegate to with spawn_agent (pass the name as \`agent\`).\n${list(agents)}\n` : ''}${envNames.length ? `\n# Environment variables\nSet by the user and available in the shell (as $NAME), in run_js (as env.NAME) and in Python (os.environ): ${envNames.join(', ')}\n` : ''}${opts.persona ? `\n# Your role: ${opts.persona.name}\n${opts.persona.body}\n` : ''}${project.trim() ? `\n# Project instructions (${AGENT_HOME}/AGENTS.md)\nFollow these for work in this folder. Keep the file up to date when you learn how the project works (/init writes it).\n${project.trim().slice(0, 8000)}\n` : ''}${memory.trim() ? `\n# Memory (${AGENT_HOME}/MEMORY.md)\n${memory.trim().slice(0, 6000)}\n` : ''}${cfg.instructions.trim() ? `\n# User instructions\n${cfg.instructions.trim()}\n` : ''}`;
+${list(skills) ? `\n# Skills\nReusable instructions for specific kinds of task. When a request matches one, call use_skill with its name first and follow what it says.\n${list(skills)}\n` : ''}${list(agents) ? `\n# Custom agents\nSpecialised sub-agents you can delegate to with spawn_agent (pass the name as \`agent\`).\n${list(agents)}\n` : ''}${envNames.length ? `\n# Environment variables\nSet by the user and available in the shell (as $NAME), in run_js (as env.NAME) and in Python (os.environ): ${envNames.join(', ')}\n` : ''}${opts.persona ? `\n# Your role: ${opts.persona.name}\n${opts.persona.body}\n` : ''}${knowledge ? `\n# Project knowledge (pinned by the user)${knowledge}` : ''}${unread.length ? `\n# More project knowledge (read when relevant)\n${unread.map((p) => `- ${p}`).join('\n')}\n` : ''}${project.trim() ? `\n# Project instructions (${WORK}/AGENTS.md)\nFollow these for work in this folder. Keep the file up to date when you learn how the project works (/init writes it).\n${project.trim().slice(0, 8000)}\n` : ''}${entries(memory).length ? `\n# Memory: about the user\n${entries(memory).map((e) => `- ${e}`).join('\n').slice(0, MEMORY_BUDGET)}\n` : ''}${entries(projectMemory).length ? `\n# Memory: this project\n${entries(projectMemory).map((e) => `- ${e}`).join('\n').slice(0, MEMORY_BUDGET)}\n` : ''}${cfg.instructions.trim() ? `\n# User instructions\n${cfg.instructions.trim()}\n` : ''}`;
 }

@@ -61,6 +61,7 @@ function respond(r) {
   if (lastUser.includes('delegate to explorer')) return call('spawn_agent', { task: 'list the workspace', agent: 'explorer' });
   if (system.includes('Your role: explorer')) return text('EXPLORER REPORT: nothing to see');
   if (lastUser.includes('weather please')) return call('mcp__weather__forecast', { city: 'Pune' });
+  if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
   if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
   return text(`echo: ${lastUser.slice(0, 120)}`);
@@ -873,6 +874,40 @@ await check('hooks: one added in Settings runs after an edit; the agent sees its
     return 'PostToolUse hook ran on write_file; its output reached the model and the chat shows the run';
   } finally {
     await page.evaluate((m) => ((bbx.perms.mode = m), bbx.settings.set('agent.hooks', [])), mode);
+  }
+});
+
+await check('projects: make one from the sidebar, the agent works in its folder, /remember, and General keeps its chats', async () => {
+  const mode = await page.evaluate(() => bbx.perms.mode);
+  try {
+    await page.evaluate(() => (bbx.perms.mode = 'auto'));
+    const generalChats = await page.locator('.sb-chat').count();
+    await page.locator('.sb-project').click();
+    await page.locator('.menu .pop-item', { hasText: 'New project' }).click();
+    const dlg = page.locator('.pj-modal');
+    await dlg.locator('input').first().fill('Demo Site');
+    const folder = await dlg.locator('input.mono').inputValue();
+    if (folder !== '/home/user/Projects/Demo Site') throw new Error(`default folder ${folder}`);
+    await dlg.locator('textarea').fill('Use semantic HTML.');
+    await dlg.getByRole('button', { name: 'Create project' }).click();
+    await page.locator('.sb-project', { hasText: 'Demo Site' }).waitFor();
+    if (await page.locator('.sb-chat').count()) throw new Error('the new project shows other chats');
+    const sent = await send('where are you working', 'Tool said');
+    const req = sent[0];
+    if (!req.messages[0].content.includes('Use semantic HTML.')) throw new Error('AGENTS.md from the project folder is not in the prompt');
+    const pwd = sent.flatMap((r) => r.messages).findLast((m) => m.role === 'tool')?.content ?? '';
+    if (!pwd.includes('/home/user/Projects/Demo Site')) throw new Error(`pwd ${pwd}`);
+    const input = page.locator('.ag-input');
+    await input.fill('/remember The site deploys to Netlify');
+    await input.press('Enter');
+    await page.waitForFunction(async () => ((await bbx.fs.readText('/home/agent/.memory/demo-site.md').catch(() => '')) || '').includes('deploys to Netlify'));
+    await page.locator('.sb-project').click();
+    await page.locator('.menu .pop-item', { hasText: 'General' }).click();
+    await page.locator('.sb-project', { hasText: 'General' }).waitFor();
+    await page.waitForFunction((n) => document.querySelectorAll('.sb-chat').length >= n, generalChats);
+    return `project folder /home/user/Projects/Demo Site; AGENTS.md read; pwd there; /remember saved; General shows its ${generalChats} chats`;
+  } finally {
+    await page.evaluate((m) => (bbx.perms.mode = m), mode);
   }
 });
 

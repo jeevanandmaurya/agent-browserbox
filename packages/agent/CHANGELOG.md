@@ -24,6 +24,20 @@ new" part of the GitHub release notes (`agent-v*`).
   sends the agent back to work (at most 3 times); its output is added for
   PostToolUse, UserPromptSubmit and SessionStart. Each run is an event
   (`hook`). Kept in settings, which no tool writes.
+- **Projects** (`agent.projects`, `createProject`, `updateProject`,
+  `removeProject`, `getProject`): each has a folder (the agent's working
+  folder and its free-to-write area), AGENTS.md, an optional default model
+  and pinned knowledge files (about 20,000 tokens in the prompt, the rest
+  listed). General is /home/agent: chats from before belong to it.
+  `AgentsApi.create({ project })`; sessions, snapshots and live sessions
+  carry their project; `listSessions(os, project)` reads an index
+  (`.sessions/index.json`), rebuilt from the files when missing.
+- **Memory**: a `memory` tool (view, add, replace, remove) with scopes
+  `user` (MEMORY.md) and `project` (`.memory/<project>.md`), one entry at a
+  time within a 6,000-character budget; changes are file changes (diffs,
+  undo). `agent.memory.auto: false` removes the tool. The prompt includes
+  both scopes, snapshotted per chat. `addMemory`, `removeMemory`,
+  `replaceMemory` for apps.
 - The system prompt states run_js's real time limit.
 
 ## 0.3.1
