@@ -26,6 +26,11 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   chats; `/remember`, `/forget`, and Settings → Memory to see and edit them.
 - Sub-agents run several at once; open one's card to see what it did. Pick a
   faster model for them in Settings → Model, or per agent with `model:`.
+- **More packages in the terminal**: `pkg search`, `pkg info`, and installs
+  of WebAssembly, JavaScript and script packages from package indexes, each
+  file checked; `pkg update`, `upgrade`, `verify`, `why`, and Tab completion.
+  Put your own commands in `~/.local/bin`.
+- WebAssembly programs can read and write files in the folder they run in.
 
 ## 0.3.2
 

@@ -83,7 +83,7 @@ export const execTools: ToolDef[] = [
   }),
   tool<{ path: string; args?: string[]; stdin?: string }>({
     name: 'run_wasm',
-    description: 'Run a WebAssembly program (WASI preview1, stdio only) from a .wasm file in the filesystem. Returns its stdout, stderr and exit code.',
+    description: 'Run a WebAssembly program (WASI preview1) from a .wasm file in the filesystem. It sees the files of the working folder (reads, writes, creates and deletes there are kept) but nothing outside it. Returns its stdout, stderr and exit code.',
     input_schema: obj({ path: { type: 'string' }, args: { type: 'array', items: { type: 'string' } }, stdin: { type: 'string' } }, ['path']),
     cap: () => 'exec',
     describe: (i) => `Run ${i.path} ${(i.args ?? []).join(' ')}`,

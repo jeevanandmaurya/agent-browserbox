@@ -8,6 +8,101 @@ export type ProvidedKind = keyof PackageModule & ('commands' | 'tools');
 type Item<K extends ProvidedKind> = NonNullable<PackageModule[K]> extends ReadonlyArray<infer T> ? T : never;
 
 export const INSTALLED_KEY = 'pkg.installed';
+/** Packages installed from a source (wasm, js, script): records by id. */
+export const EXTERNAL_KEY = 'pkg.external';
+/** Sources the user added (the BrowserBox index is always first). */
+export const SOURCES_KEY = 'pkg.sources';
+const INDEX_CACHE = 'bbx-pkg-index';
+
+/**
+ * A package from a source, described by a bbx-package.json: files to download
+ * (each pinned by sha256) and the commands they provide.
+ */
+export type ExternalKind = 'wasm' | 'js' | 'script';
+export interface PackageFile {
+  path: string;
+  url: string;
+  sha256: string;
+  bytes?: number;
+}
+export interface ExternalPackage {
+  id: string;
+  version: string;
+  kind: ExternalKind;
+  summary: string;
+  license?: string;
+  homepage?: string;
+  files: PackageFile[];
+  /** Command name → the file that runs it (and fixed leading arguments). */
+  commands: Record<string, { run: string; args?: string[] }>;
+  /** Other packages first, as `id` or `id>=1.2`. */
+  depends?: string[];
+}
+export interface PackageSource {
+  url: string;
+  /** The BrowserBox index: its packages install without asking. */
+  official?: boolean;
+}
+export interface InstalledExternal {
+  pkg: ExternalPackage;
+  source: string;
+  installedAt: number;
+}
+/** A package in a source's index, with where it came from. */
+export type Listed = ExternalPackage & { source: string; official: boolean };
+
+const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const CMD = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
+
+/** Checks a package description; throws with what is wrong. */
+export function validatePackage(p: unknown): ExternalPackage {
+  const x = p as ExternalPackage;
+  const bad = (why: string): never => {
+    throw new Error(`invalid package${x && typeof x.id === 'string' ? ` ${x.id}` : ''}: ${why}`);
+  };
+  if (!x || typeof x !== 'object') bad('not an object');
+  if (typeof x.id !== 'string' || !ID.test(x.id)) bad('id must be lowercase letters, digits, . _ -');
+  if (typeof x.version !== 'string' || !x.version) bad('no version');
+  if (!['wasm', 'js', 'script'].includes(x.kind)) bad('kind must be wasm, js or script');
+  if (!Array.isArray(x.files) || !x.files.length) bad('no files');
+  for (const f of x.files) {
+    if (typeof f?.path !== 'string' || !f.path || f.path.includes('..') || f.path.startsWith('/')) bad(`file path ${f?.path}`);
+    if (typeof f.url !== 'string' || !/^https?:\/\//.test(f.url)) bad(`file url ${f.url}`);
+    if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) bad(`file ${f.path} needs a sha256`);
+  }
+  if (!x.commands || typeof x.commands !== 'object' || !Object.keys(x.commands).length) bad('no commands');
+  for (const [name, c] of Object.entries(x.commands)) {
+    if (!CMD.test(name)) bad(`command name ${name}`);
+    if (!x.files.some((f) => f.path === c?.run)) bad(`command ${name} runs ${c?.run}, which is not one of its files`);
+  }
+  return { ...x, summary: typeof x.summary === 'string' ? x.summary : '', depends: Array.isArray(x.depends) ? x.depends.filter((d) => typeof d === 'string') : [] };
+}
+
+/** Compares dotted versions numerically (1.10 > 1.9); non-numeric parts compare as text. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.+-]/);
+  const pb = b.split(/[.+-]/);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? '0';
+    const y = pb[i] ?? '0';
+    const nx = Number(x);
+    const ny = Number(y);
+    const c = !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : x.localeCompare(y);
+    if (c) return Math.sign(c);
+  }
+  return 0;
+}
+
+/** `id` or `id>=1.2` → its parts. */
+export const parseDep = (d: string) => {
+  const m = /^([a-z0-9][a-z0-9._-]*)\s*(?:>=\s*(\S+))?$/.exec(d.trim());
+  return m ? { id: m[1]!, min: m[2] } : null;
+};
+
+export async function sha256(data: Uint8Array): Promise<string> {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', data as Uint8Array<ArrayBuffer>));
+  return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export interface PackageInfo extends PackageManifest {
   installed: boolean;
@@ -53,7 +148,7 @@ export class PackageManager {
   }
 
   isInstalled(id: string): boolean {
-    return this.installed().includes(id);
+    return this.installed().includes(id) || id in this.externals();
   }
 
   /** The package's files: its build output (listed by the build in kernel/packages.json) and remote files. */
@@ -84,7 +179,14 @@ export class PackageManager {
 
   async install(id: string, progress?: Progress): Promise<void> {
     const m = this.#find(id);
-    if (!m) throw new Error(`no such package: ${id} (see pkg list)`);
+    if (!m) {
+      // Not built in: a package from a source (`id` or `id@version`).
+      const [name, version] = id.split('@') as [string, string | undefined];
+      const found = await this.find(name, { version });
+      if (!found) throw new Error(`no such package: ${id} (see pkg search)`);
+      await this.installExternal(found, found.source, progress);
+      return;
+    }
     const files = await this.#files(m);
     const cache = await caches.open(PACKAGE_CACHE);
     let total = files.reduce((n, f) => n + f.bytes, 0);
@@ -123,9 +225,9 @@ export class PackageManager {
     this.os.log('pkg', `installed ${id} ${m.version}`);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, o: { force?: boolean } = {}): Promise<void> {
     const m = this.#find(id);
-    if (!m) throw new Error(`no such package: ${id}`);
+    if (!m) return this.removeExternal(id, o);
     this.os.settings.set(
       INSTALLED_KEY,
       this.installed().filter((x) => x !== id),
@@ -134,6 +236,207 @@ export class PackageManager {
     const cache = await caches.open(PACKAGE_CACHE);
     for (const f of await this.#files(m)) await cache.delete(f.url);
     this.os.log('pkg', `removed ${id}`);
+  }
+
+  // ---- packages from sources (wasm, js, script) ------------------------------------
+
+  /** Where packages come from: the BrowserBox index first, then the ones the user added. */
+  sources(): PackageSource[] {
+    const added = this.os.settings.get<PackageSource[]>(SOURCES_KEY, []).filter((x) => typeof x?.url === 'string');
+    return [{ url: new URL('package-index.json', KERNEL_URL).href, official: true }, ...added.map((x) => ({ url: x.url }))];
+  }
+
+  addSource(url: string): void {
+    const u = new URL(url).href;
+    if (this.sources().some((x) => x.url === u)) return;
+    this.os.settings.set(SOURCES_KEY, [...this.os.settings.get<PackageSource[]>(SOURCES_KEY, []), { url: u }]);
+    this.#index = null;
+  }
+
+  removeSource(url: string): void {
+    this.os.settings.set(
+      SOURCES_KEY,
+      this.os.settings.get<PackageSource[]>(SOURCES_KEY, []).filter((x) => x.url !== url),
+    );
+    this.#index = null;
+  }
+
+  #index: Promise<Listed[]> | null = null;
+
+  /** Every package in every source. Indexes are cached (offline too) until `update`. */
+  index(refresh = false): Promise<Listed[]> {
+    if (refresh || !this.#index) this.#index = this.#readIndexes(refresh);
+    return this.#index;
+  }
+
+  async #readIndexes(refresh: boolean): Promise<Listed[]> {
+    const cache = await caches.open(INDEX_CACHE).catch(() => null);
+    const out: Listed[] = [];
+    for (const src of this.sources()) {
+      let body: unknown = null;
+      const cached = refresh ? undefined : await cache?.match(src.url);
+      try {
+        if (cached) body = await cached.json();
+        else {
+          const res = await fetch(src.url, { cache: 'no-cache' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          body = await res.json();
+          await cache?.put(src.url, new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
+        }
+      } catch (err) {
+        // Unreachable: keep what was cached before, if anything.
+        const old = await cache?.match(src.url);
+        body = old ? await old.json().catch(() => null) : null;
+        if (!body) this.os.log('pkg', `source ${src.url} unavailable: ${(err as Error).message}`);
+      }
+      const list = (body as { packages?: unknown[] } | null)?.packages ?? [];
+      for (const p of list) {
+        try {
+          out.push({ ...validatePackage(p), source: src.url, official: !!src.official });
+        } catch (err) {
+          this.os.log('pkg', `${src.url}: ${(err as Error).message}`);
+        }
+      }
+    }
+    return out;
+  }
+
+  externals(): Record<string, InstalledExternal> {
+    return this.os.settings.get<Record<string, InstalledExternal>>(EXTERNAL_KEY, {});
+  }
+
+  /** The newest version of `id` in the indexes (at least `min`), or that exact `version`. */
+  async find(id: string, o: { version?: string; min?: string } = {}): Promise<Listed | null> {
+    const all = (await this.index()).filter((p) => p.id === id && (!o.version || p.version === o.version) && (!o.min || compareVersions(p.version, o.min) >= 0));
+    return all.sort((a, b) => compareVersions(b.version, a.version))[0] ?? null;
+  }
+
+  /**
+   * Installs a package from a source, after its dependencies. Every file is
+   * checked against its sha256 before it is kept; a mismatch fails the install.
+   */
+  async installExternal(pkg: ExternalPackage, source: string, progress?: Progress, seen = new Set<string>()): Promise<string[]> {
+    if (seen.has(pkg.id)) return [];
+    seen.add(pkg.id);
+    const done: string[] = [];
+    for (const d of pkg.depends ?? []) {
+      const dep = parseDep(d);
+      if (!dep) throw new Error(`${pkg.id}: bad dependency "${d}"`);
+      if (this.#find(dep.id)) {
+        if (!this.isInstalled(dep.id)) await this.install(dep.id, progress);
+        continue;
+      }
+      const have = this.externals()[dep.id];
+      if (have && (!dep.min || compareVersions(have.pkg.version, dep.min) >= 0)) continue;
+      const found = await this.find(dep.id, { min: dep.min });
+      if (!found) throw new Error(`${pkg.id} needs ${d}, which no source has`);
+      done.push(...(await this.installExternal(found, found.source, progress, seen)));
+    }
+    const cache = await caches.open(PACKAGE_CACHE);
+    const total = pkg.files.reduce((n, f) => n + (f.bytes ?? 0), 0);
+    let loaded = 0;
+    progress?.(0, total);
+    for (const f of pkg.files) {
+      const hit = await cache.match(f.url);
+      if (hit && (await sha256(new Uint8Array(await hit.clone().arrayBuffer()))) === f.sha256) {
+        loaded += f.bytes ?? 0;
+        progress?.(loaded, Math.max(total, loaded));
+        continue;
+      }
+      const res = await fetch(f.url);
+      if (!res.ok || !res.body) throw new Error(`download failed (HTTP ${res.status}): ${f.url}`);
+      const chunks: Uint8Array[] = [];
+      for (const reader = res.body.getReader(); ; ) {
+        const { value, done: end } = await reader.read();
+        if (end) break;
+        chunks.push(value);
+        loaded += value.length;
+        progress?.(loaded, Math.max(total, loaded));
+      }
+      const data = new Uint8Array(await new Blob(chunks as BlobPart[]).arrayBuffer());
+      const got = await sha256(data);
+      if (got !== f.sha256) throw new Error(`${pkg.id}: ${f.path} does not match its sha256 (expected ${f.sha256.slice(0, 12)}…, got ${got.slice(0, 12)}…). Not installed.`);
+      await cache.put(f.url, new Response(data, { headers: { 'x-bbx-bytes': String(data.length), 'x-bbx-sha256': got } }));
+    }
+    this.os.settings.set(EXTERNAL_KEY, { ...this.externals(), [pkg.id]: { pkg, source, installedAt: Date.now() } });
+    this.os.log('pkg', `installed ${pkg.id} ${pkg.version} (${pkg.kind}) from ${source}`);
+    return [...done, pkg.id];
+  }
+
+  /** Installed packages that depend on `id`. */
+  dependents(id: string): string[] {
+    return Object.values(this.externals())
+      .filter((r) => (r.pkg.depends ?? []).some((d) => parseDep(d)?.id === id))
+      .map((r) => r.pkg.id);
+  }
+
+  async removeExternal(id: string, o: { force?: boolean } = {}): Promise<void> {
+    const rec = this.externals()[id];
+    if (!rec) throw new Error(`${id} is not installed`);
+    const users = this.dependents(id);
+    if (users.length && !o.force) throw new Error(`${users.join(', ')} ${users.length > 1 ? 'need' : 'needs'} ${id}. Remove ${users.length > 1 ? 'them' : 'it'} first, or use --force.`);
+    const rest = { ...this.externals() };
+    delete rest[id];
+    this.os.settings.set(EXTERNAL_KEY, rest);
+    const cache = await caches.open(PACKAGE_CACHE);
+    // Keep a file another installed package still uses.
+    const used = new Set(Object.values(rest).flatMap((r) => r.pkg.files.map((f) => f.url)));
+    for (const f of rec.pkg.files) if (!used.has(f.url)) await cache.delete(f.url);
+    this.os.log('pkg', `removed ${id}`);
+  }
+
+  /** Installed packages with a newer version in their source. */
+  async upgradable(): Promise<Array<{ id: string; from: string; to: Listed }>> {
+    const out: Array<{ id: string; from: string; to: Listed }> = [];
+    for (const r of Object.values(this.externals())) {
+      const newest = await this.find(r.pkg.id);
+      if (newest && compareVersions(newest.version, r.pkg.version) > 0) out.push({ id: r.pkg.id, from: r.pkg.version, to: newest });
+    }
+    return out;
+  }
+
+  /** Re-checks the cached files of installed packages; returns the ones that are missing or changed. */
+  async verify(ids?: string[]): Promise<Array<{ id: string; path: string; problem: 'missing' | 'changed' }>> {
+    const cache = await caches.open(PACKAGE_CACHE);
+    const bad: Array<{ id: string; path: string; problem: 'missing' | 'changed' }> = [];
+    for (const r of Object.values(this.externals())) {
+      if (ids?.length && !ids.includes(r.pkg.id)) continue;
+      for (const f of r.pkg.files) {
+        const hit = await cache.match(f.url);
+        if (!hit) bad.push({ id: r.pkg.id, path: f.path, problem: 'missing' });
+        else if ((await sha256(new Uint8Array(await hit.arrayBuffer()))) !== f.sha256) bad.push({ id: r.pkg.id, path: f.path, problem: 'changed' });
+      }
+    }
+    return bad;
+  }
+
+  /** An installed package's command: what runs it, and its file's bytes. */
+  externalCommand(name: string): { pkg: ExternalPackage; entry: { run: string; args?: string[] }; file(): Promise<Uint8Array> } | null {
+    for (const r of Object.values(this.externals())) {
+      const entry = r.pkg.commands[name];
+      if (!entry) continue;
+      const f = r.pkg.files.find((x) => x.path === entry.run)!;
+      return {
+        pkg: r.pkg,
+        entry,
+        file: async () => {
+          const hit = await (await caches.open(PACKAGE_CACHE)).match(f.url);
+          if (!hit) throw new Error(`${r.pkg.id}: ${f.path} is missing from the cache. Run: pkg install ${r.pkg.id}`);
+          return new Uint8Array(await hit.arrayBuffer());
+        },
+      };
+    }
+    return null;
+  }
+
+  /** Every command installed packages from sources provide. */
+  externalCommands(): string[] {
+    return Object.values(this.externals()).flatMap((r) => Object.keys(r.pkg.commands));
+  }
+
+  /** The package in any source that provides a command, for "not installed" hints. */
+  async providerInIndex(name: string): Promise<Listed | null> {
+    return (await this.index().catch(() => [])).find((p) => name in p.commands) ?? null;
   }
 
   load(id: string): Promise<PackageModule> {

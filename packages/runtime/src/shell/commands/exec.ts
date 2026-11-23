@@ -5,7 +5,7 @@ import { flags, requireNetwork, type Command, type CommandContext } from '../she
 /** A shell's environment as a program sees it (without `?`, the last exit code). */
 export const userEnv = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([k]) => k !== '?'));
 
-function finish(ctx: CommandContext, r: RunResult): number {
+export function finish(ctx: CommandContext, r: RunResult): number {
   if (r.value !== undefined && r.value !== 'undefined') ctx.out(r.value + '\n');
   if (r.error) ctx.err(r.error + '\n');
   return r.ok ? 0 : (r.exitCode ?? 1);
@@ -39,7 +39,7 @@ export const execCommands: Command[] = [
       const file = ctx.args[0];
       if (!file) throw new Error('usage: wasm program.wasm [args…]');
       const bytes = await ctx.os.fs.readFile(ctx.path(file));
-      return finish(ctx, await runWasm(ctx.os, bytes, { name: file, args: ctx.args.slice(1), stdin: ctx.stdin, signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid }));
+      return finish(ctx, await runWasm(ctx.os, bytes, { name: file, args: ctx.args.slice(1), stdin: ctx.stdin, signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, cwd: ctx.shell.cwd, env: { ...userEnv(ctx.shell.env), PWD: ctx.shell.cwd } }));
     },
   },
   {

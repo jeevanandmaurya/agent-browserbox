@@ -11,6 +11,20 @@ the GitHub release notes.
   The runtime treats `edits` like `ask` for its own checks (commands such as
   `curl` and `js --net` still ask); the agent lets its file changes through.
   A mode the runtime does not know is treated as `ask`.
+- **Package manager v2**: besides the built-in packages, `pkg` installs
+  WASM (WASI), JavaScript and shell-script packages described by
+  `bbx-package.json`, from package indexes (`pkg source add|remove|list`)
+  or one URL. Every file is checked against its sha256; dependencies
+  (`id>=version`) install first; `remove` refuses while something depends
+  on it. New verbs: `search`, `info`, `update`, `upgrade`, `files`,
+  `verify`, `why`. Installs from a non-official index or URL ask, and only
+  a person at a terminal can confirm. Tab completes `pkg` verbs and ids.
+- **Your own commands**: files in `~/.local/bin` (`name`, `.wasm`, `.js`,
+  `.sh`) run by name.
+- **WASI programs see files**: `wasm` / `runWasm({cwd})` give the program the
+  working folder (preopened as `.` and its absolute path), with read, write,
+  seek, mkdir, rename, delete, readdir and stat; changes are written back.
+  Paths outside it are refused. `PWD` and the user's variables are set.
 
 ## 0.3.1
 

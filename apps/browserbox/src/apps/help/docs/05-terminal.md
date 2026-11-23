@@ -20,6 +20,26 @@ Typing a command from a package that is not installed tells you which package to
 | esbuild | the bundler behind `serve` and `build` (installed when first needed) |
 | node | real Node.js and npm (see [Advanced](advanced)) |
 
+### More packages
+
+Besides the built-in packages above, `pkg` installs programs described by a package index: WebAssembly programs (WASI), JavaScript programs and shell scripts. Each file is checked against the sha256 its index lists before it is kept.
+
+| Command | Does |
+| --- | --- |
+| `pkg search <text>` | search every index |
+| `pkg info <id>` | version, size, commands, dependencies, where it comes from |
+| `pkg install <id>[@version]` | install it and what it depends on |
+| `pkg install <url>` | install one package from its `bbx-package.json` (asks every time) |
+| `pkg remove <id>` | remove it (refused while another package needs it; `--force`) |
+| `pkg update`, `pkg upgrade` | refresh the indexes; install newer versions |
+| `pkg files <id>`, `pkg verify` | list its files; check them all again |
+| `pkg why <id>` | which packages need it |
+| `pkg source list`, `add <url>`, `remove <url>` | the indexes `pkg` uses |
+
+The official index installs without asking. Adding another index asks once; only a person typing in a terminal can confirm, so the agent and scripts install from the official index only.
+
+Your own commands: put a `name`, `name.wasm`, `name.js` or `name.sh` file in `~/.local/bin` and type `name`. WebAssembly programs see the folder they run in, and can read, write, rename and delete files there (not above it).
+
 ## Profiles
 
 | Command | Does |

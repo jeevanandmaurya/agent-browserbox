@@ -5,6 +5,8 @@
 // Usage: npm run build && node scripts/features.mjs
 import { createRequire } from 'node:module';
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,8 +71,24 @@ function respond(r) {
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
   return text(`echo: ${lastUser.slice(0, 120)}`);
 }
+// A package source for the package-manager check: a WASM package that needs a JS one, and one with a wrong sha256.
+const pkgFiles = {
+  'wasi-files.wasm': readFileSync(new URL('./fixtures/wasi-files.wasm', import.meta.url)),
+  'hello.js': Buffer.from("print('hello ' + args.join(' '));"),
+  'bad.js': Buffer.from("print('should never run');"),
+};
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+const pkgIndex = {
+  packages: [
+    { id: 'wtest', version: '1.0.0', kind: 'wasm', summary: 'File test program', files: [{ path: 'wasi-files.wasm', url: 'http://localhost:11436/pkg/wasi-files.wasm', sha256: sha(pkgFiles['wasi-files.wasm']), bytes: pkgFiles['wasi-files.wasm'].length }], commands: { wtest: { run: 'wasi-files.wasm' } }, depends: ['jshello>=1.0'] },
+    { id: 'jshello', version: '1.2.0', kind: 'js', summary: 'Says hello', files: [{ path: 'hello.js', url: 'http://localhost:11436/pkg/hello.js', sha256: sha(pkgFiles['hello.js']) }], commands: { jshello: { run: 'hello.js' } } },
+    { id: 'badsum', version: '1.0.0', kind: 'js', summary: 'Tampered', files: [{ path: 'bad.js', url: 'http://localhost:11436/pkg/bad.js', sha256: '0'.repeat(64) }], commands: { badsum: { run: 'bad.js' } } },
+  ],
+};
 const llm = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return res.writeHead(204, cors).end();
+  if (req.url === '/pkg/index.json') return res.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify(pkgIndex));
+  if (req.url?.startsWith('/pkg/') && pkgFiles[req.url.slice(5)]) return res.writeHead(200, { ...cors, 'content-type': 'application/octet-stream' }).end(pkgFiles[req.url.slice(5)]);
   const b = await body(req);
   if (req.url.endsWith('/models')) return res.writeHead(200, { ...cors, 'content-type': 'application/json' }).end(JSON.stringify({ data: [{ id: 'mock' }] }));
   const r = JSON.parse(b);
@@ -964,6 +982,75 @@ await check('scheduled tasks: /schedule prefills one, Run now runs it as a chat,
   await page.locator('.sb-chat-title', { hasText: '⏱ Ping' }).first().waitFor({ timeout: 10000 });
   await page.evaluate(() => bbx.settings.set('agent.schedules', []));
   return `ran as a chat "⏱ Ping …"; recorded: ${note.slice(0, 60)}`;
+});
+
+await check('WASI programs read and write the working folder (files, folders, rename, delete, env)', async () => {
+  const wasm = readFileSync(new URL('./fixtures/wasi-files.wasm', import.meta.url)).toString('base64');
+  const r = await page.evaluate(async (b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    await bbx.fs.writeFile('/home/user/wt/prog.wasm', bytes);
+    await bbx.fs.writeFile('/home/user/wt/input.txt', 'a\nb\nc\n');
+    await bbx.fs.writeFile('/home/user/wt/delete-me.txt', 'x');
+    const sh = await bbx.shells.open({ cwd: '/home/user/wt' });
+    let out = '';
+    const code = await sh.run('wasm prog.wasm input.txt', { out: (t) => (out += t), err: (t) => (out += t) });
+    sh.close();
+    return { code, out, ls: (await bbx.fs.readdir('/home/user/wt')).map((e) => e.name).sort().join(','), report: await bbx.fs.readText('/home/user/wt/out/deep/report.txt').catch((e) => 'ERR ' + e.message) };
+  }, wasm);
+  if (r.code !== 0 || r.report !== 'input.txt has 3 lines\n' || r.ls !== 'input.txt,out,prog.wasm,renamed.txt' || !r.out.includes('PWD=/home/user/wt') || !r.out.includes('escape: true')) throw new Error(JSON.stringify(r));
+  return 'read, mkdir -p, write, rename, delete, list, stat, env, absolute path; escaping refused';
+});
+
+await check('packages: add a source, install with a dependency, run WASM and JS packages, checks and refusals', async () => {
+  await page.evaluate(() => bbx.openApp('terminal'));
+  await page.waitForSelector('.term-input');
+  // A question is asked in the prompt; an answer shows in the output.
+  const typed = async (cmd, waitFor) => {
+    const input = page.locator('.term-input').last();
+    await input.fill(cmd);
+    await input.press('Enter');
+    await page.waitForFunction((t) => [...document.querySelectorAll('.term-out')].at(-1)?.textContent.includes(t) || [...document.querySelectorAll('.term-prompt')].at(-1)?.textContent.includes(t), waitFor, { timeout: 30000 }).catch(async (e) => {
+      throw new Error(`"${cmd}" did not print "${waitFor}": ${JSON.stringify((await page.locator('.term-out').last().textContent()).slice(-300))}`);
+    });
+    // Then wait until the terminal takes input again (the command finished, or a question waits).
+    await page.waitForFunction(() => {
+      const line = [...document.querySelectorAll('.term-line')].at(-1);
+      return line && !line.classList.contains('busy');
+    }, null, { timeout: 30000 });
+  };
+  await typed('pkg source add http://localhost:11436/pkg/index.json', 'as a package source?');
+  await typed('y', 'packages from it');
+  await typed('pkg install wtest', 'Install it?');
+  await typed('y', 'installed jshello, wtest');
+  await typed('jshello there', 'hello there');
+  await typed('pkg remove jshello', 'Remove it first, or use --force');
+  await typed('pkg verify', 'every file matches its sha256');
+  await typed('pkg install badsum', 'Install it?');
+  await typed('y', 'does not match its sha256');
+  // The WASM package works on the working folder's files.
+  const run = await page.evaluate(async () => {
+    await bbx.fs.writeFile('/home/user/pt/input.txt', 'x\ny\n');
+    await bbx.fs.writeFile('/home/user/pt/delete-me.txt', 'x');
+    // A shell no window answers for: the agent's situation.
+    const sh = await bbx.shells.open({ cwd: '/home/user/pt' });
+    let out = '';
+    const code = await sh.run('wtest input.txt', { out: (t) => (out += t), err: (t) => (out += t) });
+    let refused = '';
+    await sh.run('pkg install badsum', { out: () => undefined, err: (t) => (refused += t) });
+    await bbx.fs.writeFile('/home/user/.local/bin/greet.js', "print('hi from my own command');");
+    let mine = '';
+    await sh.run('greet', { out: (t) => (mine += t), err: (t) => (mine += t) });
+    const done = await sh.complete('pkg ins');
+    const ids = await sh.complete('pkg remove js');
+    sh.close();
+    return { code, report: await bbx.fs.readText('/home/user/pt/out/deep/report.txt').catch(() => ''), refused, mine, done: done.options, ids: ids.options };
+  });
+  if (run.code !== 0 || run.report !== 'input.txt has 2 lines\n') throw new Error(`wasm package: ${JSON.stringify(run)}`);
+  if (!run.refused.includes('only a person can install it')) throw new Error(`not refused: ${run.refused}`);
+  if (!run.mine.includes('hi from my own command')) throw new Error(`~/.local/bin: ${run.mine}`);
+  if (!run.done.includes('install ') || !run.ids.includes('jshello ')) throw new Error(`completion: ${JSON.stringify(run)}`);
+  await page.keyboard.press('Escape');
+  return 'source added (asked); wtest + its dependency jshello installed (asked); JS and WASM commands run; dependency kept; verify ok; bad sha256 refused; a program-run install refused; ~/.local/bin; Tab completion';
 });
 
 await check('profile commands: a person can switch and exit in the terminal; the agent cannot change profiles', async () => {

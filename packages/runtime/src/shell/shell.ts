@@ -4,6 +4,7 @@ import type { KernelCore as Kernel } from '../kernel/kernel';
 import { AGENT_HOME, HOME } from '../kernel/paths';
 import { resolve } from '../kernel/vfs/path';
 import { contributedNames, findContributed } from './contrib';
+import { localCommand, localCommandNames, packageCommand } from './runners';
 import { parse, ShellSyntaxError, splitJobs, type Stage, type Word } from './parse';
 
 /** An interactive terminal, when the shell has one. */
@@ -150,17 +151,21 @@ export class Shell {
       const name = argv[0]!;
       let cmd = this.commands.get(name) ?? findContributed(name);
       if (!cmd) {
-        // Not built in: an installed package may provide it.
+        // Not built in: an installed package may provide it, or your ~/.local/bin.
         try {
           const fromPackage = await this.os.packages.provided('commands', name);
           if (fromPackage) this.commands.set(name, (cmd = fromPackage));
+          const ext = cmd ? null : this.os.packages.externalCommand(name);
+          if (ext) cmd = packageCommand(name, ext); // looked up each time: it can be removed or upgraded
+          cmd ??= (await localCommand(this.os, name)) ?? undefined;
         } catch (err) {
           io.err(`bbsh: ${(err as Error).message}\n`);
           return 127;
         }
       }
       if (!cmd) {
-        io.err(`bbsh: ${name}: command not found\n`);
+        const has = await this.os.packages.providerInIndex(name).catch(() => null);
+        io.err(`bbsh: ${name}: command not found${has ? `. The ${has.id} package has it: pkg install ${has.id}` : ''}\n`);
         return 127;
       }
       if (stage.stdin) stdin = await this.os.fs.readText(resolve(this.cwd, stage.stdin.text));
@@ -209,7 +214,22 @@ export class Shell {
     const start = Math.max(line.lastIndexOf(' '), line.lastIndexOf('|'), line.lastIndexOf(';')) + 1;
     const word = line.slice(start);
     const first = !/\S/.test(line.slice(0, start).split(/[|;&]/).pop() ?? '');
-    if (first && !word.includes('/')) return { start, options: [...new Set([...this.commands.keys(), ...contributedNames()])].filter((c) => c.startsWith(word)).sort() };
+    if (first && !word.includes('/')) {
+      const names = [...this.commands.keys(), ...contributedNames(), ...this.os.packages.externalCommands(), ...(await localCommandNames(this.os))];
+      return { start, options: [...new Set(names)].filter((c) => c.startsWith(word)).sort() };
+    }
+    // pkg: its verbs, then package ids.
+    const words = line.slice(0, start).trim().split(/\s+/);
+    if (words[0] === 'pkg') {
+      const VERBS = ['list', 'search', 'info', 'install', 'remove', 'update', 'upgrade', 'files', 'verify', 'why', 'source'];
+      if (words.length === 1) return { start, options: VERBS.filter((v) => v.startsWith(word)).map((v) => v + ' ') };
+      const verb = words[1];
+      if (verb && ['install', 'remove', 'info', 'files', 'verify', 'upgrade'].includes(verb)) {
+        const installed = [...this.os.packages.installed(), ...Object.keys(this.os.packages.externals())];
+        const all = verb === 'install' || verb === 'info' ? [...this.os.packages.manifests().map((m) => m.id), ...(await this.os.packages.index().catch(() => [])).map((p) => p.id)] : installed;
+        return { start, options: [...new Set(all)].filter((id) => id.startsWith(word)).sort().map((id) => id + ' ') };
+      }
+    }
     const slash = word.lastIndexOf('/');
     const dirPart = slash >= 0 ? word.slice(0, slash + 1) : '';
     const base = word.slice(slash + 1);

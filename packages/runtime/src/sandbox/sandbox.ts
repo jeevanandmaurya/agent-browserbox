@@ -47,7 +47,7 @@ interface FileBlob {
 type Job =
   | { op: 'js'; code: string; args?: string[]; env?: Record<string, string> }
   | { op: 'python'; code: string; packages?: string[]; files?: FileBlob[]; pyodideUrl: string; env?: Record<string, string>; runtime?: FileBlob[] }
-  | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string }
+  | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string; files?: FileBlob[]; cwd?: string; env?: Record<string, string> }
   | { op: 'server-load'; code: string; env?: Record<string, string> }
   | { op: 'server-request'; req: WireRequest; origin: string };
 
@@ -55,7 +55,7 @@ type Reply =
   | { id: number; type: 'stdout' | 'stderr'; data: string }
   | { id: number; type: 'progress'; label: string; loaded: number; total: number }
   | { id: number; type: 'rpc'; rid: number; method: string; params: unknown[] }
-  | { id: number; type: 'done'; result?: { value?: string; exitCode?: number; files?: FileBlob[]; response?: WireResponse | null }; error?: string };
+  | { id: number; type: 'done'; result?: { value?: string; exitCode?: number; files?: FileBlob[]; dirs?: string[]; deleted?: string[]; response?: WireResponse | null }; error?: string };
 
 const MAX_CAPTURE = 256 * 1024;
 
@@ -192,6 +192,9 @@ export class Sandbox {
           void (async () => {
             if (m.error) return finish({ error: m.error });
             try {
+              // Deletions first (a file may be replaced by a folder of the same name), then folders, then files.
+              for (const p of m.result?.deleted ?? []) await this.os.fs.rm(resolve(cwd, p), { recursive: true }).catch(() => undefined);
+              for (const d of m.result?.dirs ?? []) await this.os.fs.mkdir(resolve(cwd, d));
               for (const f of m.result?.files ?? []) await this.os.fs.writeFile(resolve(cwd, f.path), f.data);
             } catch (err) {
               return finish({ error: `could not write files back: ${(err as Error).message}` });
@@ -270,11 +273,16 @@ export async function runJs(os: Kernel, code: string, opts: RunOptions & { netwo
   }
 }
 
+/**
+ * Runs a WASI program. With `cwd`, the program sees that folder's files (copied
+ * in, as for Python) and what it writes, creates or deletes there is written back.
+ */
 export async function runWasm(os: Kernel, wasm: Uint8Array, opts: RunOptions & { args?: string[]; stdin?: string; name?: string; ppid?: number } = {}): Promise<RunResult> {
-  if (host) return host.run('wasm', { wasm, args: opts.args, stdin: opts.stdin, name: opts.name, ppid: opts.ppid }, opts);
+  if (host) return host.run('wasm', { wasm, args: opts.args, stdin: opts.stdin, name: opts.name, ppid: opts.ppid, env: opts.env }, opts);
   const sb = new Sandbox(os, { name: opts.name ?? 'wasm', ppid: opts.ppid });
   try {
-    return await sb.run({ op: 'wasm', wasm, args: opts.args, stdin: opts.stdin, name: opts.name }, opts);
+    const files = opts.cwd ? await snapshot(os, opts.cwd) : undefined;
+    return await sb.run({ op: 'wasm', wasm, args: opts.args, stdin: opts.stdin, name: opts.name, files, cwd: opts.cwd, env: opts.env }, opts);
   } finally {
     sb.dispose();
   }

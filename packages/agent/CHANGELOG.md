@@ -5,6 +5,8 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.0
 
+- `run_wasm` programs see the working folder's files; the prompt points to
+  `pkg search` for more software.
 - **Read before edit**: an existing file must be read (or written) by the
   agent before it edits or overwrites it, and an edit is refused when the
   file changed since (the user, a command or another agent changed it); the
