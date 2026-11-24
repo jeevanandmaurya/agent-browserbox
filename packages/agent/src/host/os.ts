@@ -1,3 +1,4 @@
+import type { BuiltinPromptInput } from '../providers/builtin-run.js';
 import type { BoxShell, BrowserBox, DevLogEntry, DevServer, FileStat } from '@jeevanand/agent-browserbox-sdk';
 import { McpHub } from '../ext/mcp.js';
 import type { Provider } from '../types.js';
@@ -84,6 +85,12 @@ export interface AgentUi {
   clipboardRead?(): Promise<string>;
   clipboardWrite?(text: string): Promise<void>;
   speak?(text: string): void;
+  /**
+   * Runs a prompt on the browser's built-in model in a page, for an agent in a
+   * worker (where the Prompt API may be missing). Without it, the agent uses
+   * `LanguageModel` in its own scope when there is one.
+   */
+  builtinPrompt?(input: BuiltinPromptInput, signal: AbortSignal): Promise<string>;
 }
 
 export interface AgentOsOptions {
@@ -350,6 +357,8 @@ export class AgentOs {
   readonly version: string;
   readonly rootKind: 'opfs' | 'memory';
   readonly ui: { call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak', ...args: unknown[]): Promise<T> } | null;
+  /** The page that runs the built-in model for this agent, if the host gave one. */
+  readonly builtinPrompt: AgentUi['builtinPrompt'] | undefined;
 
   #box: BrowserBox;
   /** The agent's shells, reopened on a new box after setBox(). */
@@ -391,6 +400,7 @@ export class AgentOs {
     if (opts.ui?.openApp) apps = opts.ui.apps ?? [];
     this.rootKind = box.storage;
     const ui = opts.ui ?? {};
+    this.builtinPrompt = ui.builtinPrompt;
     this.ui =
       ui.clipboardRead || ui.clipboardWrite || ui.speak
         ? {

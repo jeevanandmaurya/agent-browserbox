@@ -49,6 +49,37 @@ interface Wrapped {
 }
 type Sealed = { iv: Uint8Array<ArrayBuffer>; data: ArrayBuffer };
 
+/**
+ * A passkey that unlocks the profile: the data key wrapped by a key derived
+ * from the passkey's PRF output for `input` (WebAuthn PRF extension). Kept as
+ * `#passkey:<credential id>`, beside the password's `#wrapped`.
+ */
+interface PasskeyRecord {
+  /** The credential id, base64url (as PublicKeyCredential.id). */
+  id: string;
+  label: string;
+  created: number;
+  /** What the passkey's PRF is evaluated on (32 random bytes); also the HKDF salt. */
+  input: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  wrapped: ArrayBuffer;
+}
+/** A passkey as windows see it: enough to ask the authenticator, nothing secret. */
+export interface PasskeyInfo {
+  id: string;
+  label: string;
+  created: number;
+  input: Uint8Array<ArrayBuffer>;
+}
+const PASSKEY = '#passkey:';
+
+/** The key that wraps the data key for one passkey, from its PRF output. */
+async function prfKey(prf: Uint8Array<ArrayBuffer>, input: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+  if (prf.byteLength < 32) throw new Error('the passkey gave too short a secret');
+  const base = await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: input, info: new TextEncoder().encode('bbx-passkey-unlock-v1') }, base, { name: 'AES-GCM', length: 256 }, false, ['wrapKey', 'unwrapKey']);
+}
+
 const ITERATIONS = 310_000;
 
 async function passwordKey(password: string, salt: Uint8Array<ArrayBuffer>, iterations: number): Promise<CryptoKey> {
@@ -127,6 +158,61 @@ export class Secrets {
     }
   }
 
+  /** Passkeys that can unlock this profile (only with a password set). */
+  async passkeys(): Promise<PasskeyInfo[]> {
+    if (this.dbName === null) return [];
+    return (await all(await this.#open()))
+      .filter(([k]) => k.startsWith(PASSKEY))
+      .map(([, v]) => {
+        const r = v as PasskeyRecord;
+        return { id: r.id, label: r.label, created: r.created, input: r.input };
+      })
+      .sort((a, b) => a.created - b.created);
+  }
+
+  /**
+   * Adds a passkey that unlocks the profile, beside its password. The window
+   * made the passkey and evaluated its PRF on `input`; the password (asked
+   * again) gives the data key to wrap. False when the password is wrong.
+   */
+  async addPasskey(password: string, p: { id: string; label: string; input: Uint8Array<ArrayBuffer>; prf: Uint8Array<ArrayBuffer> }): Promise<boolean> {
+    if (this.dbName === null) throw new Error('an in-memory box has no password');
+    const db = await this.#open();
+    const w = await tx<Wrapped | undefined>(db, 'readonly', (s) => s.get('#wrapped'));
+    if (!w) throw new Error('Set a password first: a passkey unlocks a profile that has one.');
+    if (!/^[A-Za-z0-9_-]{8,1400}$/.test(p.id) || !(p.input instanceof Uint8Array) || p.input.byteLength !== 32) throw new Error('not a passkey');
+    let raw: CryptoKey;
+    try {
+      raw = await crypto.subtle.unwrapKey('raw', w.wrapped, await passwordKey(password, w.salt, w.iterations), { name: 'AES-GCM', iv: w.iv }, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+    } catch {
+      return false;
+    }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const wrapped = await crypto.subtle.wrapKey('raw', raw, await prfKey(p.prf, p.input), { name: 'AES-GCM', iv });
+    const rec: PasskeyRecord = { id: p.id, label: p.label.slice(0, 80) || 'Passkey', created: Date.now(), input: p.input, iv, wrapped };
+    await tx(db, 'readwrite', (s) => s.put(rec, PASSKEY + p.id));
+    return true;
+  }
+
+  /** Signs in with a passkey: `prf` is its PRF output for the record's `input`. False when it does not match. */
+  async unlockWithPasskey(id: string, prf: Uint8Array<ArrayBuffer>): Promise<boolean> {
+    const db = await this.#open();
+    const rec = await tx<PasskeyRecord | undefined>(db, 'readonly', (s) => s.get(PASSKEY + id));
+    if (!rec) return false;
+    try {
+      const session = await crypto.subtle.unwrapKey('raw', rec.wrapped, await prfKey(prf, rec.input), { name: 'AES-GCM', iv: rec.iv }, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+      await tx(db, 'readwrite', (s) => s.put(session, '#session'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async removePasskey(id: string): Promise<void> {
+    if (this.dbName === null) return;
+    await tx(await this.#open(), 'readwrite', (s) => s.delete(PASSKEY + id));
+  }
+
   /** Signs out: the keys stay encrypted until the next unlock. */
   async lock(): Promise<void> {
     if (this.dbName === null) return;
@@ -135,14 +221,17 @@ export class Secrets {
 
   /**
    * Sets, changes (`null` removes) the password. Needs the keys unlocked; every
-   * saved key is re-encrypted under a new data key in one transaction.
+   * saved key is re-encrypted under a new data key in one transaction. Passkeys
+   * wrapped the old data key, so they are removed (add them again).
    */
   async setPassword(password: string | null): Promise<void> {
     if (this.dbName === null) throw new Error('an in-memory box has no password');
     const db = await this.#open();
     const current = await this.#key(db);
     const plain: Array<[string, Uint8Array]> = [];
+    const passkeys: string[] = [];
     for (const [k, v] of await all(db)) {
+      if (k.startsWith(PASSKEY)) passkeys.push(k);
       if (k.startsWith('#')) continue;
       const rec = v as Sealed;
       plain.push([k, new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: rec.iv }, current, rec.data))]);
@@ -169,7 +258,7 @@ export class Secrets {
       const iv = crypto.getRandomValues(new Uint8Array(12));
       puts.push([k, { iv, data: await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes as Uint8Array<ArrayBuffer>) } satisfies Sealed]);
     }
-    await commit(db, puts, deletes);
+    await commit(db, puts, [...deletes, ...passkeys]);
   }
 
   async get(name: string): Promise<string | null> {

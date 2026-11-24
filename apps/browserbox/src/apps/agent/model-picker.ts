@@ -19,6 +19,7 @@ function choices(cfg: AgentConfig): Choice[] {
   if (cfg.apiModel) list.push({ group: 'API', name: cfg.apiModel, hint: host(cfg.apiBaseUrl), active: (c) => c.provider === 'api', patch: { provider: 'api' } });
   if (cfg.localModel) list.push({ group: 'Local server', name: cfg.localModel, hint: host(cfg.localBaseUrl), active: (c) => c.provider === 'local', patch: { provider: 'local' } });
   list.push({ group: 'In this browser', name: webgpuName(cfg.webgpuModel), hint: 'WebGPU, offline', active: (c) => c.provider === 'webgpu', patch: { provider: 'webgpu' } });
+  if ('LanguageModel' in globalThis) list.push({ group: 'In this browser', name: 'Built-in model', hint: 'the browser’s own, offline', active: (c) => c.provider === 'builtin', patch: { provider: 'builtin' } });
   return list;
 }
 
@@ -26,6 +27,7 @@ function choices(cfg: AgentConfig): Choice[] {
 export function modelLabel(cfg: AgentConfig): string {
   if (cfg.provider === 'api') return cfg.apiModel || 'API';
   if (cfg.provider === 'local') return cfg.localModel || 'Local server';
+  if (cfg.provider === 'builtin') return 'Built-in model';
   return webgpuName(cfg.webgpuModel);
 }
 

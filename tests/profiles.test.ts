@@ -71,6 +71,45 @@ describe('password-locked keys', () => {
   });
 });
 
+describe('passkeys unlock a password-locked profile', () => {
+  it('adds one with the password, signs in with its PRF output, refuses a wrong one, and is removed by a password change', async () => {
+    const s = new Secrets('test-secrets-pk');
+    await s.set('api.key:x', 'sk-pk');
+    const input = crypto.getRandomValues(new Uint8Array(32));
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const id = 'Y3JlZGVudGlhbC1pZA';
+    await expect(s.addPasskey('pw', { id, label: 'Laptop', input, prf })).rejects.toThrow(/Set a password first/);
+
+    await s.setPassword('pw');
+    expect(await s.addPasskey('wrong', { id, label: 'Laptop', input, prf })).toBe(false);
+    expect(await s.addPasskey('pw', { id, label: 'Laptop', input, prf })).toBe(true);
+    const listed = await s.passkeys();
+    expect(listed.map((k) => [k.id, k.label])).toEqual([[id, 'Laptop']]);
+    expect(Object.keys(listed[0]!).sort()).toEqual(['created', 'id', 'input', 'label']);
+
+    await s.lock();
+    expect(await s.unlockWithPasskey(id, crypto.getRandomValues(new Uint8Array(32)))).toBe(false);
+    expect(await s.unlockWithPasskey('other', prf)).toBe(false);
+    expect(await s.status()).toBe('locked');
+    expect(await s.unlockWithPasskey(id, prf)).toBe(true);
+    expect(await s.status()).toBe('unlocked');
+    expect(await s.get('api.key:x')).toBe('sk-pk');
+    // The agent's reader sees the session a passkey opened, like a password's.
+    expect(await new BrowserSecrets('test-secrets-pk').get('api.key:x')).toBe('sk-pk');
+
+    // A new password means a new data key: old passkeys would unwrap the wrong one.
+    await s.setPassword('pw2');
+    expect(await s.passkeys()).toEqual([]);
+    await s.lock();
+    expect(await s.unlockWithPasskey(id, prf)).toBe(false);
+    expect(await s.unlock('pw2')).toBe(true);
+
+    expect(await s.addPasskey('pw2', { id, label: 'Again', input, prf })).toBe(true);
+    await s.removePasskey(id);
+    expect(await s.passkeys()).toEqual([]);
+  });
+});
+
 describe('the agent reads the same locked store', () => {
   it('sees keys while signed in, is refused when signed out, and never makes a new key then', async () => {
     const kernel = new Secrets('test-secrets-2');

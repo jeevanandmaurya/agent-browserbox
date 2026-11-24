@@ -1,5 +1,6 @@
 import type { ContributedCommand, ShellHandle } from '../kernel/api';
 import type { KernelCore } from '../kernel/kernel';
+import type { Secrets } from '../kernel/secrets';
 import type { PermDecision, PermRequest } from '../kernel/perms';
 import type { Proc } from '../kernel/proc';
 import type { KernelEvents, KernelLogLine } from '../kernel/types';
@@ -225,6 +226,14 @@ export class KernelServer {
         await os.secrets.setPassword(password);
         os.bus.emit('secrets:lock', { state: await os.secrets.status() });
       },
+      'secrets.passkeys': () => os.secrets.passkeys(),
+      'secrets.addPasskey': (password: string, p: Parameters<Secrets['addPasskey']>[1]) => os.secrets.addPasskey(password, p),
+      'secrets.unlockWithPasskey': async (id: string, prf: Uint8Array<ArrayBuffer>) => {
+        const ok = await os.secrets.unlockWithPasskey(id, prf);
+        if (ok) os.bus.emit('secrets:lock', { state: await os.secrets.status() });
+        return ok;
+      },
+      'secrets.removePasskey': (id: string) => os.secrets.removePasskey(id),
 
       // Processes. A window's own processes (apps, sandboxes) are registered here so they show up everywhere.
       'procs.spawn': (p: WireProc) => {

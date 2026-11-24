@@ -126,7 +126,7 @@ export function capabilities(ctx: AppContext): HTMLElement {
                 { class: c.ok ? '' : 'missing' },
                 h('span', { class: `badge ${c.ok ? 'ok' : 'err'}`, 'aria-label': c.ok ? 'available' : 'unavailable', title: c.ok ? 'available' : 'unavailable' }, c.ok ? '✓' : '✗'),
                 h('span', { class: 'si-cap-label' }, c.label),
-                h('span', { class: 'muted si-cap-use' }, c.use),
+                h('span', { class: 'muted si-cap-use' }, (c.used ?? !!c.use) ? `Used for: ${c.use}` : c.ok ? 'Available; not used yet' : ''),
               ),
             ),
           ),
@@ -140,7 +140,7 @@ export function capabilities(ctx: AppContext): HTMLElement {
   return h(
     'div',
     { class: 'si-section' },
-    heading('Capabilities', `${ok} of ${caps.length} platform features available in this browser`),
+    heading('Capabilities', `${ok} of ${caps.length} platform features available in this browser; BrowserBox uses ${caps.filter((c) => c.ok && (c.used ?? !!c.use)).length} of them`),
     h('div', { class: 'si-meter', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': String(caps.length), 'aria-valuenow': String(ok), 'aria-label': 'Available capabilities' }, h('div', { style: `width: ${(ok / Math.max(1, caps.length)) * 100}%` })),
     filter,
     empty,

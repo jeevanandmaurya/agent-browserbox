@@ -10,6 +10,7 @@ export { diffFiles, type FileDiff } from './diff.js';
 export * from './ext/library.js';
 export { MCP_KEY, mcpTokenName, type McpServerConfig } from './ext/mcp.js';
 export * from './providers/webllm-store.js';
+export { builtinAvailability, runBuiltinPrompt, type BuiltinAvailability, type BuiltinPromptInput } from './providers/builtin-run.js';
 export { MODE_TAG } from './mode.js';
 export { ProviderError, type Block, type ContextReport, type JsonSchema, type Msg, type ToolSpec, type Usage } from './types.js';
 export { AGENT_HOME, HOME } from './host/paths.js';

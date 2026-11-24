@@ -34,6 +34,15 @@ the GitHub release notes.
   program gets with `require(path)` (UMD and CommonJS builds work).
 - **JavaScript programs** (`js`, packages, `~/.local/bin`) get `stdin` and
   `exit(code)`.
+- **Passkeys unlock a profile**: `secrets.passkeys()`, `addPasskey()`,
+  `unlockWithPasskey()`, `removePasskey()` (optional on `SecretsApi`). A
+  window runs WebAuthn with the PRF extension; the kernel derives a key from
+  the PRF output (HKDF) that wraps the data key, beside the password.
+  `setPassword` removes passkeys (the data key changes).
+- **Capabilities**: `PlatformCap.used` says whether BrowserBox uses a
+  feature; `use` is empty when it does not. Uses that did not exist are gone,
+  and passkeys, App badge, File Handling, Document Picture-in-Picture, Idle
+  Detection and MediaRecorder are detected.
 
 ## 0.3.1
 

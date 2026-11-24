@@ -250,6 +250,10 @@ export class RemoteKernel implements Kernel {
     unlock: (password) => this.call('secrets.unlock', password),
     lock: () => this.call('secrets.lock'),
     setPassword: (password) => this.call('secrets.setPassword', password),
+    passkeys: () => this.call('secrets.passkeys'),
+    addPasskey: (password, p) => this.call('secrets.addPasskey', password, p),
+    unlockWithPasskey: (id, prf) => this.call('secrets.unlockWithPasskey', id, prf),
+    removePasskey: (id) => this.call('secrets.removePasskey', id),
   };
 
   readonly dev: DevApi = {

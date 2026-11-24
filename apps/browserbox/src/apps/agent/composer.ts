@@ -139,6 +139,7 @@ export function createComposer(
       plusBtn,
       [
         { label: 'Attach files', icon: 'clip', onSelect: () => file.click() },
+        ...('getDisplayMedia' in (navigator.mediaDevices ?? {}) ? [{ label: 'Share a screen', icon: 'image' as const, hint: 'One picture of a screen, window or tab', onSelect: () => void shareScreen() }] : []),
         { label: 'Commands', icon: 'slash', hint: '/compact, /context, your own…', onSelect: () => setText('/') },
       ],
       'Add',
@@ -215,6 +216,19 @@ export function createComposer(
     e.preventDefault();
     void attachFiles(files.map((f, i) => (f.name && f.name !== 'image.png' ? f : new File([f], `pasted-${Date.now()}${i ? `-${i}` : ''}.${f.type.split('/')[1] || 'png'}`, { type: f.type }))));
   });
+
+  /** One frame of a screen, window or tab you pick, attached as an image. Never continuous. */
+  async function shareScreen(): Promise<void> {
+    let file: File;
+    try {
+      file = await captureScreen();
+    } catch (err) {
+      const e = err as DOMException;
+      if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') os.notify({ title: 'Could not capture the screen', body: e.message, level: 'error' });
+      return;
+    }
+    await attachFiles([file]);
+  }
 
   async function attachFiles(files: File[]): Promise<void> {
     for (const f of files) {
@@ -314,3 +328,33 @@ export function createComposer(
     },
   };
 }
+
+/** The longest side of a captured screen, in pixels: enough to read text, small enough for a model. */
+const MAX_CAPTURE = 1920;
+
+/** Asks the browser for a screen, window or tab, takes one frame, and stops sharing at once. */
+async function captureScreen(): Promise<File> {
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+  try {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = stream;
+    await video.play();
+    // The first frame can arrive a moment after play() resolves.
+    for (let i = 0; i < 50 && !video.videoWidth; i++) await new Promise((r) => setTimeout(r, 20));
+    if (!video.videoWidth) throw new Error('The shared screen sent no picture.');
+    const scale = Math.min(1, MAX_CAPTURE / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext('2d')!.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('Could not encode the picture.');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    return new File([blob], `screen-${stamp}.png`, { type: 'image/png' });
+  } finally {
+    for (const t of stream.getTracks()) t.stop();
+  }
+}
+

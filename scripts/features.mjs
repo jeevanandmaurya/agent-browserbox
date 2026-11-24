@@ -68,6 +68,7 @@ function respond(r) {
   if (lastUser.includes('improve the report')) return call('update_artifact', { id: 'weekly-report', edits: [{ old: 'All good.', new: 'All good, shipped 3 features.' }], note: 'more detail' });
   if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
   if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
+  if (lastUser.includes('touch while away')) return call('shell', { command: 'touch /home/user/away.txt' });
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
   return text(`echo: ${lastUser.slice(0, 120)}`);
 }
@@ -107,7 +108,10 @@ const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 let failed = 0;
+// ONLY=text runs just the checks whose name has it (for self-contained checks, which open their own window).
+const only = process.env.ONLY;
 const check = async (name, fn) => {
+  if (only && !name.includes(only)) return;
   try {
     const out = await fn();
     console.log(`ok   ${name}${out === undefined ? '' : ' → ' + (typeof out === 'string' ? out : JSON.stringify(out))}`);
@@ -1148,6 +1152,168 @@ await check('profiles: a second profile is separate; a password locks keys until
     await desk.waitForFunction(() => globalThis.bbx?.ready, null, { timeout: 60000 });
     if (!desk.url().includes('profile=default') || (await desk.locator('.pf-signin').count()) || !(await desk.evaluate(() => bbx.secrets.has('test.key')))) throw new Error(`the desktop opened another profile or lost the key: ${desk.url()}`);
     return 'second profile separate; sign-out locked the keys, a wrong password was refused, the keys came back; the desktop opened from here is the same profile, signed in';
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('platform: honest capabilities, notifications while away, a screen picture, passkey sign-in', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 }, permissions: ['notifications'] });
+  // Stand-ins for what a test browser cannot do by itself: being in the background, and picking a screen.
+  await ctx.addInitScript(() => {
+    globalThis.__away = false;
+    Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => globalThis.__away });
+    globalThis.__notes = [];
+    class FakeNotification {
+      static permission = 'granted';
+      static requestPermission = async () => 'granted';
+      constructor(title, o = {}) {
+        this.title = title;
+        this.o = o;
+        this.closed = false;
+        globalThis.__notes.push(this);
+      }
+      close() {
+        this.closed = true;
+      }
+    }
+    globalThis.Notification = FakeNotification;
+    globalThis.__opened = [];
+    addEventListener('bbx:open-chat', (e) => globalThis.__opened.push(e.detail));
+    if (navigator.mediaDevices) {
+      navigator.mediaDevices.getDisplayMedia = async () => {
+        const c = Object.assign(document.createElement('canvas'), { width: 2400, height: 1200 });
+        const g = c.getContext('2d');
+        g.fillStyle = '#c00';
+        g.fillRect(0, 0, 2400, 1200);
+        const stream = c.captureStream(5);
+        setInterval(() => g.fillRect(0, 0, 10, 10), 100);
+        return stream;
+      };
+    }
+  });
+  const p = await ctx.newPage();
+  const done = [];
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+
+    // 1. The capability list says what is used, and only that.
+    await p.evaluate(() => bbx.openApp('sysinfo', { section: 'caps' }));
+    await p.getByText('Used for: Sharing a picture of a screen with the agent').waitFor({ timeout: 15000 });
+    const caps = await p.evaluate(() => bbx.caps.filter((c) => ['webrtc', 'share', 'capture', 'passkeys', 'notifications'].includes(c.id)).map((c) => `${c.id}:${c.used}`).join(' '));
+    if (caps !== 'notifications:true share:false passkeys:true webrtc:false capture:true') throw new Error(`capabilities: ${caps}`);
+    await p.keyboard.press('Escape');
+    done.push('capabilities honest');
+
+    // 2. Away from the window: an approval waiting, then the chat finishing, each a notification.
+    await p.evaluate(() => (globalThis.__away = true));
+    await p.locator('.ag-input').fill('touch while away');
+    await p.locator('.ag-input').press('Enter');
+    await p.locator('.ag-approval').waitFor({ timeout: 30000 });
+    const ask = await p.waitForFunction(() => globalThis.__notes.find((n) => /needs your approval/.test(n.title)) && globalThis.__notes.map((n) => ({ title: n.title, body: n.o.body, sticky: n.o.requireInteraction, closed: n.closed })), null, { timeout: 15000 }).then((h) => h.jsonValue());
+    const a = ask.find((n) => /needs your approval/.test(n.title));
+    if (!a.sticky || !a.body.includes('touch /home/user/away.txt')) throw new Error(`approval notification: ${JSON.stringify(a)}`);
+    // Clicking it brings the chat forward.
+    await p.evaluate(() => globalThis.__notes.find((n) => /approval/.test(n.title)).onclick());
+    if (!(await p.evaluate(() => globalThis.__opened.length === 1 && typeof globalThis.__opened[0] === 'string'))) throw new Error('the click did not open the chat');
+    await p.locator('.ag-approval button', { hasText: 'Allow once' }).click();
+    await p.waitForFunction(() => globalThis.__notes.find((n) => /approval/.test(n.title)).closed, null, { timeout: 10000 });
+    await p.waitForFunction(() => globalThis.__notes.some((n) => n.title.startsWith('Done:')), null, { timeout: 30000 });
+    await p.evaluate(() => (globalThis.__away = false));
+    done.push('approval notified (closed once answered, click opens the chat); done notified');
+
+    // 3. One picture of a screen, attached to the message, scaled down.
+    await p.locator('.cp-plus').click();
+    await p.locator('.menu .pop-item', { hasText: 'Share a screen' }).click();
+    await p.locator('.cp-chips:not([hidden])', { hasText: 'screen-' }).waitFor({ timeout: 15000 });
+    const shot = await p.evaluate(async () => {
+      const name = document.querySelector('.cp-chips').textContent.match(/screen-[\d-]+\.png/)[0];
+      const found = (await bbx.fs.glob(`**/${name}`, '/home'))[0];
+      const bytes = await bbx.fs.readFile(found);
+      const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      return { found, png: bytes[1] === 0x50, w: bmp.width, h: bmp.height };
+    });
+    if (!shot.png || shot.w !== 1920 || shot.h !== 960) throw new Error(`screen picture: ${JSON.stringify(shot)}`);
+    done.push(`screen ${shot.w}×${shot.h} attached`);
+
+    // 4. A passkey (a virtual authenticator with PRF) signs in instead of the password.
+    const cdp = await ctx.newCDPSession(p);
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, hasPrf: true, automaticPresenceSimulation: true } });
+    await p.evaluate(() => bbx.secrets.set('test.key', 'pk-secret'));
+    await p.evaluate(() => bbx.openApp('settings', { section: 'profile' }));
+    await p.getByLabel('New password', { exact: true }).fill('pass1234');
+    await p.getByLabel('Repeat the new password').fill('pass1234');
+    await p.getByRole('button', { name: 'Set password' }).click();
+    await p.getByRole('button', { name: 'Add a passkey' }).waitFor();
+    await p.getByLabel('Name for the passkey').fill('Test key');
+    await p.getByLabel('Your password').fill('pass1234');
+    await p.getByRole('button', { name: 'Add a passkey' }).click();
+    await p.getByText(/Test key · added/).waitFor({ timeout: 15000 });
+    await Promise.all([p.waitForEvent('load'), p.evaluate(() => bbx.secrets.lock().then(() => location.reload()))]);
+    await p.waitForSelector('.pf-signin', { timeout: 60000 });
+    await p.getByRole('button', { name: 'Sign in with a passkey' }).click();
+    await p.waitForSelector('.ag-input', { timeout: 60000 });
+    if (!(await p.evaluate(() => bbx.secrets.has('test.key')))) throw new Error('the key is gone after the passkey sign-in');
+    if ((await p.evaluate(() => bbx.secrets.status())) !== 'unlocked') throw new Error('not signed in');
+    done.push('passkey added, signed out, signed in with it');
+    return done.join('; ');
+  } catch (err) {
+    throw new Error(`${done.join('; ')} | ${err.message}`);
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('built-in model: the agent in its worker uses the page’s Prompt API, with text tool calls', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  // Test browsers have no on-device model: this one plays it, in the page only (not in workers).
+  await ctx.addInitScript(() => {
+    if (typeof document === 'undefined') return;
+    globalThis.__lm = [];
+    globalThis.LanguageModel = {
+      availability: async () => 'available',
+      create: async (o) => ({
+        destroy() {},
+        promptStreaming(input) {
+          globalThis.__lm.push({ system: o.initialPrompts[0].content.slice(0, 60), turns: o.initialPrompts.length, input: input.slice(0, 200) });
+          const reply = input.includes('<tool_result>') ? `The command printed ${/builtin-\w+/.exec(input)?.[0]}.` : '<tool_call>{"name": "shell", "arguments": {"command": "echo builtin-ok"}}</tool_call>';
+          return (async function* () {
+            for (const part of reply.match(/.{1,12}/gs)) yield part;
+          })();
+        },
+      }),
+    };
+  });
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => {
+      bbx.perms.mode = 'auto';
+      bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), provider: 'builtin' });
+    });
+    await p.locator('.cp-model').click();
+    const picked = await p.locator('.menu .pop-item', { hasText: 'Built-in model' }).count();
+    await p.keyboard.press('Escape');
+    await p.locator('.ag-input').fill('list files please');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('The command printed builtin-ok.'), null, { timeout: 60000 });
+    const calls = await p.evaluate(() => globalThis.__lm);
+    if (calls.length !== 2 || !calls[0].input.includes('list files please') || !calls[1].input.includes('<tool_result>')) throw new Error(JSON.stringify(calls));
+    if (!picked) throw new Error('the model menu does not offer the built-in model');
+    return `2 prompts (system + ${calls[1].turns - 1} turns of history the second time); the tool ran; the menu offers it`;
   } finally {
     await ctx.close();
   }

@@ -5,6 +5,7 @@ import type { KCore } from './kcore';
 import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
 import type { KernelEvents, LockState, Notice, ShellAction } from './types';
+import type { PasskeyInfo } from './secrets';
 import type { Stat } from './vfs/types';
 
 /**
@@ -94,8 +95,15 @@ export interface SecretsApi {
   unlock(password: string): Promise<boolean>;
   /** Signs out: the keys stay encrypted until the next unlock. */
   lock(): Promise<void>;
-  /** Sets or changes the password (`null` removes it). Needs the keys unlocked. */
+  /** Sets or changes the password (`null` removes it). Needs the keys unlocked. Removes the profile's passkeys. */
   setPassword(password: string | null): Promise<void>;
+  /** Passkeys that unlock the profile (WebAuthn PRF), with what to evaluate their PRF on. */
+  passkeys?(): Promise<PasskeyInfo[]>;
+  /** Adds a passkey the window made; `prf` is its PRF output for `input`. False when the password is wrong. */
+  addPasskey?(password: string, p: { id: string; label: string; input: Uint8Array<ArrayBuffer>; prf: Uint8Array<ArrayBuffer> }): Promise<boolean>;
+  /** Signs in with a passkey's PRF output; false when it does not match. */
+  unlockWithPasskey?(id: string, prf: Uint8Array<ArrayBuffer>): Promise<boolean>;
+  removePasskey?(id: string): Promise<void>;
 }
 
 // ---- Shell sessions ---------------------------------------------------------

@@ -5,7 +5,7 @@ import type { Kernel, WithFiles, WithSettings } from './host/os.js';
  * OpenAI, OpenRouter, Groq…). local: a model server on your own machine or
  * network (Ollama, LM Studio…). webgpu: a model in this tab.
  */
-export type ProviderId = 'api' | 'local' | 'webgpu';
+export type ProviderId = 'api' | 'local' | 'webgpu' | 'builtin';
 /** The wire protocol of an API: Anthropic's own for api.anthropic.com, OpenAI-compatible for everything else. */
 export type Protocol = 'anthropic' | 'openai';
 
@@ -173,7 +173,7 @@ export function migrate(stored: Record<string, unknown>): AgentConfig {
     if (stored.localBaseUrl === undefined && isLocalUrl(url)) Object.assign(cfg, { provider: 'local', localBaseUrl: url, localModel: str('openaiModel') ?? '' });
     else Object.assign(cfg, { provider: 'api', apiBaseUrl: url, apiModel: str('openaiModel') ?? '' });
   }
-  if (!['api', 'local', 'webgpu'].includes(cfg.provider)) cfg.provider = DEFAULT_CONFIG.provider;
+  if (!['api', 'local', 'webgpu', 'builtin'].includes(cfg.provider)) cfg.provider = DEFAULT_CONFIG.provider;
   const keyHost = str('legacyKeyHost') ?? (str('openaiBaseUrl') ? hostOf(str('openaiBaseUrl')!) : undefined);
   if (keyHost) cfg.legacyKeyHost = keyHost;
   return cfg;
@@ -189,6 +189,7 @@ export function saveConfig(os: WithSettings, patch: Partial<AgentConfig>): Agent
 export function describeModel(cfg: AgentConfig): string {
   if (cfg.provider === 'local') return `${cfg.localModel || 'no model'} @ ${hostOf(cfg.localBaseUrl)}`;
   if (cfg.provider === 'api') return `${cfg.apiModel || 'no model'} @ ${hostOf(cfg.apiBaseUrl)}`;
+  if (cfg.provider === 'builtin') return 'Built into this browser';
   return `${cfg.webgpuModel} (WebGPU)`;
 }
 

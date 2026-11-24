@@ -5,6 +5,10 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.0
 
+- **The browser's built-in model** (`provider: 'builtin'`, Chrome's Prompt
+  API) as a model source, with the same text tool-call format as the WebGPU
+  models. In a worker, `ui.builtinPrompt` lets a page run the prompt;
+  `runBuiltinPrompt` and `builtinAvailability` are exported for that page.
 - `run_wasm` programs see the working folder's files; the prompt points to
   `pkg search` for more software.
 - **Read before edit**: an existing file must be read (or written) by the

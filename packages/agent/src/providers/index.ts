@@ -13,5 +13,6 @@ export async function createProvider(os: Kernel, cfg: AgentConfig): Promise<Prov
     return (await import('./openai.js')).createOpenAiProvider(cfg, { kind: 'api', baseUrl: cfg.apiBaseUrl, model: cfg.apiModel }, key);
   }
   if (cfg.provider === 'local') return (await import('./openai.js')).createOpenAiProvider(cfg, { kind: 'local', baseUrl: cfg.localBaseUrl, model: cfg.localModel }, await os.secrets.get(SECRET.local));
+  if (cfg.provider === 'builtin') return (await import('./builtin.js')).createBuiltinProvider(os, cfg);
   return (await import('./webllm.js')).createWebLlmProvider(os, cfg);
 }

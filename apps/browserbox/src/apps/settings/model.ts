@@ -1,5 +1,5 @@
 import { agentsOf } from '@/app/agents';
-import { DEFAULT_CONFIG, API_PRESETS, LOCAL_PRESETS, SECRET, loadConfig, protocolOf, saveConfig, type AgentConfig, type ProviderId } from '@jeevanand/agent-browserbox/ui';
+import { builtinAvailability, DEFAULT_CONFIG, API_PRESETS, LOCAL_PRESETS, SECRET, loadConfig, protocolOf, saveConfig, type AgentConfig, type ProviderId } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { keyField } from './keyfield';
@@ -10,6 +10,7 @@ const PROVIDERS: Array<{ id: ProviderId; title: string; text: string }> = [
   { id: 'api', title: 'API', text: 'A hosted model with an API key: Anthropic, OpenAI, OpenRouter, Groq and others.' },
   { id: 'local', title: 'Local server', text: 'Ollama, LM Studio, llama.cpp or vLLM on your machine or network.' },
   { id: 'webgpu', title: 'In this browser', text: 'A small model on WebGPU. Offline after the first download.' },
+  { id: 'builtin', title: 'Built into the browser', text: 'The browser’s own on-device model (Chrome’s Prompt API). No download by you, no key, offline.' },
 ];
 
 /** A labelled control. */
@@ -196,6 +197,18 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
 
   // ---- WebLLM: download, use, delete and import in-browser models
   panels.set('webgpu', h('div', { class: 'st-panel' }, webllmManager(ctx, () => cfg, save)));
+  // ---- The browser's own model: only says whether this browser has it.
+  const builtinNote = h('p', { class: 'st-note', role: 'status' }, 'Checking this browser…');
+  void builtinAvailability().then((a) => {
+    builtinNote.className = a === 'unavailable' ? 'st-note st-error' : 'st-note';
+    builtinNote.textContent = {
+      available: 'Ready: this browser has its model downloaded.',
+      downloadable: 'This browser can download its model (a few GB, once) when you first send a message.',
+      downloading: 'This browser is downloading its model.',
+      unavailable: 'Not available in this browser. It is in Chrome on desktop (138 or later) on devices with enough memory and disk space.',
+    }[a];
+  });
+  panels.set('builtin', h('div', { class: 'st-panel' }, builtinNote, h('p', { class: 'muted st-note' }, 'A small model, like the WebGPU ones: good for short tasks and questions, weaker with many tools and long work. Images are not sent to it.')));
   for (const [pid, el] of panels) el.hidden = pid !== cfg.provider;
 
   // ---- Common

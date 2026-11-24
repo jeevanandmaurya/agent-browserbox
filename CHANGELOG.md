@@ -33,6 +33,16 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 - The first packages to install that way: `qjs` (QuickJS), `rg` (ripgrep),
   `prettier`, `marked` (Markdown to HTML) and `yaml2json` / `json2yaml`.
 - WebAssembly programs can read and write files in the folder they run in.
+- **Notifications while you are away**: an approval or a question waiting,
+  and a chat finished (with its last words); click one to open that chat.
+- **Share a screen** (+ in the message box): one picture of a screen,
+  window or tab, attached for the agent to see.
+- **Passkeys**: sign in to a password-protected profile with your
+  fingerprint, face, phone or security key (Settings → Profile).
+- **Built into the browser**: Chrome's on-device model as a fourth model
+  source (Settings → Model), where the browser has it.
+- System → Capabilities says honestly what BrowserBox uses each feature for,
+  and which are available but not used yet.
 
 ## 0.3.2
 

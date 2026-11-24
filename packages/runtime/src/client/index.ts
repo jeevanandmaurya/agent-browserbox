@@ -14,6 +14,7 @@ export type { Kernel, FsApi, MountInfo, ProcsApi, SecretsApi, SettingsApi, Shell
 export type { Capability, PermDecision, PermMode, PermRequest, Prompter } from '../kernel/perms';
 export type { Proc, ProcKind, ProcState, SpawnOptions } from '../kernel/proc';
 export type { KernelEvents, KernelLogLine, LockState, Notice, ShellAction } from '../kernel/types';
+export type { PasskeyInfo } from '../kernel/secrets';
 export { createProfile, DEFAULT_PROFILE, deleteProfile, getProfile, lastProfile, listProfiles, setLastProfile, updateProfile, type Profile } from '../kernel/profiles';
 export type { Stat } from '../kernel/vfs/types';
 export type { DevApi, DevInfo, DevLog, DevLogLevel, DevPage, DevStartOptions, WireRequest, WireResponse } from '../kernel/dev/types';

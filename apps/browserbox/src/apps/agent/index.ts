@@ -3,6 +3,7 @@ import './style.css';
 import './chat.css';
 import './workbench.css';
 import { OS_URL } from '@/app/config';
+import { notifyAway, OPEN_CHAT_EVENT } from '@/app/attention';
 import { profileWindow, withProfile } from '@/app/boot';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
@@ -245,7 +246,14 @@ const app: AppModule = {
             shell.setTitle(s.title);
             win.setTitle(s.title);
           });
-          if (document.hidden && e.reason === 'end' && globalThis.Notification?.permission === 'granted') new Notification('BrowserBox agent finished');
+          if (e.reason === 'end' || e.reason === 'error') {
+            const sid = agent.sid;
+            void agent.snapshot().then((snap) => {
+              const last = [...snap.messages].reverse().find((m) => m.role === 'assistant' && m.content.some((b) => b.type === 'text'));
+              const text = last?.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join(' ').replace(/\s+/g, ' ').trim();
+              notifyAway({ title: e.reason === 'end' ? `Done: ${snap.title || 'chat'}` : `Stopped with an error: ${snap.title || 'chat'}`, body: text, tag: `bbx-done-${sid}`, sid });
+            });
+          }
         }
       });
     }
@@ -319,6 +327,9 @@ const app: AppModule = {
         composer.focus();
       });
     }
+
+    // A notification about one of your chats was clicked: show that chat.
+    window.addEventListener(OPEN_CHAT_EVENT, (e) => void openSession((e as CustomEvent<string>).detail), { signal: ctx.proc.signal });
 
     function openSession(id: string): Promise<void> {
       if (id === agent.sid) return Promise.resolve(shell.closeDrawer());

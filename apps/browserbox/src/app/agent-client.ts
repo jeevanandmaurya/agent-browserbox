@@ -1,7 +1,9 @@
-import type { AgentEvent, AgentHandle, AgentsApi } from '@jeevanand/agent-browserbox/ui';
+import type { AgentEvent, AgentHandle, AgentsApi, BuiltinPromptInput } from '@jeevanand/agent-browserbox/ui';
+import { runBuiltinPrompt } from '@jeevanand/agent-browserbox/ui';
 import type { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import type { PermRequest, Prompter } from '@jeevanand/agent-browserbox-runtime/client';
 import { Peer } from '@jeevanand/agent-browserbox-runtime/client';
+import { notifyAway } from './attention';
 
 type Ask = { askId: number; kind: 'perm' | 'user' | 'ui'; sid?: string; payload: unknown };
 
@@ -50,6 +52,9 @@ export class AgentClient implements AgentsApi {
     const ctl = new AbortController();
     this.#asking.set(ask.askId, ctl);
     let value: unknown;
+    // Away from this window: say that something waits (the card shows when you come back).
+    const away = this.#awayNotice(ask);
+    ctl.signal.addEventListener('abort', away);
     try {
       if (ask.kind === 'perm') {
         const custom = ask.sid ? this.#sessions.get(ask.sid)?.prompter : undefined;
@@ -64,14 +69,30 @@ export class AgentClient implements AgentsApi {
         if (method === 'clipboard.write') value = await navigator.clipboard.writeText(String(args[0]));
         else if (method === 'clipboard.read') value = await navigator.clipboard.readText();
         else if (method === 'speak') speechSynthesis.speak(new SpeechSynthesisUtterance(String(args[0])));
+        else if (method === 'lm.prompt') value = await runBuiltinPrompt(args[0] as BuiltinPromptInput, { signal: ctl.signal }).then((text) => ({ text }), (err: Error) => ({ error: err.message }));
       }
     } catch (err) {
       if (ctl.signal.aborted) return;
       value = ask.kind === 'perm' ? 'deny' : ask.kind === 'ui' ? `failed: ${(err as Error).message}` : null;
     }
+    away();
     if (ctl.signal.aborted) return;
     this.#asking.delete(ask.askId);
     void peer.call('answer', ask.askId, value);
+  }
+
+  /** A notification for an approval or a question this window answers, when it is hidden. */
+  #awayNotice(ask: Ask): () => void {
+    const tag = `bbx-ask-${ask.askId}`;
+    if (ask.kind === 'perm') {
+      const req = ask.payload as PermRequest;
+      return notifyAway({ title: `${req.actor || 'The agent'} needs your approval`, body: `${req.title}: ${req.detail}`, tag, sid: ask.sid, sticky: true });
+    }
+    if (ask.kind === 'user' && ask.sid && this.#sessions.get(ask.sid)?.asker) {
+      const { question } = ask.payload as { question: string };
+      return notifyAway({ title: 'The agent has a question', body: question, tag, sid: ask.sid, sticky: true });
+    }
+    return () => undefined;
   }
 
   create: AgentsApi['create'] = async (opts) => this.#handle(await this.#call<{ sid: string; pid: number }>('agent.create', opts));

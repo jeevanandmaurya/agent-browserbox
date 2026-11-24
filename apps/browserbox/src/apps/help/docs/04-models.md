@@ -31,3 +31,7 @@ A small model that runs on your GPU (WebGPU) inside the tab. Nothing leaves your
 - **Import from a folder** takes a model you compiled with MLC.
 
 Small models follow complex instructions less reliably and have a short memory (about 4,000 tokens): in long chats the oldest messages drop out of their view.
+
+## Built into the browser
+
+Some browsers ship their own small model (Chrome on desktop, version 138 or later, on devices with enough memory and disk space: Chrome's Prompt API). Choose **Built into the browser** in Settings → Model; the panel says whether this browser has it. Nothing to download yourself (the browser fetches its model once, on first use), no key, and it works offline. Like the WebGPU models it is small: good for questions and short tasks, and it cannot see images.

@@ -1,3 +1,4 @@
+import { passkeyProblem, passkeysAvailable, usePasskey } from '@/app/passkeys';
 import { createProfile, listProfiles, type Profile, type RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { PROFILE, switchProfile } from '@/app/boot';
 import { modal } from './dialog';
@@ -136,6 +137,28 @@ function signInScreen(os: RemoteKernel, root: HTMLElement, profile: Profile): Pr
       password,
       button,
     );
+    // A passkey instead of the password, where this profile has one.
+    const passkeyBtn = h('button', { class: 'btn', type: 'button', hidden: true }, 'Sign in with a passkey');
+    passkeyBtn.addEventListener('click', async () => {
+      const keys = (await os.secrets.passkeys?.().catch(() => [])) ?? [];
+      passkeyBtn.disabled = true;
+      error.hidden = true;
+      try {
+        const got = await usePasskey(keys);
+        if (await os.secrets.unlockWithPasskey!(got.id, got.prf)) return resolve();
+        error.textContent = 'That passkey does not unlock this profile. Use the password.';
+        error.hidden = false;
+      } catch (err) {
+        const why = passkeyProblem(err);
+        if (why) {
+          error.textContent = why;
+          error.hidden = false;
+        }
+      } finally {
+        passkeyBtn.disabled = false;
+      }
+    });
+    if (passkeysAvailable() && os.secrets.passkeys) void os.secrets.passkeys().then((k) => (passkeyBtn.hidden = !k.length)).catch(() => undefined);
     root.replaceChildren(
       h(
         'div',
@@ -148,6 +171,7 @@ function signInScreen(os: RemoteKernel, root: HTMLElement, profile: Profile): Pr
           h('h2', null, profile.name),
           h('p', { class: 'muted' }, 'Signed out. Enter the password to use this profile’s keys and chats.'),
           form,
+          passkeyBtn,
           error,
           h(
             'button',

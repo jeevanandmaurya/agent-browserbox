@@ -1,5 +1,6 @@
 import { DEFAULT_PROFILE, deleteProfile, getProfile, listProfiles, updateProfile, type LockState } from '@jeevanand/agent-browserbox-runtime/client';
 import { PROFILE } from '@/app/boot';
+import { createPasskey, passkeyProblem, passkeysAvailable } from '@/app/passkeys';
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog } from '@/ui/dialog';
 import { debounce, h } from '@/ui/dom';
@@ -138,6 +139,71 @@ export function profileSection(ctx: AppContext, saved: () => void): HTMLElement 
     };
     await renderPassword();
 
+    // ---- Passkeys: sign in with a fingerprint, face or security key instead of the password
+    const pkBox = h('div', { class: 'st-panel' });
+    const renderPasskeys = async () => {
+      const state: LockState = await os.secrets.status().catch(() => 'open');
+      if (!os.secrets.passkeys || state === 'open') return void pkBox.replaceChildren();
+      if (!passkeysAvailable()) return void pkBox.replaceChildren(h('h3', null, 'Passkeys'), h('p', { class: 'muted st-note' }, 'This browser cannot use passkeys here (they need HTTPS and WebAuthn).'));
+      const keys = await os.secrets.passkeys().catch(() => []);
+      const status = h('p', { class: 'st-note', role: 'status' });
+      const pw = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', 'aria-label': 'Your password', placeholder: 'Your password' });
+      const label = h('input', { class: 'input', maxlength: 60, 'aria-label': 'Name for the passkey', placeholder: 'Name, e.g. This laptop' });
+      const add = async () => {
+        status.className = 'st-note';
+        if (!pw.value) {
+          status.className = 'st-note st-error';
+          status.textContent = 'Enter your password: it unlocks the key the passkey will protect.';
+          return;
+        }
+        try {
+          status.textContent = 'Follow your browser’s passkey prompt…';
+          const made = await createPasskey({ id, name: me.name });
+          const ok = await os.secrets.addPasskey!(pw.value, { id: made.id, label: label.value.trim() || `Passkey ${keys.length + 1}`, input: made.input, prf: made.prf });
+          if (!ok) {
+            status.className = 'st-note st-error';
+            status.textContent = 'That password is not right. The passkey was made but does not unlock anything; you can delete it from your device.';
+            return;
+          }
+          saved();
+          await renderPasskeys();
+        } catch (err) {
+          const why = passkeyProblem(err);
+          status.className = why ? 'st-note st-error' : 'st-note';
+          status.textContent = why ?? '';
+        }
+      };
+      pkBox.replaceChildren(
+        h('h3', null, 'Passkeys'),
+        h('p', { class: 'muted st-note' }, 'Sign in with your fingerprint, face, phone or security key instead of typing the password. The password keeps working. Changing or removing the password removes the passkeys.'),
+        ...keys.map((k) =>
+          h(
+            'div',
+            { class: 'row st-wrap' },
+            h('span', null, `${k.label} · added ${new Date(k.created).toLocaleDateString()}`),
+            h(
+              'button',
+              {
+                class: 'btn small',
+                type: 'button',
+                onclick: async () => {
+                  if (!(await confirmDialog(`Remove “${k.label}”?`, 'It will no longer unlock this profile. The passkey itself stays on your device until you delete it there.', 'Remove', true))) return;
+                  await os.secrets.removePasskey?.(k.id);
+                  saved();
+                  await renderPasskeys();
+                },
+              },
+              'Remove',
+            ),
+          ),
+        ),
+        h('div', { class: 'row st-wrap' }, label, pw, h('button', { class: 'btn', type: 'button', onclick: () => void add() }, 'Add a passkey')),
+        status,
+      );
+    };
+    await renderPasskeys();
+    ctx.on('secrets:lock', () => void renderPasskeys());
+
     // ---- Other profiles
     const others = h('div', { class: 'st-panel' });
     const renderOthers = async () => {
@@ -190,6 +256,7 @@ export function profileSection(ctx: AppContext, saved: () => void): HTMLElement 
     body.replaceChildren(
       h('div', { class: 'field' }, h('label', { for: nameId }, 'Profile name'), name, h('p', { class: 'muted st-note' }, id === DEFAULT_PROFILE ? 'The first profile, with the data BrowserBox had before profiles.' : 'Shown in the profile list.')),
       pwBox,
+      pkBox,
       others,
     );
   })();

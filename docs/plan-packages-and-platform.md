@@ -1,6 +1,9 @@
 # Plan: the package manager, and the browser platform (runtime 0.5)
 
-Status: proposal. Covers three questions: why an x86 emulator is heavier than
+Status: done for the package manager (3.1–3.8), the first catalog, and
+platform items 4.1 #1–5 (honest capability list, notifications, screen
+capture, passkeys, the built-in model). Items 6–10 and Settings → Packages
+are next. Was: proposal. Covers three questions: why an x86 emulator is heavier than
 BrowserBox's kernel; how the runtime's package manager should grow (JS, WASM
 and terminal packages, and a complete set of package operations); and which
 browser features BrowserBox uses, detects only, or ignores.
