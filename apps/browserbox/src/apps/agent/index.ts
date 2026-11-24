@@ -149,6 +149,7 @@ const app: AppModule = {
       commands,
       mode: { get: getMode, set: setMode },
       cwd: () => project().folder,
+      chatId: () => agent.sid,
       queue: {
         remove: (i) => (queue.splice(i, 1), composer.setQueue(queue)),
         // Stop now; the queue is sent as soon as the agent has stopped.

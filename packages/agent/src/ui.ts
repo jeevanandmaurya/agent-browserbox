@@ -5,7 +5,7 @@
  * where the app puts it (the BrowserBox app runs it in a worker).
  */
 export * from './config.js';
-export { deleteSession, listSessions, loadSession, saveSession, titleFrom, type SessionFile, type SessionInfo } from './session.js';
+export { attachmentsDir, deleteSession, listSessions, loadSession, saveSession, titleFrom, type SessionFile, type SessionInfo } from './session.js';
 export { diffFiles, type FileDiff } from './diff.js';
 export * from './ext/library.js';
 export { MCP_KEY, mcpTokenName, type McpServerConfig } from './ext/mcp.js';

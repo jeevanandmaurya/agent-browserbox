@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { AgentOs } from '../packages/agent/src/host/os';
 import { chatsCommand, projectCommand } from '../packages/agent/src/manage';
-import { saveSession } from '../packages/agent/src/session';
+import { attachmentsDir, saveSession } from '../packages/agent/src/session';
 import { pathIn, type AgentCommand } from '../packages/agent/src/commands';
 import { plainText } from '../packages/runtime/src/shell/ansi';
 import { kernelBox } from './helpers/kernel-box';
@@ -67,7 +67,10 @@ describe('project and chats commands', () => {
     await run(chatsCommand, 'export chat-1 report.md');
     expect(await os.fs.readText('/home/agent/report.md')).toContain('# Sales report');
     expect((await run(chatsCommand, 'delete chat-1')).out).toContain('only a person');
+    await os.fs.writeFile(`${attachmentsDir('chat-1')}/photo.png`, new Uint8Array([1, 2, 3]));
     expect((await run(chatsCommand, 'delete chat-1', 'yes')).out).toContain('deleted');
+    // Its attachments go with it.
+    expect(await os.fs.exists(attachmentsDir('chat-1'))).toBe(false);
     expect((await run(chatsCommand, 'list')).out).not.toContain('chat-1');
   });
 });

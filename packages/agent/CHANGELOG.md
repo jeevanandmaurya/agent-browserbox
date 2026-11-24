@@ -5,6 +5,9 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.1
 
+- `attachmentsDir(id)`: a chat's attachments live with it
+  (`.sessions/<id>/files`); `deleteSession` and ending a private chat remove
+  them.
 - Fixed: Gemini (OpenAI-compatible API) refused the second request of a tool
   call: the `extra_content` signature on its tool calls is kept on the block
   (`extra`) and echoed back to Google's API only.

@@ -796,7 +796,8 @@ await check('chats keep working in the background, shown in the sidebar', async 
   await page.waitForFunction(() => !document.querySelector('.sb-live'), null, { timeout: 20000 });
   const saved = await page.evaluate(async () => {
     const files = await bbx.fs.readdir('/home/agent/.sessions');
-    for (const f of files) {
+    // Chat files only (a chat's attachments are in a folder of its own beside them).
+    for (const f of files.filter((x) => x.kind === 'file' && x.name.endsWith('.json') && x.name !== 'index.json')) {
       const s = JSON.parse(await bbx.fs.readText(f.path));
       if (JSON.stringify(s.transcript).includes('echo: another slow task')) return true;
     }
@@ -1256,8 +1257,8 @@ await check('platform: honest capabilities, notifications while away, a screen p
     await p.locator('.menu .pop-item', { hasText: 'Share a screen' }).click();
     await p.locator('.cp-chips:not([hidden])', { hasText: 'screen-' }).waitFor({ timeout: 15000 });
     const shot = await p.evaluate(async () => {
-      const name = document.querySelector('.cp-chips').textContent.match(/screen-[\d-]+\.png/)[0];
-      const found = (await bbx.fs.glob(`**/${name}`, '/home'))[0];
+      // Kept with the chat: /home/agent/.sessions/<chat>/files/.
+      const found = document.querySelector('.cp-chip[title*="screen-"]').title;
       const bytes = await bbx.fs.readFile(found);
       const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
       return { found, png: bytes[1] === 0x50, w: bmp.width, h: bmp.height };
@@ -1545,8 +1546,9 @@ await check('share to other apps, the mini window (with an approval answered the
     const text = await p.locator('.ag-input').inputValue();
     if (!text.includes('Voice note (transcript): remind me to water the plants')) throw new Error(`text: ${text}`);
     const size = await p.evaluate(async () => {
-      const name = document.querySelector('.cp-chips').textContent.match(/voice-[\w-]+\.(webm|ogg|m4a)/)[0];
-      return (await bbx.fs.readFile(`/home/agent/uploads/${name}`)).length;
+      const path = document.querySelector('.cp-chip[title*="voice-"]').title;
+      if (!/\/home\/agent\/\.sessions\/[^/]+\/files\/voice-/.test(path)) throw new Error(`attached at ${path}`);
+      return (await bbx.fs.readFile(path)).length;
     });
     if (size < 1000) throw new Error(`audio only ${size} bytes`);
     steps.push(`voice note ${size} bytes with transcript`);

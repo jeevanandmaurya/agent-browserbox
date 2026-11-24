@@ -7,6 +7,9 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- **Attachments belong to their chat**: files you attach, paste, share,
+  record or capture are kept with the chat and deleted with it (they were
+  all in one shared uploads folder).
 - Fixed: Google Gemini failed after its first tool call ("missing a
   thought_signature"): its tool-call signatures are now kept and sent back.
 - **Google Gemini** is a preset in Settings → Model → API, and the bare

@@ -1,4 +1,5 @@
 import type { Kernel } from '@jeevanand/agent-browserbox-runtime/client';
+import { attachmentsDir } from '@jeevanand/agent-browserbox/ui';
 import { fmtBytes, h } from '@/ui/dom';
 import { openMenu } from '@/ui/menu';
 import { icon } from './icons';
@@ -15,7 +16,7 @@ export const MODES: Array<{ id: AgentMode; label: string; hint: string; icon: 's
   { id: 'auto', label: 'Auto', hint: 'Act without asking (everything stays in the sandbox)', icon: 'spark' },
 ];
 
-export const UPLOAD_DIR = '/home/agent/uploads';
+/** Where a chat's attachments go: with the chat, so deleting it deletes them (see attachmentsDir). */
 
 export interface Composer {
   el: HTMLElement;
@@ -35,13 +36,13 @@ export interface Composer {
   attach(files: File[]): Promise<void>;
 }
 
-/** Picks a name in the uploads folder that does not overwrite an earlier upload. */
-async function freePath(os: Kernel, name: string): Promise<string> {
+/** Picks a name in the chat's attachments folder that does not overwrite an earlier one. */
+async function freePath(os: Kernel, dir: string, name: string): Promise<string> {
   const safe = name.replace(/[/\\\0]/g, '_') || 'file';
   const dot = safe.lastIndexOf('.');
   const [stem, ext] = dot > 0 ? [safe.slice(0, dot), safe.slice(dot)] : [safe, ''];
   for (let i = 0; ; i++) {
-    const p = `${UPLOAD_DIR}/${i ? `${stem}-${i}${ext}` : safe}`;
+    const p = `${dir}/${i ? `${stem}-${i}${ext}` : safe}`;
     if (!(await os.fs.exists(p))) return p;
   }
 }
@@ -63,6 +64,8 @@ export function createComposer(
     mode: { get(): AgentMode; set(m: AgentMode): void };
     /** The agent's working folder, for @file mentions. */
     cwd(): string;
+    /** The chat being written in: attachments are kept with it. */
+    chatId(): string;
     /** Queued messages: remove one, or stop the agent and send them now. */
     queue: { remove(i: number): void; sendNow(): void };
   },
@@ -203,7 +206,7 @@ export function createComposer(
         h(
           'span',
           { class: 'cp-chip', title: a.path },
-          h('span', { class: 'cp-chip-name' }, a.path.slice(UPLOAD_DIR.length + 1)),
+          h('span', { class: 'cp-chip-name' }, a.path.slice(a.path.lastIndexOf('/') + 1)),
           h('span', { class: 'cp-chip-size' }, fmtBytes(a.size)),
           h(
             'button',
@@ -253,7 +256,7 @@ export function createComposer(
   async function attachFiles(files: File[]): Promise<void> {
     for (const f of files) {
       try {
-        const path = await freePath(os, f.name);
+        const path = await freePath(os, attachmentsDir(opts.chatId()), f.name);
         await os.fs.writeFile(path, new Uint8Array(await f.arrayBuffer()));
         attached.push({ path, size: f.size });
       } catch (err) {

@@ -3,7 +3,7 @@ import type { KernelCore } from './host/os.js';
 import type { Prompter } from './host/perms.js';
 import { Agent, type AgentEvent } from './agent.js';
 import { apiKeyFor, loadConfig, migrateKeys, probeModels, SECRET } from './config.js';
-import { loadSession, saveSession, titleFrom } from './session.js';
+import { attachmentsDir, loadSession, saveSession, titleFrom } from './session.js';
 import { GENERAL_ID, getProject } from './projects.js';
 
 /** Most events kept for a window that joins mid-turn; text deltas are merged. */
@@ -127,6 +127,7 @@ export class AgentManager implements AgentsApi {
     const mine = new Set<(e: AgentEvent) => void>();
     let myAsker: Session['asker'] = null;
     const sessions = this.#sessions;
+    const os = this.os;
     const release = () => {
       for (const fn of mine) s.listeners.delete(fn);
       mine.clear();
@@ -175,6 +176,8 @@ export class AgentManager implements AgentsApi {
         release();
         sessions.delete(sid);
         s.agent.dispose();
+        // A private chat leaves nothing behind, its attachments included.
+        if (s.private) void os.fs.rm(attachmentsDir(sid).replace(/\/files$/, ''), { recursive: true }).catch(() => undefined);
       },
     };
   }

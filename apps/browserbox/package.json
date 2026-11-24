@@ -1,13 +1,13 @@
 {
   "name": "@jeevanand/browserbox",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "The BrowserBox app: an agent OS in the browser, built on the agent-browserbox SDK, runtime and agent. Released as a site (app-v*).",
   "type": "module",
   "dependencies": {
-    "@jeevanand/agent-browserbox": "^0.4.0",
-    "@jeevanand/agent-browserbox-sdk": "^0.4.0",
-    "@jeevanand/agent-browserbox-runtime": "^0.4.0"
+    "@jeevanand/agent-browserbox": "^0.4.1",
+    "@jeevanand/agent-browserbox-sdk": "^0.4.1",
+    "@jeevanand/agent-browserbox-runtime": "^0.4.1"
   },
   "scripts": {
     "build": "vite build --config vite.config.ts",

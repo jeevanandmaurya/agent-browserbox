@@ -84,8 +84,12 @@ export async function loadSession(os: WithFiles, id: string): Promise<SessionFil
   return JSON.parse(await os.fs.readText(`${DIR}/${id}.json`)) as SessionFile;
 }
 
+/** Files attached to a chat (uploads, pasted pictures, voice notes): kept with it, deleted with it. */
+export const attachmentsDir = (id: string) => `${DIR}/${id}/files`;
+
 export async function deleteSession(os: WithFiles, id: string): Promise<void> {
   await os.fs.rm(`${DIR}/${id}.json`).catch(() => undefined);
+  await os.fs.rm(`${DIR}/${id}`, { recursive: true }).catch(() => undefined);
   await updateIndex(os, (list) => list.filter((i) => i.id !== id)).catch(() => undefined);
 }
 
