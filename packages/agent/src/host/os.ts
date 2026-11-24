@@ -90,7 +90,7 @@ export interface AgentUi {
    * worker (where the Prompt API may be missing). Without it, the agent uses
    * `LanguageModel` in its own scope when there is one.
    */
-  builtinPrompt?(input: BuiltinPromptInput, signal: AbortSignal): Promise<string>;
+  builtinPrompt?(input: BuiltinPromptInput, signal: AbortSignal): Promise<{ text: string; window?: number; tooLarge?: boolean }>;
 }
 
 export interface AgentOsOptions {

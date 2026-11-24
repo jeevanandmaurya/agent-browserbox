@@ -5,6 +5,10 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.0
 
+- The browser's built-in model gets the short prompt and reduced tool set of
+  small models, fits the conversation to the window the browser reports
+  (`contextWindow`, or `inputQuota` in earlier Chrome), and retries with less
+  history when it does not fit. `builtinPrompt` hosts return `{ text, window }`.
 - Fixed: the package list in the prompt had a bogus `=` entry (the legend
   under `pkg list` was read as a package).
 - `AgentInfo.waiting` (from `live()`): the chat waits for an approval or an

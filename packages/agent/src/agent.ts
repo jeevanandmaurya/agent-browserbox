@@ -58,6 +58,9 @@ export interface AgentHost {
   prompter?: Prompter;
 }
 
+/** Providers whose models are small: a short system prompt and the reduced tool set. */
+const SMALL_MODELS = new Set(['webllm', 'builtin']);
+
 /** Tools that only look: what plan mode allows. */
 const PLAN_TOOLS = new Set(['read_artifact', 'read_file', 'view_image', 'list_dir', 'glob', 'grep', 'http_fetch', 'system_info', 'list_processes', 'use_skill', 'ask_user', 'todo_write', 'preview_logs', 'web_search', 'web_fetch']);
 /**
@@ -248,7 +251,8 @@ export class Agent {
 
     try {
       const provider = await createProvider(this.os, cfg);
-      const lite = provider.id === 'webllm';
+      // Small on-device models (WebGPU, the browser's own) get the short prompt and the reduced tool set.
+      const lite = SMALL_MODELS.has(provider.id);
       const allowed = this.#persona?.tools.length ? new Set(this.#persona.tools) : null;
       // Rebuilt every step: a package the agent installs mid-task adds its tools straight away.
       const toolset = async () =>
@@ -460,7 +464,7 @@ export class Agent {
       const provider = await createProvider(this.os, cfg);
       this.#window = provider.contextWindow;
       // A resumed session has not built its system prompt yet.
-      await this.#ensureSystem(cfg, provider.id === 'webllm');
+      await this.#ensureSystem(cfg, SMALL_MODELS.has(provider.id));
       return await this.#compact(provider, run.signal, emit, false, false);
     } catch (err) {
       if (!run.signal.aborted) emit({ type: 'error', message: err instanceof ProviderError ? err.message : `Could not compact: ${(err as Error)?.message ?? err}` });

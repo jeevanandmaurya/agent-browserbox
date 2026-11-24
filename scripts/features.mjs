@@ -1648,6 +1648,31 @@ await check('devices: a serial device from the terminal, a folder sent to anothe
   }
 });
 
+await check("built-in model on Chromium's native Prompt API: options accepted, too large a prompt gives a clear message", async () => {
+  // Chromium ships the API with a stand-in model (it echoes, with a 1000-character window), not Gemini Nano.
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', '']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    if ((await p.evaluate(() => typeof LanguageModel)) !== 'function') return 'skipped: this browser has no Prompt API';
+    await p.evaluate(() => bbx.settings.set('agent.config', { ...bbx.settings.get('agent.config', {}), provider: 'builtin' }));
+    await p.locator('.ag-input').fill('Say hello');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => !document.querySelector('.cp-send.stop:not([hidden])'), null, { timeout: 120000 });
+    const log = await p.evaluate(() => document.querySelector('.ag-log').innerText);
+    if (!log.includes("too long for the browser's built-in model") || /failed:/.test(log)) throw new Error(log.slice(-300));
+    return 'session options accepted by the native API; the over-long prompt was retried, then explained';
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();

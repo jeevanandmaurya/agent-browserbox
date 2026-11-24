@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentHandle, AgentsApi, BuiltinPromptInput } from '@jeevanand/agent-browserbox/ui';
-import { runBuiltinPrompt } from '@jeevanand/agent-browserbox/ui';
+import { BuiltinTooLarge, runBuiltinPrompt } from '@jeevanand/agent-browserbox/ui';
 import type { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import type { PermRequest, Prompter } from '@jeevanand/agent-browserbox-runtime/client';
 import { Peer } from '@jeevanand/agent-browserbox-runtime/client';
@@ -69,7 +69,7 @@ export class AgentClient implements AgentsApi {
         if (method === 'clipboard.write') value = await navigator.clipboard.writeText(String(args[0]));
         else if (method === 'clipboard.read') value = await navigator.clipboard.readText();
         else if (method === 'speak') speechSynthesis.speak(new SpeechSynthesisUtterance(String(args[0])));
-        else if (method === 'lm.prompt') value = await runBuiltinPrompt(args[0] as BuiltinPromptInput, { signal: ctl.signal }).then((text) => ({ text }), (err: Error) => ({ error: err.message }));
+        else if (method === 'lm.prompt') value = await runBuiltinPrompt(args[0] as BuiltinPromptInput, { signal: ctl.signal }).then((r) => r, (err: Error) => ({ error: err.message, tooLarge: err instanceof BuiltinTooLarge, window: (err as BuiltinTooLarge).window }));
       }
     } catch (err) {
       if (ctl.signal.aborted) return;

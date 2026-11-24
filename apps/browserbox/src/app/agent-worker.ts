@@ -163,9 +163,10 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
         speak: (text) => void ask({ kind: 'ui', payload: { method: 'speak', args: [text] } }).catch(() => undefined),
         // The browser's built-in model runs in a page: one window, the one lending the box, so it runs once.
         builtinPrompt: async (input, signal) => {
-          const r = await ask<{ text?: string; error?: string }>({ kind: 'ui', payload: { method: 'lm.prompt', args: [input] } }, signal, provider ?? undefined);
+          const r = await ask<{ text?: string; window?: number; error?: string; tooLarge?: boolean }>({ kind: 'ui', payload: { method: 'lm.prompt', args: [input] } }, signal, provider ?? undefined);
+          if (r?.tooLarge) return { text: '', window: r.window, tooLarge: true };
           if (typeof r?.text !== 'string') throw new Error(r?.error ?? 'no window could run the built-in model');
-          return r.text;
+          return { text: r.text, window: r.window };
         },
       },
     });
