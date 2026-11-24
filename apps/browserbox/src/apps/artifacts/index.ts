@@ -1,3 +1,4 @@
+import { previewStore } from '@/app/preview-storage';
 import { canShareFiles, shareableFile, shareFiles } from '@/app/share';
 import './style.css';
 import { artifactsDir, deleteArtifact, listArtifacts, readArtifact, updateArtifact, versionPath, type Artifact } from '@jeevanand/agent-browserbox/ui';
@@ -105,7 +106,7 @@ const app: AppModule = {
         ),
       );
       body.replaceChildren(h('p', { class: 'muted af-note' }, 'Loading…'));
-      const view = await renderArtifact(a, r.content);
+      const view = await renderArtifact(a, r.content, (key) => previewStore(os, key));
       if (seq === renderSeq) body.replaceChildren(view);
     }
 

@@ -5,6 +5,14 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.4.2 (not released yet)
+
+- Fixed: apps in Preview that use `localStorage` stopped with "SecurityError:
+  … sandboxed and lacks the allow-same-origin flag". Previewed apps now get
+  `localStorage` (kept per app, between loads, in
+  `~/.local/share/browserbox/preview-storage`), `sessionStorage` and cookies,
+  while the preview stays sandboxed away from BrowserBox's own data.
+
 ## 0.4.1
 
 - **Attachments belong to their chat**: files you attach, paste, share,

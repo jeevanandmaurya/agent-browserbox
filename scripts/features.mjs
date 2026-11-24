@@ -1733,6 +1733,49 @@ await check('a chat open in two windows: one opened mid-turn shows it working, g
   }
 });
 
+await check('previewed apps get localStorage (kept per app), sessionStorage and cookies, in the sandboxed frame', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', '']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    const game = `<!doctype html><title>Game</title><p id=out></p><script>
+    const runs = Number(localStorage.getItem('runs') || 0) + 1;
+    localStorage.setItem('runs', runs);
+    localStorage.best = Math.max(Number(localStorage.best || 0), runs * 10);
+    sessionStorage.setItem('tab', 'x');
+    document.cookie = 'theme=dark; path=/';
+    out.textContent = 'runs=' + runs + ' best=' + localStorage.best + ' keys=' + Object.keys(localStorage).sort().join(',') + ' cookie=' + document.cookie + ' session=' + sessionStorage.getItem('tab');
+    </script>`;
+    const shown = async (want) => {
+      for (let i = 0; i < 80; i++) {
+        const fr = p.frames().find((x) => x.url().includes('preview/frame.html'));
+        const t = (fr && (await fr.evaluate(() => document.getElementById('out')?.textContent ?? '').catch(() => ''))) || '';
+        if (t.startsWith(want)) return t;
+        await p.waitForTimeout(100);
+      }
+      throw new Error(`the page did not show ${want}`);
+    };
+    await p.evaluate((g) => bbx.fs.writeFile('/home/agent/storegame/index.html', g), game);
+    await p.evaluate(() => bbx.openApp('preview', { path: '/home/agent/storegame/index.html' }));
+    const first = await shown('runs=1');
+    if (first !== 'runs=1 best=10 keys=best,runs cookie=theme=dark session=x') throw new Error(`first: ${first}`);
+    // Saved for this app, and given back when the page loads again (here: the file changes, Preview reloads it).
+    await p.waitForFunction(() => bbx.fs.readdir('/home/user/.local/share/browserbox/preview-storage').then((l) => l.some((e) => e.name.includes('storegame')), () => false), null, { timeout: 5000 });
+    await p.evaluate((g) => bbx.fs.writeFile('/home/agent/storegame/index.html', `${g}\n`), game);
+    const second = await shown('runs=2');
+    if (!second.startsWith('runs=2 best=20')) throw new Error(`after reload: ${second}`);
+    return `${first} → then ${second.split(' ').slice(0, 2).join(' ')}`;
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();

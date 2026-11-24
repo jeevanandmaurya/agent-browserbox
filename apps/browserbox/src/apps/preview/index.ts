@@ -1,3 +1,4 @@
+import { previewStore } from '@/app/preview-storage';
 import { basename, dirname, isInside, resolve } from '@jeevanand/agent-browserbox-runtime/client';
 import type { AppModule } from '@/ui/apps';
 import { debounce, fmtBytes, h } from '@/ui/dom';
@@ -91,7 +92,8 @@ const app: AppModule = {
       switch (kindOf(name)) {
         case 'html': {
           const doc = await buildSiteDoc(fs, p, new TextDecoder().decode(bytes), siteRoot);
-          return (frame = htmlFrame(doc, name));
+          // localStorage per site (the folder it is served from).
+          return (frame = htmlFrame(doc, name, null, previewStore(ctx.os, `site:${siteRoot}`)));
         }
         case 'image':
         case 'svg': {

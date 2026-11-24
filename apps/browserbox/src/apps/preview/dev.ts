@@ -5,6 +5,7 @@ import { debounce, h } from '@/ui/dom';
 import { icon, loader } from '@/ui/icons';
 import { fullscreenToggle } from './fullscreen';
 import { htmlFrame } from './views';
+import { previewStore } from '@/app/preview-storage';
 
 const MAX_SHOWN = 300;
 
@@ -99,7 +100,8 @@ export function mountDev(ctx: AppContext, port: number): () => void {
     try {
       const page = await os.dev.page(port, path);
       if (g !== gen || closed) return;
-      frame = htmlFrame(page.html, `localhost:${port}${path}`, onFrame);
+      // localStorage per project, like an origin: every page of the app shares it.
+      frame = htmlFrame(page.html, `localhost:${port}${path}`, onFrame, previewStore(os, `dev:${info?.root ?? port}`));
       stage.replaceChildren(frame);
       ctx.win.setTitle(`localhost:${port}`);
     } catch (err) {

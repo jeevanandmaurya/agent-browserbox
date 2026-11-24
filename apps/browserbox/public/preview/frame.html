@@ -13,9 +13,62 @@
 <meta http-equiv="Content-Security-Policy" content="default-src * data: blob: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; form-action 'none'">
 <title>Preview</title>
 <script>
+  // An opaque origin has no localStorage, sessionStorage or cookies: the browser throws
+  // SecurityError when a page touches them. Pages expect them, so this frame provides
+  // its own: localStorage is kept by BrowserBox for this app (sent with the page, saved
+  // when it changes), sessionStorage and cookies last as long as the page.
+  function storage(initial, changed) {
+    var store = Object.create(null);
+    for (var k in initial || {}) store[k] = String(initial[k]);
+    var api = {
+      getItem: function (k) { k = String(k); return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+      setItem: function (k, v) { store[String(k)] = String(v); changed && changed(store); },
+      removeItem: function (k) { delete store[String(k)]; changed && changed(store); },
+      clear: function () { for (var k in store) delete store[k]; changed && changed(store); },
+      key: function (i) { var keys = Object.keys(store); return i < keys.length ? keys[i] : null; },
+    };
+    Object.defineProperty(api, 'length', { configurable: true, get: function () { return Object.keys(store).length; } });
+    // localStorage.score = 3 and Object.keys(localStorage) work as they do on a real Storage.
+    return new Proxy(api, {
+      get: function (t, p) { if (p in t) return t[p]; return typeof p === 'string' && Object.prototype.hasOwnProperty.call(store, p) ? store[p] : undefined; },
+      set: function (t, p, v) { if (p in t) return true; api.setItem(p, v); return true; },
+      deleteProperty: function (t, p) { api.removeItem(p); return true; },
+      has: function (t, p) { return p in t || Object.prototype.hasOwnProperty.call(store, p); },
+      ownKeys: function () { return Object.keys(store); },
+      getOwnPropertyDescriptor: function (t, p) { return Object.prototype.hasOwnProperty.call(store, p) ? { value: store[p], enumerable: true, configurable: true, writable: true } : undefined; },
+    });
+  }
+  function install(saved) {
+    var timer = 0;
+    var local = storage(saved, function (store) {
+      clearTimeout(timer);
+      timer = setTimeout(function () { parent.postMessage({ type: 'bbx-preview:storage', local: Object.assign({}, store) }, '*'); }, 250);
+    });
+    var session = storage({});
+    var cookies = Object.create(null);
+    try {
+      Object.defineProperty(window, 'localStorage', { value: local, configurable: true });
+      Object.defineProperty(window, 'sessionStorage', { value: session, configurable: true });
+      Object.defineProperty(document, 'cookie', {
+        configurable: true,
+        get: function () { return Object.keys(cookies).map(function (k) { return k + '=' + cookies[k]; }).join('; '); },
+        set: function (v) {
+          var pair = String(v).split(';')[0];
+          var at = pair.indexOf('=');
+          if (at < 1) return;
+          var name = pair.slice(0, at).trim();
+          if (/max-age=0|expires=thu, 01 jan 1970/i.test(String(v))) delete cookies[name];
+          else cookies[name] = pair.slice(at + 1).trim();
+        },
+      });
+    } catch (err) {
+      /* a browser that does not allow it: the page sees the browser's own behaviour */
+    }
+  }
   addEventListener('message', function boot(e) {
     if (e.source !== parent || !e.data || e.data.type !== 'bbx-preview:doc') return;
     removeEventListener('message', boot);
+    install(e.data.storage);
     document.open();
     document.write(e.data.html);
     document.close();

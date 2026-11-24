@@ -1,5 +1,6 @@
 import type { Artifact } from '@jeevanand/agent-browserbox/ui';
 import { htmlFrame } from '@/apps/preview/views';
+import type { PreviewStore } from '@/app/preview-storage';
 import { h } from '@/ui/dom';
 import { renderMarkdown } from '@/ui/markdown';
 
@@ -9,10 +10,10 @@ import { renderMarkdown } from '@/ui/markdown';
  * Markdown goes through the app's sanitising renderer, and SVG is shown as an
  * image, so scripts inside it never run.
  */
-export async function renderArtifact(a: Artifact, content: string): Promise<HTMLElement> {
+export async function renderArtifact(a: Artifact, content: string, store?: (key: string) => PreviewStore): Promise<HTMLElement> {
   switch (a.kind) {
     case 'html':
-      return h('div', { class: 'af-frame' }, htmlFrame(content, a.title));
+      return h('div', { class: 'af-frame' }, htmlFrame(content, a.title, null, store?.(`artifact:${a.id}`)));
     case 'markdown':
       return h('div', { class: 'af-doc md' }, renderMarkdown(content));
     case 'svg':

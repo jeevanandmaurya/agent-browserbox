@@ -2,6 +2,7 @@
 import { PREVIEW_FRAME_URL } from '@/app/config';
 import { h } from '@/ui/dom';
 import { embeddable } from '@jeevanand/agent-browserbox-runtime/client';
+import type { PreviewStore } from '@/app/preview-storage';
 
 const MAX_TEXT = 2 * 1024 * 1024;
 const HEX_BYTES = 64 * 1024;
@@ -14,7 +15,7 @@ const SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downl
  * the document by message, so the page's scripts run without inheriting the
  * BrowserBox window's script restrictions. `onMessage` gets the page's other messages.
  */
-export function htmlFrame(html: string, title: string, onMessage?: (data: { type?: string } & Record<string, unknown>, reply: (msg: unknown, transfer?: Transferable[]) => void) => void): HTMLIFrameElement {
+export function htmlFrame(html: string, title: string, onMessage?: ((data: { type?: string } & Record<string, unknown>, reply: (msg: unknown, transfer?: Transferable[]) => void) => void) | null, store?: PreviewStore): HTMLIFrameElement {
   const frame = embeddable(h('iframe', { class: 'pv-frame', title, referrerPolicy: 'no-referrer' }));
   frame.setAttribute('sandbox', SANDBOX);
   frame.setAttribute('allow', 'fullscreen; clipboard-write; autoplay');
@@ -24,7 +25,10 @@ export function htmlFrame(html: string, title: string, onMessage?: (data: { type
     if (e.source !== frame.contentWindow || !e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'bbx-preview:ready') {
       frame.dataset.loaded = '1';
-      reply({ type: 'bbx-preview:doc', html });
+      // The app's saved localStorage goes with the page (the frame has none of its own).
+      void (store?.load() ?? Promise.resolve({})).then((storage) => reply({ type: 'bbx-preview:doc', html, storage }));
+    } else if (e.data.type === 'bbx-preview:storage') {
+      if (e.data.local && typeof e.data.local === 'object') store?.save(e.data.local as Record<string, string>);
     } else onMessage?.(e.data, reply);
   };
   addEventListener('message', listener);
