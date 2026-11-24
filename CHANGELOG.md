@@ -7,6 +7,13 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- **Google Gemini** is a preset in Settings → Model → API, and the bare
+  Google address is corrected to the right one. A failing request to a
+  service that does accept web pages now says to check the address, not
+  that CORS blocks it.
+- **A relay on your own computer**: `node relay/local.mjs`, then
+  `http://localhost:8787` as the Relay, for services that do not accept
+  requests from web pages.
 - The browser's built-in model streams its replies as it writes them, like
   the other models (it showed the whole reply only at the end).
 - **`help` in sections** (Files, Text and data, Running code, Web projects,

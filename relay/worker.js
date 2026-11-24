@@ -32,6 +32,8 @@ export default {
       'access-control-max-age': '86400',
       vary: 'origin',
     };
+    // A public page calling a relay on this computer (relay/local.mjs): Chrome asks the relay first.
+    if (request.headers.get('access-control-request-private-network') === 'true') cors['access-control-allow-private-network'] = 'true';
     if (request.method === 'OPTIONS') return new Response(null, { status: originOk ? 204 : 403, headers: cors });
     if (!originOk) return new Response('This page may not use the relay (ALLOWED_ORIGINS).', { status: 403, headers: cors });
 
@@ -53,7 +55,9 @@ export default {
       const v = request.headers.get(name);
       if (v) headers.set(name, v);
     }
-    const upstream = await fetch(target, { method: request.method, headers, body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body });
+    // Requests are small (a chat): read them whole, which works the same on Workers and Node.js.
+    const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+    const upstream = await fetch(target, { method: request.method, headers, body });
     const out = new Headers(upstream.headers);
     for (const [k, v] of Object.entries(cors)) out.set(k, v);
     out.delete('set-cookie');

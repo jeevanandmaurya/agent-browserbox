@@ -74,3 +74,22 @@ describe('older settings', () => {
     expect(await apiKeyFor(secrets, 'https://api.groq.com/openai/v1')).toBe('gsk');
   });
 });
+
+describe('API addresses and unreachable servers', () => {
+  it('uses Google’s OpenAI-compatible path for the bare address, and leaves others alone', async () => {
+    const { apiBase } = await import('../packages/agent/src/config');
+    expect(apiBase('https://generativelanguage.googleapis.com')).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+    expect(apiBase('https://generativelanguage.googleapis.com/v1beta/')).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+    expect(apiBase('https://generativelanguage.googleapis.com/v1beta/openai/')).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+    expect(apiBase('https://api.openai.com/v1/')).toBe('https://api.openai.com/v1');
+  });
+
+  it('blames the address, not CORS, for services that accept browser requests; offers a relay otherwise', async () => {
+    const { unreachable } = await import('../packages/agent/src/config');
+    const google = unreachable('https://generativelanguage.googleapis.com/v1/chat/completions', 'api');
+    expect(google).toContain('does accept requests from web pages');
+    expect(google).toContain('https://generativelanguage.googleapis.com/v1beta/openai');
+    const other = unreachable('https://api.example.com/v1/chat/completions', 'api');
+    expect(other).toContain('node relay/local.mjs');
+  });
+});

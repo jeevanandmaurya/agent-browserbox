@@ -1,4 +1,4 @@
-import { relayed, unreachable, type AgentConfig } from '../config.js';
+import { apiBase, relayed, unreachable, type AgentConfig } from '../config.js';
 import { ProviderError, type Block, type Msg, type Provider, type TurnRequest, type TurnResult } from '../types.js';
 
 type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
@@ -69,7 +69,7 @@ export interface ServerTarget {
 }
 
 export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, apiKey: string | null): Provider {
-  const base = target.baseUrl.replace(/\/+$/, '');
+  const base = target.kind === 'api' ? apiBase(target.baseUrl) : target.baseUrl.replace(/\/+$/, '');
   const where = target.kind === 'local' ? 'the local server' : 'the API';
   // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
   const relay = target.kind === 'api' ? cfg.corsRelay : '';

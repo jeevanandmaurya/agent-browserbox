@@ -367,12 +367,18 @@ Pick one of four sources in **Settings → Model**:
 
 ### Hosted APIs that block web pages (CORS)
 
-A web page may only call servers that allow it. OpenRouter, OpenAI and most
+A web page may only call servers that allow it. OpenRouter, OpenAI, Google
+Gemini (at `https://generativelanguage.googleapis.com/v1beta/openai`) and most
 local servers do; **ollama.com does not** (it rejects the browser's preflight),
-so no page can call it directly. Two ways round it:
+so no page can call it directly. Three ways round it:
 
 - Run Ollama on your computer, sign in (`ollama signin`) and use **Local
   server**: local Ollama runs the `-cloud` models for you.
+- Run the relay on your computer: `node relay/local.mjs` (Node.js 18+,
+  nothing to install), then set `http://localhost:8787` as the Relay in
+  Settings → Model → API. It listens only on this computer and serves only
+  BrowserBox's pages (`ALLOWED_ORIGINS`, `ALLOWED_HOSTS` and `PORT` change
+  that). Chrome may ask once to let the page reach your local network.
 - Deploy the relay in [`relay/worker.js`](relay/worker.js) (free on Cloudflare
   Workers) and set its URL in Settings → Model → API →
   Relay. It only forwards to the hosts in `ALLOWED_HOSTS` and only for pages

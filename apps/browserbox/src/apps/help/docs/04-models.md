@@ -6,9 +6,14 @@ There are three places a model can run.
 
 ## API
 
-A hosted model with your API key. Pick a service (**Anthropic**, **OpenAI**, **OpenRouter**, **Groq**, **Together**, **Mistral**, **Ollama Cloud**) or type any address that speaks the OpenAI protocol, add the key, then **Test connection** to list its models. Each service keeps its own key, stored encrypted in this browser and sent only to that service.
+A hosted model with your API key. Pick a service (**Anthropic**, **OpenAI**, **OpenRouter**, **Google Gemini**, **Groq**, **Together**, **Mistral**, **Ollama Cloud**) or type any address that speaks the OpenAI protocol, add the key, then **Test connection** to list its models. Each service keeps its own key, stored encrypted in this browser and sent only to that service.
 
-On Anthropic's API the agent can also search and read the web (server-side, so it is not limited by the browser). Some services (ollama.com among them) do not accept requests from web pages; see [Troubleshooting](troubleshooting) and the **Relay** setting.
+On Anthropic's API the agent can also search and read the web (server-side, so it is not limited by the browser). Some services (ollama.com among them) do not accept requests from web pages. For those, set a **Relay**:
+
+- **On your computer:** with Node.js installed, run `node relay/local.mjs` from the BrowserBox repository and set `http://localhost:8787` as the relay. Requests go from this page to that terminal process, and from there to the service. Chrome may ask once to let the page reach your local network.
+- **In the cloud:** deploy `relay/worker.js` to Cloudflare Workers (free) and set its address.
+
+Your key passes through the relay but is not stored. Google Gemini, OpenAI, OpenRouter and Anthropic accept browser requests directly: if one of those fails, check the address (Gemini's is `https://generativelanguage.googleapis.com/v1beta/openai`).
 
 ## Local server
 
