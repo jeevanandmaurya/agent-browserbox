@@ -75,7 +75,10 @@ plain text: colour codes are removed, and `exec` collapses progress bars
 Commands run in BrowserBox's shell (`help` lists them): files and text (`ls`,
 `cat`, `grep`, `find`, `sort`, …), `js` (JavaScript in a sandboxed worker),
 `wasm` (WASI programs), `curl`, `gzip`, `npm` (records dependencies; packages
-load from esm.sh) and `pkg install python|git|sqlite|zip|esbuild` for more.
+load from esm.sh), `serial` (Web Serial devices, through a window) and `pkg`:
+`pkg install python|git|sqlite|zip|esbuild`, and WASM, JavaScript and script
+packages from package indexes (`pkg search`; the official index has quickjs,
+ripgrep, prettier, marked and yaml).
 It is not bash, and there is no Node.js.
 
 ### Shell sessions

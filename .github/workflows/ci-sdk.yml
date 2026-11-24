@@ -50,3 +50,5 @@ jobs:
           npm install --no-save playwright
           npx playwright install --with-deps chromium
           npm run build:sdk && npm run build:runtime && node scripts/sdk-e2e.mjs
+      - name: The official package index's pinned files are unchanged upstream
+        run: node scripts/catalog.mjs --check

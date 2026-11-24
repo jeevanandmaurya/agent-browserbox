@@ -26,7 +26,7 @@ running on the user's device.
 |---|---|
 | [`@jeevanand/agent-browserbox-sdk`](packages/sdk) | The SDK: `BrowserBox.boot()`, `box.fs`, `box.exec()`, `box.spawn()`. 3 kB, no dependencies. |
 | [`@jeevanand/agent-browserbox-runtime`](packages/runtime) | The runtime the SDK drives, as static files to host yourself (`npx @jeevanand/agent-browserbox-runtime`). |
-| [`@jeevanand/agent-browserbox`](packages/agent) | The agent: any model (an API, a local server or WebGPU in the tab), working inside a box with file, search, shell and JavaScript tools. |
+| [`@jeevanand/agent-browserbox`](packages/agent) | The agent: any model (an API, a local server, WebGPU in the tab or the browser's built-in model), working inside a box with file, search, shell and JavaScript tools. |
 | `@jeevanand/browserbox` | This app. Not on npm at the moment; use the hosted app or run it from source (below). |
 
 ```ts
@@ -245,7 +245,18 @@ pkg list            # i = installed, with sizes
 pkg info python
 pkg install git sqlite
 pkg remove zip
+pkg search format   # packages from indexes: WASM, JavaScript and scripts
+pkg install prettier ripgrep quickjs
+pkg source add https://example.com/bbx-index.json
 ```
+
+Besides the built-in packages below, `pkg` installs WebAssembly (WASI),
+JavaScript and shell-script packages from package indexes, each file pinned by
+sha256, with dependencies, upgrades and `pkg verify`. The official index
+(quickjs, ripgrep, prettier, marked, yaml) is built by `npm run catalog` from
+[`packages/runtime/catalog`](packages/runtime/catalog), which also documents
+the format. Settings → Packages does the same without the terminal; your own
+commands go in `~/.local/bin`.
 
 A package is one folder, `packages/runtime/src/packages/<id>/`:
 
@@ -327,7 +338,7 @@ it, and reopening returns to the same chat.
 
 ### Models
 
-Pick one of three sources in **Settings → Model**:
+Pick one of four sources in **Settings → Model**:
 
 - **API** — a hosted model with your API key: Anthropic, OpenAI, OpenRouter,
   Groq, Together, Mistral, or any OpenAI-compatible address. Keys are kept per
@@ -345,6 +356,9 @@ Pick one of three sources in **Settings → Model**:
   import an MLC-compiled model from a folder on your computer
   (`mlc-chat-config.json`, `tensor-cache.json` or `ndarray-cache.json` with
   its shards, the tokenizer, and the WebGPU `.wasm` library).
+- **Built into the browser** — the browser's own on-device model (Chrome's
+  Prompt API), where it has one: no download by you, no key, offline. Small,
+  like the WebGPU models.
 
 ### Hosted APIs that block web pages (CORS)
 
@@ -395,6 +409,12 @@ last reply's speed and time to first token, and a Compact button.
 | Modes | Mode chip (Shift+Tab) | Ask first · Accept edits · Plan · Auto. |
 | Permission rules | Settings → Permissions → Rules | Allow, always ask or never allow by command (`git *`), path, URL or tool, before the Ask/Auto mode. Never allow wins; a command line with `&&`, `;` or `|` is allowed only when every command in it is. |
 | Environment | Settings → Environment | Variables visible as `$NAME` in the shell, `env.NAME` in `run_js` and `os.environ` in Python. Stored unencrypted; keep secrets in the key fields. |
+| Packages | `pkg`; Settings → Packages | Built-in packages and WASM, JavaScript and script packages from indexes, checked by sha256. |
+| Devices | `serial`; Settings → Devices | Serial devices (Arduino, ESP32, …) over Web Serial; send a folder straight to another device's BrowserBox (WebRTC, two codes, no server). |
+| Away from the window | Notifications; ⋯ → Mini window | Notifications for approvals, questions and finished chats; a Picture-in-Picture window that follows the agent and takes approvals. |
+| Screen and voice | **+** → Share a screen, Record a voice note | One picture of a screen, window or tab; an audio note with a transcript. |
+| Passkeys | Settings → Profile → Passkeys | Sign in to a password-protected profile with a fingerprint, face or security key (WebAuthn PRF). |
+| Installed app | Install from the address bar | Open files with BrowserBox, share to it from other apps, a badge for chats waiting, shortcuts, reminders of due scheduled tasks. |
 
 Example skills, an `explorer` agent and an `/explain` command are created on first run; edit or delete them freely.
 

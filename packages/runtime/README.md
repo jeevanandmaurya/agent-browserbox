@@ -47,6 +47,18 @@ await kernel.fs.writeFile('/home/user/hi.txt', 'hello');
 `/client` also exports the kernel's types (`Kernel`, `FsApi`, `Proc`, …) and
 small helpers (paths, file types, ANSI). It contains no kernel code.
 
+A window's `RemoteKernel` also has:
+
+- `pkg`: the package manager for a person's UI (list, index, install,
+  remove, upgrade, verify, sources). Only windows (`'ui'` role) may use it.
+- `secrets.passkeys()`, `addPasskey()`, `unlockWithPasskey()`,
+  `removePasskey()`: unlock a password-protected profile with a passkey
+  (WebAuthn PRF; the window runs the ceremony).
+- `serial`: a `SerialHost` (Web Serial) through which the kernel's `serial`
+  command reaches devices; `serial.grant()` asks the person to pick one.
+
+The package format and the official index are in [`catalog/`](catalog).
+
 ## License
 
 MIT

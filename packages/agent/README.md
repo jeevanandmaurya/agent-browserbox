@@ -61,11 +61,13 @@ await agent.send('Make a todo app in ./todo, serve it, and check the console for
   image files itself (Anthropic and OpenAI-compatible vision models).
 - **Sessions**: `AgentManager` keeps several conversations, saves them in the
   box (`/home/agent/.sessions`) and resumes them; `listSessions(os)` lists them.
-- **Models**, from three sources (`provider`): `api`, a hosted model with an
+- **Models**, from four sources (`provider`): `api`, a hosted model with an
   API key (Anthropic's API through the official SDK, or any OpenAI-compatible
   API: OpenAI, OpenRouter, Groq, …); `local`, a model server such as Ollama or
   LM Studio; `webgpu`, a model running in the tab (install the optional
-  `@mlc-ai/web-llm`). Or pass your own: `AgentOs.create(box, { provider })`.
+  `@mlc-ai/web-llm`); `builtin`, the browser's own model (Chrome's Prompt
+  API; from a worker, give `ui.builtinPrompt` and run `runBuiltinPrompt` in a
+  page). Or pass your own: `AgentOs.create(box, { provider })`.
 
 ## `AgentOs.create(box, options)`
 
