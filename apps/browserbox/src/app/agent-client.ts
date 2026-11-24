@@ -123,6 +123,8 @@ export class AgentClient implements AgentsApi {
       },
       onAsk: (fn) => {
         local.asker = fn;
+        // Once this window can answer (the prompter is set in the same step), it gets what already waits.
+        queueMicrotask(() => void this.#call('agent.replayAsks', sid).catch(() => undefined));
       },
       get prompter() {
         return local.prompter;

@@ -3,6 +3,12 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
+## 0.4.1
+
+- A chat opened in a second window while it works shows what it is doing:
+  `AgentSnapshot.live` holds the current step's events not yet in
+  `messages` (text so far, running tools), for the window to replay.
+
 ## 0.4.0
 
 - The browser's built-in model gets the short prompt and reduced tool set of

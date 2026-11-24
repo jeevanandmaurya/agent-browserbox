@@ -6,9 +6,34 @@ import { apiKeyFor, loadConfig, migrateKeys, probeModels, SECRET } from './confi
 import { loadSession, saveSession, titleFrom } from './session.js';
 import { GENERAL_ID, getProject } from './projects.js';
 
+/** Most events kept for a window that joins mid-turn; text deltas are merged. */
+const LIVE_MAX = 400;
+
+/**
+ * Keeps the events since the transcript last grew (the step in progress), so a
+ * window that opens the chat now sees what the others see: text being written,
+ * tools running. Cleared when a message lands in the transcript or the turn ends.
+ */
+function keepLive(s: { agent: { transcript: unknown[] }; live: AgentEvent[]; liveAt: number }, e: AgentEvent): void {
+  const at = s.agent.transcript.length;
+  if (at !== s.liveAt) {
+    s.live = [];
+    s.liveAt = at;
+  }
+  if (e.type === 'done') return void (s.live = []);
+  if (!['text', 'thinking', 'status', 'note', 'tool_start', 'tool_progress', 'tool_end', 'hook', 'error'].includes(e.type)) return;
+  const last = s.live.at(-1);
+  if ((e.type === 'text' || e.type === 'thinking') && last?.type === e.type) return void (s.live[s.live.length - 1] = { type: e.type, delta: last.delta + e.delta });
+  if (e.type === 'tool_progress' && last?.type === 'tool_progress' && last.id === e.id) return void (s.live[s.live.length - 1] = { ...last, chunk: (last.chunk + e.chunk).slice(-8000) });
+  if (s.live.length < LIVE_MAX) s.live.push(e);
+}
+
 interface Session {
   agent: Agent;
   listeners: Set<(e: AgentEvent) => void>;
+  /** The current step's events not yet in the transcript, and the transcript length they follow. */
+  live: AgentEvent[];
+  liveAt: number;
   asker: ((q: string, options?: string[]) => Promise<string>) | null;
   /** Questions asked while no window was attached. */
   waiting: Array<{ q: string; options?: string[]; resolve: (a: string) => void }>;
@@ -39,11 +64,12 @@ export class AgentManager implements AgentsApi {
     const live = saved && this.#sessions.get(saved.id);
     if (live) return this.#handle(saved.id, live);
 
-    const session: Session = { listeners: new Set(), asker: null, waiting: [], created: Date.now(), private: !opts.resume && !!opts.private } as unknown as Session;
+    const session: Session = { listeners: new Set(), live: [], liveAt: 0, asker: null, waiting: [], created: Date.now(), private: !opts.resume && !!opts.private } as unknown as Session;
     const agent = new Agent(
       this.os,
       {
         onEvent: (e) => {
+          keepLive(session, e);
           for (const fn of [...session.listeners]) fn(e);
           // Saved after every model call too, so a running chat is listed and survives a reload.
           if (e.type === 'done' || e.type === 'usage') void this.#save(session);
@@ -120,7 +146,7 @@ export class AgentManager implements AgentsApi {
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents, project: s.agent.project.id };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, live: s.agent.busy && s.liveAt === s.agent.transcript.length ? s.live.slice() : [], title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents, project: s.agent.project.id };
       },
       onEvent(fn) {
         mine.add(fn);

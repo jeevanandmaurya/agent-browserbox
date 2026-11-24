@@ -23,6 +23,11 @@ export interface AgentSnapshot {
   project: string;
   /** What each sub-agent did, by its spawn_agent call id. */
   subagents?: Record<string, Msg[]>;
+  /**
+   * While it works: the current step's events not yet in `messages` (text so
+   * far, running tools), for a window that opens the chat mid-turn to replay.
+   */
+  live?: AgentEvent[];
 }
 
 /** The files one turn changed, with their content before (null: created by the agent, or binary/too large). */

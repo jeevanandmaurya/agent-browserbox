@@ -27,12 +27,22 @@ let nextClient = 1;
 let nextAsk = 1;
 const asks = new Map<number, { ask: Ask; resolve: (v: unknown) => void; targets: Set<number> }>();
 
-/** Asks windows something and waits for the first answer (only `only` when given). */
+/** Windows showing a chat; when none does, every window (someone must see an approval). */
+function holders(sid?: string): Client[] {
+  const all = [...clients.values()];
+  const showing = sid ? all.filter((c) => c.agents.has(sid)) : [];
+  return showing.length ? showing : all;
+}
+
+/**
+ * Asks windows something and waits for the first answer: `only` when given,
+ * else the windows showing the chat it is about (`a.sid`), else all of them.
+ */
 function ask<T>(a: Omit<Ask, 'askId'>, signal?: AbortSignal, only?: Client): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const askId = nextAsk++;
     const full: Ask = { ...a, askId };
-    const targets = only ? [only] : [...clients.values()];
+    const targets = only ? [only] : holders(a.sid);
     if (!targets.length) return reject(new Error('no window is open to answer'));
     const done = (v: unknown) => {
       if (!asks.delete(askId)) return;
@@ -290,7 +300,7 @@ function connect(port: MessagePort): void {
       flush();
       peer.emit('agent', { sid: h.sid, event });
     });
-    h.onAsk((question, options) => ask<string>({ kind: 'user', sid: h.sid, payload: { question, options } }, undefined, client));
+    h.onAsk((question, options) => ask<string>({ kind: 'user', sid: h.sid, payload: { question, options } }));
     h.prompter = (req: PermRequest, signal) => ask<PermDecision>({ kind: 'perm', sid: h.sid, payload: req }, signal).catch(() => 'deny' as const);
     return { sid: h.sid, pid: h.pid };
   };
@@ -309,6 +319,15 @@ function connect(port: MessagePort): void {
     'agent.snapshot': (sid: string) => agent(sid).snapshot(),
     'agent.context': (sid: string) => agent(sid).context(),
     'agent.compact': (sid: string) => agent(sid).compact(),
+    // A window that opened a chat gets the approvals and questions already waiting in it.
+    'agent.replayAsks': (sid: string) => {
+      for (const a of asks.values()) {
+        // Sent again to a window that was asked before too: it may have switched away and back (its card is gone).
+        if (a.ask.sid !== sid || (a.ask.kind !== 'perm' && a.ask.kind !== 'user')) continue;
+        a.targets.add(client.id);
+        peer.emit('ask', a.ask);
+      }
+    },
     'agent.detach': (sid: string) => {
       client.agents.get(sid)?.detach();
       client.agents.delete(sid);
@@ -336,10 +355,18 @@ function drop(client: Client): void {
   for (const h of client.agents.values()) h.detach(); // conversations keep running
   for (const [askId, a] of asks) {
     a.targets.delete(client.id);
-    if (!a.targets.size) {
-      asks.delete(askId);
-      a.resolve(a.ask.kind === 'perm' ? 'deny' : null);
+    if (a.targets.size) continue;
+    // The window that was asked is gone: ask the others (those showing the chat first).
+    const next = a.ask.kind === 'perm' || a.ask.kind === 'user' ? holders(a.ask.sid) : [];
+    if (next.length) {
+      for (const c of next) {
+        a.targets.add(c.id);
+        c.peer.emit('ask', a.ask);
+      }
+      continue;
     }
+    asks.delete(askId);
+    a.resolve(a.ask.kind === 'perm' ? 'deny' : null);
   }
   if (client === provider) {
     provider = null;

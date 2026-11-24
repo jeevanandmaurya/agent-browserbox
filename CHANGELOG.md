@@ -5,6 +5,19 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.4.1
+
+Fixes for a chat open in more than one window (the agent window and the
+desktop's Agent, or two tabs):
+
+- Opening a chat that is working shows it working ("Thinking…", the text so
+  far, tools running), not stopped.
+- An approval or a question waiting in a chat appears in every window that
+  opens it, also after closing and opening it again, and can be answered
+  there.
+- The desktop no longer asks a second time with its own dialog while a window
+  shows the chat. If the window that was asked closes, the others ask.
+
 ## 0.4.0
 
 - **Accept edits** mode (Shift+Tab or Settings → Permissions): file changes

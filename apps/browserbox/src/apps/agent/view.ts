@@ -340,7 +340,8 @@ export class Transcript {
       case 'tool_start':
         this.#setStatus('');
         this.#endBlock();
-        this.#toolCard(e.id, e.name, e.summary, e.input);
+        // Already shown when the chat was opened mid-turn (it is in the saved messages).
+        if (!this.#tools.has(e.id)) this.#toolCard(e.id, e.name, e.summary, e.input);
         this.#scroll();
         break;
       case 'tool_progress': {
@@ -392,8 +393,21 @@ export class Transcript {
     }
   }
 
+  /**
+   * Opens a chat that is working right now (in another window, or from before a
+   * reload): its saved messages, then what the current step has done so far
+   * (text being written, tools running), and from there it follows live.
+   */
+  resume(messages: Msg[], diffs: Record<string, FileDiff>, live: AgentEvent[]): void {
+    this.restore(messages, diffs, true);
+    // The turn in progress stays open: the last message is the user's, or the agent's with tools still running.
+    this.#setStatus('Thinking…');
+    for (const e of live) this.handle(e);
+    this.#scroll(true);
+  }
+
   /** Rebuilds the view from a saved conversation. */
-  restore(messages: Msg[], diffs: Record<string, FileDiff> = {}): void {
+  restore(messages: Msg[], diffs: Record<string, FileDiff> = {}, running = false): void {
     this.clear();
     for (const [id, d] of Object.entries(diffs)) this.#diffs.set(id, d);
     for (const m of messages) {
@@ -419,6 +433,7 @@ export class Transcript {
         }
       }
     }
+    if (running) return; // tools without a result are still running; the turn goes on
     for (const card of this.#tools.values()) if (!card.el.classList.contains('ok') && !card.el.classList.contains('err')) this.#finishTool(card, '(no result recorded)', true);
     this.#finishTurn();
     this.#scroll(true);

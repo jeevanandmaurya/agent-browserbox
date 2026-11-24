@@ -1673,6 +1673,51 @@ await check("built-in model on Chromium's native Prompt API: options accepted, t
   }
 });
 
+await check('a chat open in two windows: one opened mid-turn shows it working, gets the waiting approval, and can answer it', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+  const A = await ctx.newPage();
+  try {
+    await A.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await A.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await A.locator('.boot-console .term-input').fill(a);
+      await A.locator('.boot-console .term-input').press('Enter');
+    }
+    await A.waitForSelector('.ag-input', { timeout: 120000 });
+    await A.locator('.ag-input').fill('slow touch while away');
+    await A.locator('.ag-input').press('Enter');
+    await A.waitForTimeout(800);
+    const B = await ctx.newPage();
+    await B.goto(base + 'os/');
+    await B.waitForFunction(() => globalThis.bbx?.ready, null, { timeout: 60000 });
+    const open = async () => {
+      await B.getByText('Agent', { exact: true }).first().dblclick();
+      await B.waitForFunction(() => document.querySelector('iframe.win-page'), null, { timeout: 15000 });
+      const f = await (await B.$('iframe.win-page')).contentFrame();
+      await f.waitForSelector('.ag-input', { timeout: 60000 });
+      return f;
+    };
+    let f = await open();
+    // Mid-turn: shown working, not idle.
+    await f.waitForFunction(() => !!document.querySelector('.cp-send.stop:not([hidden])') && /Thinking/.test(document.querySelector('.ag-log')?.innerText ?? ''), null, { timeout: 10000 });
+    // The approval reaches the frame, and the desktop shows no second dialog.
+    await A.locator('.ag-approval:not(.settled)').waitFor({ timeout: 20000 });
+    await f.waitForSelector('.ag-approval:not(.settled)', { timeout: 10000 });
+    if (await B.locator('.modal.perm').count()) throw new Error('the desktop shows its own dialog too');
+    // Closed and opened again while it waits: the approval is there again.
+    await B.locator('.win-close, [aria-label="Close"]').first().click();
+    await B.waitForTimeout(500);
+    f = await open();
+    await f.waitForSelector('.ag-approval:not(.settled)', { timeout: 10000 });
+    await f.click('.ag-approval:not(.settled) .btn.primary');
+    await A.waitForFunction(() => !document.querySelector('.cp-send.stop:not([hidden])') && !document.querySelector('.ag-approval:not(.settled)'), null, { timeout: 20000 });
+    if (!(await A.evaluate(() => bbx.fs.exists('/home/user/away.txt')))) throw new Error('the command approved in the second window did not run');
+    return 'working state on opening; approval shown there (no extra desktop dialog), replayed after reopening, answered there';
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();

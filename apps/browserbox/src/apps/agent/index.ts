@@ -284,7 +284,9 @@ const app: AppModule = {
       shell.setEmpty(!has);
       shell.setTitle(has ? snap.title : '');
       win.setTitle(has ? snap.title : '');
-      if (has) log.restore(snap.messages, snap.diffs);
+      // A chat that is working (in another window too) is shown as it is now, then followed live.
+      if (has && snap.busy) log.resume(snap.messages, snap.diffs, snap.live ?? []);
+      else if (has) log.restore(snap.messages, snap.diffs);
       else log.clear();
       void syncChanges();
       showTodos();

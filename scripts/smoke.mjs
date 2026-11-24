@@ -245,10 +245,10 @@ await check('agent: tool loop, approvals across windows, validation', async () =
   await agent.bringToFront();
   await agent.locator('.ag-input').fill('make a report');
   await agent.locator('.ag-input').press('Enter');
-  // write_file in the agent workspace is free; shell needs approval. The prompt shows in every window.
-  // In the agent window the request is an inline card in the conversation; other windows show a dialog.
-  await desk.waitForSelector('.modal.perm');
+  // write_file in the agent workspace is free; shell needs approval. It is asked in the windows
+  // showing the chat (here the agent window, as an inline card); others ask only when none does.
   await agent.locator('.ag-approval:not(.settled) .btn.primary').click({ timeout: 10000 });
+  if (await desk.locator('.modal.perm').count()) throw new Error('the desktop asked too, while the agent window shows the chat');
   await agent.locator('.ag-approval:not(.settled) .btn', { hasText: 'Always allow' }).click({ timeout: 10000 }); // run_js → exec, granted for good
   await agent.waitForFunction(() => [...document.querySelectorAll('.ag-text strong')].some((e) => e.textContent === 'done'), null, { timeout: 20000 });
   const results = requests.at(-1).messages.filter((m) => m.role === 'tool').map((m) => m.content);
