@@ -260,6 +260,7 @@ export class Agent {
           .filter((t) => t.name !== 'run_python' || this.os.packages.isInstalled('python')) // offered once the python package is installed
           .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
           .filter((t) => t.name !== 'open_app' || listApps().length > 0) // a headless runtime has no apps
+          .filter((t) => t.name !== 'preview' || !!this.os.preview) // pages need a window to run in
           .filter((t) => !allowed || allowed.has(t.name))
           .filter((t) => t.name !== 'memory' || autoMemory(this.os)) // the user can turn off memories the agent saves itself
           .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));

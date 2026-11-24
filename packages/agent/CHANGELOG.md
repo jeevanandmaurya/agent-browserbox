@@ -3,6 +3,13 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
+## 0.4.2 (not released yet)
+
+- `preview` tool (when the host gives `ui.preview`): open a page of the box
+  or a dev server page, snapshot (numbered elements), click, type, select,
+  check, press, scroll, wait, eval (an `exec` permission), console,
+  screenshot (an image for the model), close.
+
 ## 0.4.1
 
 - `attachmentsDir(id)`: a chat's attachments live with it

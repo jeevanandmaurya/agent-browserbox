@@ -173,6 +173,12 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
         clipboardRead: () => ask<string>({ kind: 'ui', payload: { method: 'clipboard.read', args: [] } }),
         clipboardWrite: (text) => ask<void>({ kind: 'ui', payload: { method: 'clipboard.write', args: [text] } }),
         speak: (text) => void ask({ kind: 'ui', payload: { method: 'speak', args: [text] } }).catch(() => undefined),
+        // Pages the agent drives (the preview tool) live in the window lending the box.
+        preview: async (sid, action, args) => {
+          const r = await ask<{ ok?: { text: string; image?: string }; error?: string } | string>({ kind: 'ui', sid, payload: { method: 'preview.do', args: [sid, action, args] } }, undefined, provider ?? undefined);
+          if (r && typeof r === 'object' && r.ok) return r.ok;
+          throw new Error(typeof r === 'object' && r?.error ? r.error : 'no window could show the page');
+        },
         // The browser's built-in model runs in a page: one window, the one lending the box, so it runs once.
         builtinPrompt: async (input, signal, onChunk) => {
           const r = await ask<{ text?: string; window?: number; error?: string; tooLarge?: boolean }>({ kind: 'ui', payload: { method: 'lm.prompt', args: [input] } }, signal, provider ?? undefined, onChunk);

@@ -91,6 +91,12 @@ export interface AgentUi {
    * `LanguageModel` in its own scope when there is one.
    */
   builtinPrompt?(input: BuiltinPromptInput, signal: AbortSignal, onChunk?: (text: string) => void): Promise<{ text: string; window?: number; tooLarge?: boolean }>;
+  /**
+   * Drives a page for the `preview` tool (a page in a window: open, read, click,
+   * type, screenshot…). `sid` is the chat, which has its own page. Without it,
+   * the agent has no preview tool.
+   */
+  preview?(sid: string, action: string, args: Record<string, unknown>): Promise<{ text: string; image?: string }>;
 }
 
 export interface AgentOsOptions {
@@ -360,6 +366,8 @@ export class AgentOs {
   readonly ui: { call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak', ...args: unknown[]): Promise<T> } | null;
   /** The page that runs the built-in model for this agent, if the host gave one. */
   readonly builtinPrompt: AgentUi['builtinPrompt'] | undefined;
+  /** The page driver for the `preview` tool, when the host has windows. */
+  readonly preview: AgentUi['preview'] | undefined;
 
   #box: BrowserBox;
   /** The agent's shells, reopened on a new box after setBox(). */
@@ -402,6 +410,7 @@ export class AgentOs {
     this.rootKind = box.storage;
     const ui = opts.ui ?? {};
     this.builtinPrompt = ui.builtinPrompt;
+    this.preview = ui.preview;
     this.ui =
       ui.clipboardRead || ui.clipboardWrite || ui.speak
         ? {

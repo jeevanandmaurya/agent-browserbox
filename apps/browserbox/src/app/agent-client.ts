@@ -22,6 +22,8 @@ export class AgentClient implements AgentsApi {
   #peer: Promise<Peer>;
   #sessions = new Map<string, Local>();
   #asking = new Map<number, AbortController>();
+  /** Pages the agent drives (its preview tool), loaded when first used. */
+  #driver: Promise<import('./preview-driver').PreviewDriver> | null = null;
 
   constructor(
     port: Promise<MessagePort>,
@@ -69,7 +71,11 @@ export class AgentClient implements AgentsApi {
         if (method === 'clipboard.write') value = await navigator.clipboard.writeText(String(args[0]));
         else if (method === 'clipboard.read') value = await navigator.clipboard.readText();
         else if (method === 'speak') speechSynthesis.speak(new SpeechSynthesisUtterance(String(args[0])));
-        else if (method === 'lm.prompt') value = await runBuiltinPrompt(args[0] as BuiltinPromptInput, { signal: ctl.signal, onChunk: (t) => void peer.call('ask.chunk', ask.askId, t).catch(() => undefined) }).then((r) => r, (err: Error) => ({ error: err.message, tooLarge: err instanceof BuiltinTooLarge, window: (err as BuiltinTooLarge).window }));
+        else if (method === 'preview.do') {
+          const [sid, action, a] = args as [string, string, Record<string, unknown>];
+          this.#driver ??= import('./preview-driver').then((m) => new m.PreviewDriver(this.os));
+          value = await (await this.#driver).run(sid, action, a).then((ok) => ({ ok }), (err: Error) => ({ error: err.message }));
+        } else if (method === 'lm.prompt') value = await runBuiltinPrompt(args[0] as BuiltinPromptInput, { signal: ctl.signal, onChunk: (t) => void peer.call('ask.chunk', ask.askId, t).catch(() => undefined) }).then((r) => r, (err: Error) => ({ error: err.message, tooLarge: err instanceof BuiltinTooLarge, window: (err as BuiltinTooLarge).window }));
       }
     } catch (err) {
       if (ctl.signal.aborted) return;

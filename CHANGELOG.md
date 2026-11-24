@@ -7,6 +7,11 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.2 (not released yet)
 
+- **The agent tests what it builds**: a new `preview` tool opens a page it
+  made (a file or a dev server page) in the sandboxed preview, reads it with
+  its buttons and fields numbered, clicks, types, chooses, presses keys,
+  runs checks in the page, reads its console and errors, and takes
+  screenshots it looks at.
 - Fixed: apps in Preview that use `localStorage` stopped with "SecurityError:
   … sandboxed and lacks the allow-same-origin flag". Previewed apps now get
   `localStorage` (kept per app, between loads, in

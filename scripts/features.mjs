@@ -53,6 +53,17 @@ function respond(r) {
   if (last.role === 'tool' && last.content.startsWith('Serving ')) return call('preview_logs', { wait_ms: 1500, all: true });
   // A file is read before it is changed (the agent refuses to edit blind): read, then write.
   if (lastUser.includes('change the notes') && last.role === 'tool' && /^\s+1\t/.test(last.content)) return call('write_file', { path: 'notes.txt', content: 'first\nSECOND\nthird\n' });
+  // The preview tool: open a page, type into it, read it, check it, look at it.
+  // (A screenshot comes back as an image in a user message after the tool's result.)
+  if (lastUser.startsWith('The images from the tool results') && JSON.stringify(msgs).includes('test the guestbook')) return text(`PREVIEW DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.split('\n')[0]).join(' | ')}`);
+  if (lastUser.includes('test the guestbook')) {
+    if (last.role === 'user') return call('preview', { action: 'open', target: '/home/agent/guestbook/index.html' });
+    if (last.content.startsWith('Opened')) return call('preview', { action: 'type', ref: 1, value: 'Ada was here', submit: true });
+    if (last.content.startsWith('typed into')) return call('preview', { action: 'snapshot' });
+    if (last.content.startsWith('Page:') && !last.content.includes('EVAL')) return call('preview', { action: 'eval', code: "'EVAL ' + document.querySelectorAll('li').length" });
+    if (last.content.startsWith('EVAL')) return call('preview', { action: 'screenshot' });
+    if (last.content.startsWith('Screenshot')) return text(`PREVIEW DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.split('\n')[0]).join(' | ')}`);
+  }
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
   if (lastUser.includes('serve the todo app')) return call('dev_server', { action: 'start', path: 'todo' });
   if (lastUser.includes('Plan mode')) return text('1. Read notes.txt\n2. Change the second line\n3. Check the result');
@@ -1771,6 +1782,45 @@ await check('previewed apps get localStorage (kept per app), sessionStorage and 
     const second = await shown('runs=2');
     if (!second.startsWith('runs=2 best=20')) throw new Error(`after reload: ${second}`);
     return `${first} → then ${second.split(' ').slice(0, 2).join(' ')}`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('the preview tool: the agent opens its page, types, reads, checks and takes a screenshot', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => {
+      bbx.perms.mode = 'auto';
+      return bbx.fs.writeFile(
+        '/home/agent/guestbook/index.html',
+        `<!doctype html><title>Guestbook</title><h1>Guestbook</h1><form id=f><input id=name aria-label="Your name"><button>Sign</button></form><ul id=list></ul><script>
+        f.onsubmit = (e) => { e.preventDefault(); const li = document.createElement('li'); li.textContent = name.value; list.append(li); name.value = ''; console.log('signed'); };
+        </script>`,
+      );
+    });
+    const before = requests.length;
+    await p.locator('.ag-input').fill('test the guestbook');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('PREVIEW DONE'), null, { timeout: 90000 }).catch(async (e) => { throw new Error(e.message + ' log=' + (await p.evaluate(() => document.querySelector('.ag-log')?.innerText.slice(-700)))); });
+    const results = requests.slice(before).flatMap((r) => r.messages).filter((m) => m.role === 'tool').map((m) => (typeof m.content === 'string' ? m.content : ''));
+    const all = results.join('\n---\n');
+    if (!/\[1\] textbox "Your name"/.test(all)) throw new Error(`open did not list the field: ${all.slice(0, 400)}`);
+    if (!all.includes('Ada was here')) throw new Error(`the typed entry was not on the page: ${all.slice(0, 600)}`);
+    if (!all.includes('EVAL 1')) throw new Error(`eval: ${all.slice(-400)}`);
+    if (!/Screenshot of Guestbook \(1280×800\)/.test(all)) throw new Error(`screenshot: ${all.slice(-300)}`);
+    // The screenshot went to the model as an image.
+    const sawImage = requests.slice(before).some((r) => JSON.stringify(r.messages).includes('data:image/png;base64'));
+    if (!sawImage) throw new Error('the screenshot was not shown to the model');
+    return 'opened (fields numbered), typed and submitted, read the new entry, eval → 1, screenshot shown to the model';
   } finally {
     await ctx.close();
   }
