@@ -1319,6 +1319,56 @@ await check('built-in model: the agent in its worker uses the page’s Prompt AP
   }
 });
 
+await check('Settings → Packages: lists the BrowserBox index, adds a source, installs with a dependency, removes, verifies', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const p = await ctx.newPage();
+  const steps = [];
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => bbx.openApp('settings', { section: 'packages' }));
+    const item = (title) => p.locator('.st-sched-item', { has: p.locator('strong', { hasText: new RegExp(`^${title}\\b`) }) });
+    await item('quickjs').waitFor({ timeout: 20000 });
+    if (!(await item('quickjs').textContent()).includes('BrowserBox index')) throw new Error('the official index is not labelled');
+    await item('python').waitFor();
+    steps.push('official index and built-in packages listed');
+
+    await p.getByLabel('Index URL').fill('http://localhost:11436/pkg/index.json');
+    await p.getByRole('button', { name: 'Add source' }).click();
+    await p.locator('[role=alertdialog]').getByRole('button', { name: 'Add source' }).click();
+    await item('wtest').waitFor({ timeout: 20000 });
+    steps.push('source added (asked)');
+
+    await item('wtest').getByRole('button', { name: 'Install' }).click();
+    await p.locator('[role=alertdialog]', { hasText: 'not the BrowserBox index' }).getByRole('button', { name: 'Install' }).click();
+    await p.locator('.st-note', { hasText: 'Installed wtest.' }).waitFor({ timeout: 30000 });
+    await item('jshello').locator('.badge', { hasText: 'Installed 1.2.0' }).waitFor({ timeout: 10000 });
+    steps.push('wtest installed with jshello (asked)');
+
+    await item('jshello').getByRole('button', { name: 'Remove' }).click();
+    await p.locator('[role=alertdialog]', { hasText: 'wtest needs it' }).getByRole('button', { name: 'Cancel' }).click();
+    await item('wtest').getByRole('button', { name: 'Remove' }).click();
+    await p.locator('.st-note', { hasText: 'Removed wtest.' }).waitFor({ timeout: 20000 });
+    steps.push('dependent warned; wtest removed');
+
+    await p.getByRole('button', { name: 'Verify files' }).click();
+    await p.locator('.st-note', { hasText: 'Every installed file matches its checksum.' }).waitFor({ timeout: 20000 });
+    const ext = await p.evaluate(() => Object.keys(bbx.settings.get('pkg.external', {})).join(','));
+    if (ext !== 'jshello') throw new Error(`installed: ${ext}`);
+    steps.push('verified');
+    return steps.join('; ');
+  } catch (err) {
+    throw new Error(`${steps.join('; ')} | ${err.message}`);
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();

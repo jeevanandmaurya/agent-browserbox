@@ -1,5 +1,5 @@
 import type { DevApi } from '../kernel/dev/types';
-import type { FsApi, Kernel, MountInfo, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
+import type { FsApi, Kernel, MountInfo, PackagesApi, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
 import { Bus } from '../kernel/bus';
 import { detectCaps, type PlatformCap } from '../kernel/caps';
 import { KCore } from '../kernel/kcore';
@@ -254,6 +254,22 @@ export class RemoteKernel implements Kernel {
     addPasskey: (password, p) => this.call('secrets.addPasskey', password, p),
     unlockWithPasskey: (id, prf) => this.call('secrets.unlockWithPasskey', id, prf),
     removePasskey: (id) => this.call('secrets.removePasskey', id),
+  };
+
+  readonly pkg: PackagesApi = {
+    builtin: () => this.call('pkg.builtin'),
+    index: (refresh) => this.call('pkg.index', refresh),
+    installed: () => this.call('pkg.installed'),
+    install: (id) => this.call('pkg.install', id),
+    describeUrl: (url) => this.call('pkg.describeUrl', url),
+    installFrom: (url) => this.call('pkg.installFrom', url),
+    remove: (id, o) => this.call('pkg.remove', id, o),
+    dependents: (id) => this.call('pkg.dependents', id),
+    upgradable: () => this.call('pkg.upgradable'),
+    verify: () => this.call('pkg.verify'),
+    sources: () => this.call('pkg.sources'),
+    addSource: (url) => this.call('pkg.addSource', url),
+    removeSource: (url) => this.call('pkg.removeSource', url),
   };
 
   readonly dev: DevApi = {

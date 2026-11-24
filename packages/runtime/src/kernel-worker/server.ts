@@ -1,6 +1,7 @@
 import type { ContributedCommand, ShellHandle } from '../kernel/api';
 import type { KernelCore } from '../kernel/kernel';
 import type { Secrets } from '../kernel/secrets';
+import { validatePackage } from '../kernel/packages';
 import type { PermDecision, PermRequest } from '../kernel/perms';
 import type { Proc } from '../kernel/proc';
 import type { KernelEvents, KernelLogLine } from '../kernel/types';
@@ -235,6 +236,11 @@ export class KernelServer {
       },
       'secrets.removePasskey': (id: string) => os.secrets.removePasskey(id),
 
+      // Packages: only a person's window manages them (Settings → Packages); the agent uses `pkg`, which keeps its own limits.
+      ...packageHandlers(os, () => {
+        if (client.role !== 'ui') throw new Error('only a BrowserBox window can manage packages');
+      }),
+
       // Processes. A window's own processes (apps, sandboxes) are registered here so they show up everywhere.
       'procs.spawn': (p: WireProc) => {
         if (Math.floor(p.pid / PID_BLOCK) !== client.id) throw new Error('pid outside this client’s range');
@@ -364,3 +370,43 @@ export class KernelServer {
     }
   }
 }
+
+/** The package manager over RPC, for windows (each call checks the caller with `only`). */
+function packageHandlers(os: KernelCore, only: () => void): Handlers {
+  const p = os.packages;
+  const fetchPackage = async (url: string) => {
+    if (!/^https?:\/\//.test(url)) throw new Error('not a link to a package');
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`could not fetch ${url} (HTTP ${res.status})`);
+    return validatePackage(await res.json());
+  };
+  const g = <A extends unknown[], R>(fn: (...a: A) => R) => (...a: A): R => (only(), fn(...a));
+  return {
+    'pkg.builtin': g(() => p.list()),
+    'pkg.index': g(async (refresh?: boolean) => {
+      const have = p.externals();
+      return (await p.index(!!refresh)).map((x) => ({ ...x, installedVersion: have[x.id]?.pkg.version }));
+    }),
+    'pkg.installed': g(() => Object.values(p.externals())),
+    'pkg.install': g(async (id: string) => {
+      if (p.manifests().some((m) => m.id === id)) {
+        await p.install(id);
+        return [id];
+      }
+      const [name, version] = id.split('@') as [string, string | undefined];
+      const found = await p.find(name, { version });
+      if (!found) throw new Error(`no such package: ${id}`);
+      return p.installExternal(found, found.source);
+    }),
+    'pkg.describeUrl': g((url: string) => fetchPackage(url)),
+    'pkg.installFrom': g(async (url: string) => p.installExternal(await fetchPackage(url), url)),
+    'pkg.remove': g((id: string, o?: { force?: boolean }) => (p.externals()[id] ? p.removeExternal(id, o) : p.remove(id, o))),
+    'pkg.dependents': g((id: string) => p.dependents(id)),
+    'pkg.upgradable': g(() => p.upgradable()),
+    'pkg.verify': g(() => p.verify()),
+    'pkg.sources': g(() => p.sources()),
+    'pkg.addSource': g((url: string) => p.addSource(url)),
+    'pkg.removeSource': g((url: string) => p.removeSource(url)),
+  };
+}
+

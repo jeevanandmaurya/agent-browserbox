@@ -10,11 +10,12 @@ export type { KernelLink } from './connect';
 export { Peer, type Handlers } from '../rpc/peer';
 
 // The kernel's types.
-export type { Kernel, FsApi, MountInfo, ProcsApi, SecretsApi, SettingsApi, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
+export type { Kernel, FsApi, MountInfo, PackagesApi, IndexedPackage, ProcsApi, SecretsApi, SettingsApi, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
 export type { Capability, PermDecision, PermMode, PermRequest, Prompter } from '../kernel/perms';
 export type { Proc, ProcKind, ProcState, SpawnOptions } from '../kernel/proc';
 export type { KernelEvents, KernelLogLine, LockState, Notice, ShellAction } from '../kernel/types';
 export type { PasskeyInfo } from '../kernel/secrets';
+export type { ExternalPackage, InstalledExternal, Listed, PackageInfo, PackageSource } from '../kernel/package-types';
 export { createProfile, DEFAULT_PROFILE, deleteProfile, getProfile, lastProfile, listProfiles, setLastProfile, updateProfile, type Profile } from '../kernel/profiles';
 export type { Stat } from '../kernel/vfs/types';
 export type { DevApi, DevInfo, DevLog, DevLogLevel, DevPage, DevStartOptions, WireRequest, WireResponse } from '../kernel/dev/types';

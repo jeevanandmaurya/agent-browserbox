@@ -9,6 +9,7 @@ import { modelSection } from './model';
 import { sectionNav } from './nav';
 import { appearanceSection } from './general';
 import { permissionsSection } from './permissions';
+import { packagesSection } from './packages';
 import { profileSection } from './profile';
 import { hooksSection } from './hooks';
 import { memorySection } from './memory';
@@ -42,6 +43,7 @@ const app: AppModule = {
       { id: 'scheduled', label: 'Scheduled', build: () => scheduledSection(ctx, saved) },
       { id: 'memory', label: 'Memory', build: () => memorySection(ctx, saved) },
       { id: 'hooks', label: 'Hooks', build: () => hooksSection(ctx, saved) },
+      { id: 'packages', label: 'Packages', build: () => packagesSection(ctx, saved) },
       { id: 'environment', label: 'Environment', build: () => environmentSection(ctx, saved) },
       { id: 'profile', label: 'Profile', build: () => profileSection(ctx, saved) },
       { id: 'data', label: 'Data', build: () => dataSection(ctx, () => nav.invalidate()) },

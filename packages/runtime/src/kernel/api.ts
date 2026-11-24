@@ -6,6 +6,7 @@ import type { Permissions, Prompter } from './perms';
 import type { Proc, SpawnOptions } from './proc';
 import type { KernelEvents, LockState, Notice, ShellAction } from './types';
 import type { PasskeyInfo } from './secrets';
+import type { ExternalPackage, InstalledExternal, Listed, PackageInfo, PackageSource } from './package-types';
 import type { Stat } from './vfs/types';
 
 /**
@@ -33,6 +34,8 @@ export interface Kernel {
   /** Virtual dev servers for project folders (`serve`). */
   readonly dev: DevApi;
   readonly caps: PlatformCap[];
+  /** The package manager, for a person's window (Settings → Packages). Not offered to the agent or SDK clients. */
+  readonly pkg?: PackagesApi;
   rootKind: 'opfs' | 'memory';
   readonly bootStart: number;
   readonly bootMarks: Array<{ name: string; at: number }>;
@@ -82,6 +85,36 @@ export interface SettingsApi {
   set(key: string, value: unknown): void;
   delete(key: string): void;
   keys(): string[];
+}
+
+/** A package from an index, as a window sees it. */
+export type IndexedPackage = Listed & { installedVersion?: string };
+
+/**
+ * The package manager for a person in a window. Installing from a source other
+ * than the BrowserBox index is the person's choice: the window asks first.
+ */
+export interface PackagesApi {
+  /** The built-in packages (python, git, …), with size and whether installed. */
+  builtin(): Promise<PackageInfo[]>;
+  /** Every package in the sources' indexes (`refresh` fetches them again). */
+  index(refresh?: boolean): Promise<IndexedPackage[]>;
+  /** Installed packages from sources. */
+  installed(): Promise<InstalledExternal[]>;
+  /** Installs a built-in package, or one from an index (`id` or `id@version`) with what it needs. Returns what was installed. */
+  install(id: string): Promise<string[]>;
+  /** Fetches and checks a package description from a link (shown to the person before `installFrom`). */
+  describeUrl(url: string): Promise<ExternalPackage>;
+  /** Installs the package described at a link. */
+  installFrom(url: string): Promise<string[]>;
+  /** Removes a package (refused while another needs it, unless `force`). */
+  remove(id: string, o?: { force?: boolean }): Promise<void>;
+  dependents(id: string): Promise<string[]>;
+  upgradable(): Promise<Array<{ id: string; from: string; to: Listed }>>;
+  verify(): Promise<Array<{ id: string; path: string; problem: 'missing' | 'changed' }>>;
+  sources(): Promise<PackageSource[]>;
+  addSource(url: string): Promise<void>;
+  removeSource(url: string): Promise<void>;
 }
 
 /** Windows can store and remove secrets but never read them back; only the kernel uses them. */

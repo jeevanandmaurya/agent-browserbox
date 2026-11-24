@@ -1,7 +1,8 @@
 import { KERNEL_URL } from '../config/origins';
 import { PACKAGE_CACHE } from '../sandbox/python-runtime';
 import type { KernelCore } from './kernel';
-import { NO_PACKAGES, type PackageManifest, type PackageModule, type PackageRegistry } from './package-types';
+import { NO_PACKAGES, type ExternalKind, type ExternalPackage, type InstalledExternal, type Listed, type PackageCommand, type PackageFile, type PackageInfo, type PackageManifest, type PackageModule, type PackageRegistry, type PackageSource } from './package-types';
+export type { ExternalKind, ExternalPackage, InstalledExternal, Listed, PackageCommand, PackageFile, PackageInfo, PackageSource };
 
 /** What packages can provide by name: the kinds listed in a manifest that a layer above has given a type to. */
 export type ProvidedKind = keyof PackageModule & ('commands' | 'tools');
@@ -14,52 +15,6 @@ export const EXTERNAL_KEY = 'pkg.external';
 export const SOURCES_KEY = 'pkg.sources';
 const INDEX_CACHE = 'bbx-pkg-index';
 
-/**
- * A package from a source, described by a bbx-package.json: files to download
- * (each pinned by sha256) and the commands they provide.
- */
-export type ExternalKind = 'wasm' | 'js' | 'script';
-export interface PackageFile {
-  path: string;
-  /** Where to download it; or `text` holds it (a small wrapper script kept in the index). */
-  url?: string;
-  text?: string;
-  sha256: string;
-  bytes?: number;
-}
-export interface ExternalPackage {
-  id: string;
-  version: string;
-  kind: ExternalKind;
-  summary: string;
-  license?: string;
-  homepage?: string;
-  files: PackageFile[];
-  /** Command name → the file that runs it (and fixed leading arguments). */
-  commands: Record<string, PackageCommand>;
-  /** Other packages first, as `id` or `id>=1.2`. */
-  depends?: string[];
-}
-export interface PackageCommand {
-  /** The file that runs. */
-  run: string;
-  /** Fixed leading arguments. */
-  args?: string[];
-  /** JavaScript packages: library files loaded first, which `run` gets with `require(path)`. */
-  load?: string[];
-}
-export interface PackageSource {
-  url: string;
-  /** The BrowserBox index: its packages install without asking. */
-  official?: boolean;
-}
-export interface InstalledExternal {
-  pkg: ExternalPackage;
-  source: string;
-  installedAt: number;
-}
-/** A package in a source's index, with where it came from. */
-export type Listed = ExternalPackage & { source: string; official: boolean };
 
 const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const CMD = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
@@ -133,13 +88,6 @@ export async function sha256(data: Uint8Array): Promise<string> {
   return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export interface PackageInfo extends PackageManifest {
-  installed: boolean;
-  /** Download size in bytes: measured from the build and the server, or the manifest's estimate before download. */
-  bytes: number;
-  /** True while `bytes` includes an estimate for files not yet downloaded. */
-  estimated: boolean;
-}
 
 export type Progress = (loaded: number, total: number) => void;
 
