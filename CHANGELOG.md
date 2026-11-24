@@ -7,6 +7,20 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.3 (not released yet)
 
+- **Interactive replies**: the agent can put UI in its answers (cards,
+  figures, charts, sortable tables, progress, checklists, buttons, choices
+  and forms), written as a ```ui block in a small line-based language (a
+  subset of OpenUI Lang) and drawn by the chat as it streams in. A clicked
+  choice or a sent form comes back to the agent as your reply; links open
+  pages, files and apps. The renderer loads only when a reply has a block.
+- **Update notices**: every BrowserBox window checks the site's
+  `version.json` (never from a cache) when it starts, when you come back to
+  it, and every few hours. When the app, kernel, SDK or agent is newer, a
+  banner says which; **Update now** drops the cached pages and reloads every
+  BrowserBox window together, so no old kernel keeps running. A system
+  notification too when the window is in the background and notifications
+  are allowed.
+
 - **Background jobs**: the agent can start a long command (a watcher, a long
   build or test run) in the background and keep working; it reads the
   output, waits for it or stops it with the new `job` tool, and is told when

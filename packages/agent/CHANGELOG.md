@@ -5,6 +5,11 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.3 (not released yet)
 
+- Interactive replies: `UI_COMPONENTS`, `UI_ACTIONS` and `uiPrompt()`
+  (ui-spec.ts) describe the components of ```ui blocks; the prompt teaches
+  them when the host sets `AgentUi.blocks` (`AgentOs.uiBlocks`), never to
+  sub-agents.
+
 - Background jobs: `shell` takes `background: true` (returns at once with
   the first output); the `job` tool lists jobs, reads new output (waiting up
   to `wait_ms`), or stops one. Ended jobs are reported at the start of the

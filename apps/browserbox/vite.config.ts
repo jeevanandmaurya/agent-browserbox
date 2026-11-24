@@ -12,6 +12,10 @@ import { defineConfig } from 'vite';
  */
 const RUNTIME_VERSION: string = JSON.parse(readFileSync(new URL('../../packages/runtime/package.json', import.meta.url), 'utf8')).version;
 
+const versionOf = (rel: string): string => JSON.parse(readFileSync(new URL(rel, import.meta.url), 'utf8')).version;
+/** What this build is made of: written to version.json, and built into the pages to compare with it. */
+const BUILD = { app: versionOf('./package.json'), runtime: RUNTIME_VERSION, sdk: versionOf('../../packages/sdk/package.json'), agent: versionOf('../../packages/agent/package.json') };
+
 const MIME: Record<string, string> = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
   '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png', '.map': 'application/json', '.txt': 'text/plain',
@@ -28,6 +32,8 @@ const shipRuntime = () => ({
   async writeBundle(options: { dir?: string }) {
     const dir = options.dir ?? 'dist';
     cpSync(await builtRuntime(), `${dir}/runtime/${RUNTIME_VERSION}`, { recursive: true });
+    // Read by open pages (never from a cache) to tell people a newer version is out.
+    writeFileSync(`${dir}/version.json`, JSON.stringify({ ...BUILD, built: new Date().toISOString() }, null, 2));
     // The service worker precaches this runtime's pages.
     const sw = `${dir}/sw.js`;
     if (existsSync(sw)) writeFileSync(sw, readFileSync(sw, 'utf8').replace('__BBX_RUNTIME__', `runtime/${RUNTIME_VERSION}/`));
@@ -51,6 +57,7 @@ const shipRuntime = () => ({
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [shipRuntime()],
+  define: { __BBX_BUILD__: JSON.stringify(BUILD) },
   base: './',
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   build: {

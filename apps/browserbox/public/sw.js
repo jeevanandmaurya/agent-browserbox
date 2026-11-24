@@ -6,11 +6,11 @@
 // static hosts such as GitHub Pages cannot send the COOP/COEP headers that
 // SharedArrayBuffer, WebAssembly threads and in-browser Node.js need, so the
 // worker adds them to the responses it serves.
-const CACHE = 'bbx-v4';
+const CACHE = 'bbx-v5';
 // The runtime this build ships (runtime/<version>/): the build writes it in.
 const RUNTIME = '__BBX_RUNTIME__';
 // Pages to have before the first visit ends, so the next start works offline and at once.
-const PRECACHE = ['./', './agent/', './os/', './docs/', './preview/frame.html', ...['embed/', 'kernel/bridge.html', 'kernel/sandbox.html', 'kernel/sandbox-net.html'].map((p) => `./${RUNTIME}${p}`)];
+const PRECACHE = ['./', './agent/', './os/', './app/', './docs/', './preview/frame.html', ...['embed/', 'kernel/bridge.html', 'kernel/sandbox.html', 'kernel/sandbox-net.html'].map((p) => `./${RUNTIME}${p}`)];
 // Only the app's own old caches are cleared on update. Installed packages
 // (bbx-packs), npm modules (bbx-npm), in-browser models (webllm/*) and flags stay.
 const OWN = /^bbx-v\d+$/;
@@ -116,6 +116,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method === 'POST' && url.origin === self.location.origin && url.pathname.endsWith('/agent/share-target')) return e.respondWith(receiveShare(req));
   if (req.method !== 'GET' || url.origin !== self.location.origin) return; // never touch LLM / network calls
+  if (url.pathname.endsWith('/version.json')) return; // always the network: it says whether there is a newer version
   const immutable = url.pathname.includes('/assets/');
   e.respondWith(
     (async () => {

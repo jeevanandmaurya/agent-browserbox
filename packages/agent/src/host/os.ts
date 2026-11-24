@@ -97,6 +97,8 @@ export interface AgentUi {
    * the agent has no preview tool.
    */
   preview?(sid: string, action: string, args: Record<string, unknown>): Promise<{ text: string; image?: string }>;
+  /** The chat window renders ```ui blocks (see ui-spec.ts): the agent is told it can use them. */
+  blocks?: boolean;
 }
 
 export interface AgentOsOptions {
@@ -372,6 +374,8 @@ export class AgentOs {
   readonly builtinPrompt: AgentUi['builtinPrompt'] | undefined;
   /** The page driver for the `preview` tool, when the host has windows. */
   readonly preview: AgentUi['preview'] | undefined;
+  /** Replies may contain ```ui blocks (the host renders them). */
+  readonly uiBlocks: boolean;
 
   #box: BrowserBox;
   /** The agent's shells, reopened on a new box after setBox(). */
@@ -415,6 +419,7 @@ export class AgentOs {
     const ui = opts.ui ?? {};
     this.builtinPrompt = ui.builtinPrompt;
     this.preview = ui.preview;
+    this.uiBlocks = !!ui.blocks;
     this.ui =
       ui.clipboardRead || ui.clipboardWrite || ui.speak
         ? {

@@ -41,3 +41,4 @@ export { ALL_TOOLS, LITE_TOOLS, type TodoItem, type ToolContext, type ToolDef } 
 export { clip, obj, tool, type ToolOutput } from './tools/types.js';
 export * from './ext/library.js';
 export { McpHub, MCP_KEY, mcpTokenName, type McpServerConfig } from './ext/mcp.js';
+export { UI_ACTIONS, UI_COMPONENTS, uiPrompt, type UiComponentSpec } from './ui-spec.js';

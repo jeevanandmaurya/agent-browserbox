@@ -477,6 +477,21 @@ const app: AppModule = {
     // Edit an earlier message: the chat goes back to just before it (and, if you choose, so do the files).
     log.onOpenArtifact = (id, version) => route('artifacts', { id, version });
 
+    // Clicks in a reply's ```ui block: a reply to send, a web page, or something of the box to open.
+    log.onUiAction = ({ name, args }) => {
+      const arg = String(args[0] ?? '');
+      if (name === '@ToAssistant') return void (arg.trim() && submit(arg));
+      if (name === '@OpenUrl' || /^https?:\/\//.test(arg)) return void (/^https?:\/\//.test(arg) && open(arg, '_blank', 'noopener'));
+      if (name !== '@Open' || !arg) return;
+      if (!arg.includes('/')) return route(arg);
+      const path = arg.startsWith('/') ? arg : `${project().folder}/${arg}`;
+      void os.fs.stat(path).then((s) => {
+        if (!s) return os.notify({ title: `${path} does not exist`, level: 'warn' });
+        if (s.kind === 'dir') return route('files', { path });
+        route(/\.html?$/i.test(path) ? 'preview' : 'editor', { path });
+      });
+    };
+
     // A sub-agent's work, read-only, in a dialog: the same view as a chat.
     log.onOpenSubagent = async (id, title) => {
       const messages = (await agent.snapshot()).subagents?.[id];

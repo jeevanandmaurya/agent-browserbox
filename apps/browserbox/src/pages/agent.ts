@@ -22,7 +22,11 @@ bootConsole(os, root)
   // Reminders of due scheduled tasks for the installed app (loaded after startup).
   .then(() => void Promise.all([PROFILE, import('@/app/background')]).then(([id, m]) => m.followSchedules(os, id)))
   .then(
-  () => os.mark('ready'),
+  () => {
+    os.mark('ready');
+    // A newer release out: say so (cached pages would otherwise hide it until the next start).
+    void import('@/app/updates').then((m) => m.watchUpdates(os));
+  },
   (err: Error) => {
     document.getElementById('app')!.textContent = `BrowserBox could not start: ${err.message}`;
   },

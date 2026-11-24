@@ -26,3 +26,4 @@ export type { AgentEvent, AgentHost, TurnStats } from './agent.js';
 export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, Isolation, TurnChanges } from './api.js';
 export type { TodoItem } from './tools/types.js';
 export type { FilesLike, SettingsApi, WithFiles, WithSettings } from './host/os.js';
+export { UI_ACTIONS, UI_COMPONENTS, uiPrompt, type UiComponentSpec } from './ui-spec.js';

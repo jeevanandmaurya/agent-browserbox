@@ -58,6 +58,33 @@ export class Transcript {
   onOpenSubagent: ((id: string, title: string) => void) | null = null;
   /** Reads a file from the box, to show attached images. */
   readFile?: (path: string) => Promise<Uint8Array>;
+  /** A click in a ```ui block: a reply to send (@ToAssistant), a page or a file to open. */
+  onUiAction: ((a: { name: string; args: unknown[] }) => void) | null = null;
+  /** The ui block renderer, once a reply has needed it. */
+  #uiMod: typeof import('./ui-blocks') | null = null;
+  /** Finished ui blocks of the reply being written, kept across re-renders so what the user typed stays. */
+  #uiKept = new Map<string, HTMLElement>();
+
+  /** Markdown, with ```ui blocks drawn as UI. */
+  #md(text: string, kept = new Map<string, HTMLElement>()): DocumentFragment {
+    return renderMarkdown(text, {
+      block: (lang, code, closed) => {
+        if (lang !== 'ui') return null;
+        const hit = closed ? kept.get(code) : undefined;
+        if (hit) return hit;
+        const el = h('div', { class: 'ui-block' });
+        const host = { act: (a: { name: string; args: unknown[] }) => this.onUiAction?.(a), readFile: this.readFile };
+        if (this.#uiMod) this.#uiMod.renderUi(el, code, closed, host);
+        else
+          void import('./ui-blocks').then(
+            (m) => ((this.#uiMod = m), m.renderUi(el, code, closed, host)),
+            () => el.replaceChildren(h('pre', null, h('code', null, code))),
+          );
+        if (closed) kept.set(code, el);
+        return el;
+      },
+    });
+  }
   /** Called with the message's position among your messages (0 = first) and its text, to edit and resend it. */
   onEdit: ((ordinal: number, text: string) => void) | null = null;
 
@@ -154,7 +181,7 @@ export class Transcript {
   }
 
   #flush(): void {
-    if (this.#dirty && this.#textEl) this.#textEl.replaceChildren(renderMarkdown(this.#text));
+    if (this.#dirty && this.#textEl) this.#textEl.replaceChildren(this.#md(this.#text, this.#uiKept));
     this.#dirty = false;
   }
 
@@ -304,6 +331,7 @@ export class Transcript {
         if (!this.#textEl) {
           this.#endBlock();
           this.#textEl = h('div', { class: 'ag-text md' });
+          this.#uiKept = new Map();
           this.#ensureTurn().append(this.#textEl);
         }
         this.#text += e.delta;
@@ -425,7 +453,7 @@ export class Transcript {
         const turn = this.#ensureTurn();
         for (const b of m.content) {
           if (b.type === 'text') {
-            turn.append(h('div', { class: 'ag-text md' }, renderMarkdown(b.text)));
+            turn.append(h('div', { class: 'ag-text md' }, this.#md(b.text)));
             this.#turnText.push(b.text);
           } else if (b.type === 'thinking') turn.append(thinkBlock(h('div', { class: 'ag-think-body' }, b.text)));
           else if (b.type === 'tool_use') this.#toolCard(b.id, b.name, summarize(b.input), b.input);

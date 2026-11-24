@@ -34,10 +34,14 @@ bootConsole(os, root)
     await mountStandalone(os, (await app.load()).default, app.name, root, { args, id });
   })
   .then(
-    () => os.mark('ready'),
+    () => {
+      os.mark('ready');
+      void import('@/app/updates').then((m) => m.watchUpdates(os));
+    },
     (err: Error) => {
       root.textContent = `BrowserBox could not open this: ${err.message}`;
     },
   );
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) addEventListener('load', () => void navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(() => undefined));
 (globalThis as unknown as { bbx: RemoteKernel }).bbx = os;

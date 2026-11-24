@@ -24,6 +24,7 @@ void bootConsole(os, document.getElementById('desk')!)
     const proc = os.procs.spawn({ name: 'desktop', kind: 'service', detail: 'window manager' });
     os.procs.update(proc.pid, { state: 'idle' });
     os.mark('ready');
+    void import('@/app/updates').then((m) => m.watchUpdates(os));
     const params = new URLSearchParams(location.search);
     const app = params.get('app');
     if (app) void apps.launch(app);

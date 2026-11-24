@@ -41,6 +41,14 @@ Only changes made with the agent's file tools are tracked. Changes made by shell
 
 Each project has its own folder, chats, memory and instructions. Pick one at the top of the sidebar, or **New project…** to make one: give it a name and a folder (a new one under `~/Projects`, an existing one, or a folder you shared from your computer under `/mnt`). In a project the agent works in its folder, changes files there without asking (in Ask mode, elsewhere still asks), and reads the folder's `AGENTS.md`. **Project settings…** edits the instructions, sets a default model and pins knowledge files the agent always gets. **General** is the original workspace, `/home/agent`, with every chat from before projects. Deleting a project deletes its chats and memory; its folder is kept unless you tick the box.
 
+### Interactive replies
+
+When a picture or a click says it better than prose, the agent answers with UI inside its reply: figures and charts, a table you can sort, progress and checklists, buttons, choices and short forms. Picking a choice or sending a form answers the agent for you, as your next message; links open web pages, files of the box (an `.html` file in Preview) or apps. Old chats draw their UI again when you open them.
+
+### Tabs of their own
+
+Any tool can have a browser tab to itself: **Open in new tab** on a desktop window's title bar, on the agent window's side panel, and on an artifact. The tab uses the same kernel as your other windows (same files, dev servers and settings), and its address keeps what it shows, so a reload or a copied link opens the same page, file or artifact.
+
 ### Isolated chats
 
 Type `/isolate` (or **Work on a copy** in the chat menu) and the chat works on its own copy of the project folder, at `/work/<chat>`: its edits, shell commands, dev servers and previews all use the copy, and the folder itself does not change. Nothing is copied up front; only the files it changes are kept, with the chat. **"Copy: N files to apply · Review"** above the message box shows each added, changed or deleted file against the folder, with **Apply** and **Discard** for one file or all of them. Several chats can work on the same project this way without getting in each other's way. `/isolate off` goes back to the folder itself once nothing is left to apply.

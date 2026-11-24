@@ -83,6 +83,26 @@ function respond(r) {
   if (lastUser.includes('make a sales table')) return call('create_artifact', { title: 'Sales by region', kind: 'csv', content: 'region,amount\nWest,30\nEast,120\nNorth,7\n' });
   if (lastUser.includes('write the report')) return call('create_artifact', { title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\nAll good.' });
   if (lastUser.includes('improve the report')) return call('update_artifact', { id: 'weekly-report', edits: [{ old: 'All good.', new: 'All good, shipped 3 features.' }], note: 'more detail' });
+  // Interactive replies: a ```ui block, then what its clicks and forms send back.
+  if (lastUser.startsWith('Plan: ') || lastUser.startsWith('Form “details”')) return text(`GOT ${lastUser.replace(/\n/g, ' / ')}`);
+  if (lastUser.includes('show me the dashboard'))
+    return text(
+      [
+        'Here is the overview:',
+        '```ui',
+        'root = Stack([head, stats, chart, table, plan, form, steps, more])',
+        'head = Callout("Sales are **up** this week.", "ok")',
+        'stats = Stats([Stat("Revenue", "$12.4k", "+8%"), Stat("Orders", 182, "-3%")])',
+        'chart = Chart("bar", ["Mon", "Tue", "Wed"], [Series("This week", [5, 9, 7]), Series("Last week", [4, 6, 8])], "Orders per day")',
+        'table = Table(["Region", "Sales"], [["West", 30], ["East", 120], ["North", 7]])',
+        'plan = Choices("plan", "Plan", ["Basic", "Pro"])',
+        'form = Form("details", [Input("name", "Your name"), Select("size", "Team size", ["1-5", "6-20"]), Checkbox("news", "Send news")], "Send details")',
+        'steps = Checklist([Item("Import data", true), "Review"])',
+        'more = Buttons([Button("Open the report", @Open("/home/agent/report.html")), Button("Docs", @OpenUrl("https://example.com"))])',
+        '```',
+        'Pick a plan when ready.',
+      ].join('\n'),
+    );
   if (lastUser.includes('flaky') || lastUser.includes('broken')) return text(`ANSWERED ${lastUser}`);
   if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
   if (lastUser.includes('isolated edit')) return call('shell', { command: 'echo v2 > iso/hello.txt && rm iso/gone.txt && echo new > iso/added.txt && pwd' });
@@ -1987,6 +2007,89 @@ await check('apps in a tab of their own: an artifact and a page open in new tabs
     await art.waitForSelector('.af-table', { timeout: 60000 });
     const rows = await art.locator('.af-table tbody tr').count();
     return `"${heading}" in ${url.pathname}?app=preview; kernel shared (${shared}); the panel's tab closed: ${closedPane === 0}; artifact bar ${Math.round(barHeight)}px, its tab shows the table (${rows} rows)`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('interactive replies: a ui block draws cards, figures, a chart, a sortable table, choices and a form, and clicks come back as replies', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    const before = requests.length;
+    await p.locator('.ag-input').fill('show me the dashboard');
+    await p.locator('.ag-input').press('Enter');
+    const block = p.locator('.ui-block').first();
+    await block.locator('.ui-table').waitFor({ timeout: 30000 });
+    // The agent was told about the components.
+    const sys = requests[before].messages[0].content;
+    if (!sys.includes('# Interactive replies') || !sys.includes('Chart(kind:')) throw new Error('the prompt does not describe ui blocks');
+    const seen = await block.evaluate((b) => ({
+      callout: b.querySelector('.ui-callout.ok strong')?.textContent,
+      stats: [...b.querySelectorAll('.ui-stat strong')].map((s) => s.textContent),
+      bars: b.querySelectorAll('.ui-chart rect').length,
+      legend: b.querySelectorAll('.ui-legend span').length,
+      rows: b.querySelectorAll('.ui-table tbody tr').length,
+      ticks: b.querySelectorAll('.ui-checklist li.done').length,
+      buttons: [...b.querySelectorAll('.ui-buttons .btn')].map((x) => x.textContent),
+      text: document.querySelector('.ag-log').innerText.includes('Pick a plan when ready.'),
+    }));
+    if (seen.callout !== 'up' || seen.stats.join() !== '$12.4k,182' || seen.bars !== 6 || seen.legend !== 2 || seen.rows !== 3 || seen.ticks !== 1 || !seen.text) throw new Error(JSON.stringify(seen));
+    if (process.env.SHOT) await block.screenshot({ path: process.env.SHOT });
+    // Sorting by a column.
+    await block.locator('.ui-sort', { hasText: 'Sales' }).click();
+    const firstAsc = await block.locator('.ui-table tbody tr td').first().textContent();
+    if (firstAsc !== 'North') throw new Error(`sorted: ${firstAsc}`);
+    // A choice on its own is a reply.
+    await block.locator('.ui-chip', { hasText: 'Pro' }).click();
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('GOT Plan: Pro'), null, { timeout: 20000 });
+    // A form sends every field.
+    await block.getByLabel('Your name').fill('Ada');
+    await block.getByLabel('Team size').selectOption('6-20');
+    await block.locator('button', { hasText: 'Send details' }).click();
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('GOT Form “details”'), null, { timeout: 20000 });
+    const got = await p.evaluate(() => document.querySelector('.ag-log').innerText.match(/GOT Form[^\n]*/)[0]);
+    if (!got.includes('name: Ada') || !got.includes('size: 6-20') || !got.includes('news: no')) throw new Error(got);
+    // Reopened, the chat draws its blocks again.
+    await p.reload();
+    await p.waitForSelector('.ui-block .ui-chart rect', { timeout: 60000 });
+    return `callout, 2 stats, ${seen.bars} bars with a legend, sortable table, checklist, buttons (${seen.buttons.join(', ')}); a chip and a form came back as replies (${got.slice(4, 90)}…); drawn again after reload`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('updates: a newer version on the site shows a banner, and Update now reloads', async () => {
+  const ctx = await browser.newContext();
+  const live = await (await fetch(base + 'version.json')).json();
+  await ctx.route('**/version.json*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...live, agent: '9.9.9' }) }));
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    const banner = p.locator('.bbx-update');
+    await banner.waitFor({ timeout: 20000 });
+    const text = await banner.innerText();
+    if (!text.includes(`agent ${live.agent} → 9.9.9`)) throw new Error(text);
+    await Promise.all([p.waitForEvent('load', { timeout: 20000 }), banner.locator('button', { hasText: 'Update now' }).click()]);
+    await banner.waitFor({ timeout: 20000 });
+    await banner.locator('button', { hasText: 'Later' }).click();
+    await p.reload();
+    await p.waitForSelector('.ag-input', { timeout: 60000 });
+    await p.waitForTimeout(5000);
+    if (await banner.count()) throw new Error('Later did not keep it quiet for this version');
+    return `"${text.replace(/\n/g, ' · ')}"; Update now reloaded; Later keeps it quiet until the next version`;
   } finally {
     await ctx.close();
   }

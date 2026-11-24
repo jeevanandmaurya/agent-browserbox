@@ -173,6 +173,8 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
         clipboardRead: () => ask<string>({ kind: 'ui', payload: { method: 'clipboard.read', args: [] } }),
         clipboardWrite: (text) => ask<void>({ kind: 'ui', payload: { method: 'clipboard.write', args: [text] } }),
         speak: (text) => void ask({ kind: 'ui', payload: { method: 'speak', args: [text] } }).catch(() => undefined),
+        // The chat window draws ```ui blocks in replies.
+        blocks: true,
         // Pages the agent drives (the preview tool) live in the window lending the box.
         preview: async (sid, action, args) => {
           const r = await ask<{ ok?: { text: string; image?: string }; error?: string } | string>({ kind: 'ui', sid, payload: { method: 'preview.do', args: [sid, action, args] } }, undefined, provider ?? undefined);

@@ -4,7 +4,12 @@ import { h } from './dom';
  * A small, safe Markdown renderer. It builds DOM nodes directly — model output
  * is never parsed as HTML — and only http(s)/mailto links become clickable.
  */
-export function renderMarkdown(src: string): DocumentFragment {
+export interface MarkdownHooks {
+  /** Draws a fenced block itself (e.g. ```ui); `closed` is false while it is still streaming. Null: shown as code. */
+  block?(lang: string, code: string, closed: boolean): Node | null;
+}
+
+export function renderMarkdown(src: string, hooks: MarkdownHooks = {}): DocumentFragment {
   const frag = document.createDocumentFragment();
   const lines = src.replace(/\r\n?/g, '\n').split('\n');
   let i = 0;
@@ -20,8 +25,14 @@ export function renderMarkdown(src: string): DocumentFragment {
     if (fence) {
       const body: string[] = [];
       for (i++; i < lines.length && !lines[i]!.trimStart().startsWith(fence[1]!); i++) body.push(lines[i]!);
+      const closed = i < lines.length;
       i++;
       const code = body.join('\n');
+      const own = hooks.block?.(fence[2] ?? '', code, closed);
+      if (own) {
+        frag.append(own);
+        continue;
+      }
       frag.append(
         h(
           'div',
@@ -49,7 +60,7 @@ export function renderMarkdown(src: string): DocumentFragment {
       const body: string[] = [];
       for (; i < lines.length && /^>\s?/.test(lines[i]!); i++) body.push(lines[i]!.replace(/^>\s?/, ''));
       const q = h('blockquote');
-      q.append(renderMarkdown(body.join('\n')));
+      q.append(renderMarkdown(body.join('\n'), hooks));
       frag.append(q);
       continue;
     }
@@ -104,7 +115,8 @@ function copy(btn: HTMLElement, text: string): void {
 
 const INLINE = /(`+)([\s\S]+?)\1|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^\s*][\s\S]*?)\*|\b_([^\s_][\s\S]*?)_\b|~~([\s\S]+?)~~|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>)\]]+)/g;
 
-function inline<T extends HTMLElement>(el: T, text: string): T {
+/** Inline Markdown (code, bold, italics, links) into `el`. */
+export function inline<T extends HTMLElement>(el: T, text: string): T {
   let last = 0;
   for (const m of text.matchAll(INLINE)) {
     if (m.index > last) el.append(text.slice(last, m.index));
