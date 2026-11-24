@@ -90,6 +90,10 @@
 .cp-send:disabled { background: var(--panel-3); color: var(--muted); cursor: default; }
 .cp-send.stop { background: var(--text); color: var(--panel); }
 .cp-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 0; }
+.cp-voice { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 13px; }
+.cp-voice-dot { width: 9px; height: 9px; border-radius: 50%; background: #dc2626; animation: cp-pulse 1s ease-in-out infinite alternate; }
+@keyframes cp-pulse { from { opacity: 1; } to { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .cp-voice-dot { animation: none; } }
 .cp-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 30px; padding: 0 4px 0 10px; border: 1px solid var(--border); border-radius: 15px; background: var(--panel); font-size: 12.5px; }
 .cp-chip-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cp-chip-size { color: var(--muted); font-size: 11.5px; white-space: nowrap; }

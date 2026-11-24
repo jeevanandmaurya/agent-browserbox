@@ -5,6 +5,7 @@ import './workbench.css';
 import { OS_URL } from '@/app/config';
 import { notifyAway, OPEN_CHAT_EVENT } from '@/app/attention';
 import { onLaunchFiles, takeShared, type Incoming } from '@/app/launch';
+import { MiniView, pipAvailable } from './pip';
 import { profileWindow, withProfile } from '@/app/boot';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
@@ -175,6 +176,7 @@ const app: AppModule = {
       embedded,
       collapse: () => sidebar.el.dispatchEvent(new Event('bb-collapse')),
     });
+    const mini = new MiniView();
     const more = (anchor: HTMLElement) =>
       openMenu(
         anchor,
@@ -190,6 +192,7 @@ const app: AppModule = {
           { label: 'Changes', icon: 'edit', hint: 'Review and undo file changes', onSelect: () => showChanges() },
           { label: 'Context', icon: 'info', hint: 'What fills the context window', onSelect: () => meter.open() },
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
+          ...(pipAvailable() ? [{ label: 'Mini window', icon: 'panelRight' as const, hint: 'Follow the agent on top of other apps', onSelect: () => void agent.snapshot().then((s) => mini.show(s.title)).catch((err: Error) => os.notify({ title: 'Could not open the mini window', body: err.message, level: 'error' })) }] : []),
           { separator: true },
           { label: 'Settings', icon: 'gear', onSelect: () => settings.open() },
           { label: 'Help & docs', icon: 'question', onSelect: () => route('help') },
@@ -222,10 +225,17 @@ const app: AppModule = {
       agent = handle;
       // A private chat is never reopened after a reload.
       void handle.snapshot().then((snap) => !snap.private && writeLast(snap.project, handle.sid));
-      handle.onAsk((question, options) => log.ask(question, options));
-      handle.prompter = (req, signal) => log.approve(req, signal);
+      handle.onAsk((question, options) => (mini.asked(question), log.ask(question, options)));
+      // An approval shows in the chat and, when it is open, in the mini window: the first answer counts.
+      handle.prompter = (req, signal) => {
+        const ctl = new AbortController();
+        signal?.addEventListener('abort', () => ctl.abort());
+        const answers = [log.approve(req, ctl.signal), mini.approve(req, ctl.signal)].filter((x): x is NonNullable<typeof x> => x !== null);
+        return Promise.race(answers).finally(() => ctl.abort());
+      };
       handle.onEvent((e) => {
         log.handle(e);
+        mini.event(e);
         if (e.type === 'todos') {
           todos = e.items;
           showTodos();
@@ -245,6 +255,7 @@ const app: AppModule = {
           void sidebar.refresh(agent.sid);
           void agent.snapshot().then((s) => {
             shell.setTitle(s.title);
+            mini.setTitle(s.title);
             win.setTitle(s.title);
           });
           if (e.reason === 'end' || e.reason === 'error') {

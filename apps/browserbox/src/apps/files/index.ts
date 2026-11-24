@@ -1,3 +1,4 @@
+import { canShareFiles, shareableFile, shareFiles } from '@/app/share';
 import { basename, dirname, isInside, join, normalize, resolve } from '@jeevanand/agent-browserbox-runtime/client';
 import type { Stat } from '@jeevanand/agent-browserbox-runtime/client';
 import type { AppModule } from '@/ui/apps';
@@ -300,6 +301,17 @@ const app: AppModule = {
       }
     }
 
+    /** The selected files to the device's share sheet (mail, messages, AirDrop…). */
+    async function shareSelected(): Promise<void> {
+      const picked = table.selection.filter((x) => x.kind === 'file');
+      try {
+        const files = await Promise.all(picked.map(async (s) => shareableFile(s.name, await fs.readFile(s.path))));
+        await shareFiles(files, picked.length === 1 ? picked[0]!.name : `${picked.length} files`);
+      } catch (err) {
+        fail('Could not share', err);
+      }
+    }
+
     async function upload(items: Upload[]): Promise<void> {
       if (!items.length) return;
       if (readOnly(cwd)) return ctx.os.notify({ title: 'This folder is read-only', level: 'warn' });
@@ -343,6 +355,7 @@ const app: AppModule = {
         { label: 'Cut', hint: 'Ctrl+X', action: () => toClipboard(true), disabled: ro },
         { label: 'Paste', hint: 'Ctrl+V', action: () => void paste(), disabled: ro || !clipboard.paths.length },
         { label: 'Download', action: () => void downloadSelected(), disabled: !files.length },
+        ...(canShareFiles() ? [{ label: 'Share…', action: () => void shareSelected(), disabled: !files.length }] : []),
         'sep',
         { label: 'Delete', hint: 'Del', action: () => void remove(), danger: true, disabled: ro },
       ];

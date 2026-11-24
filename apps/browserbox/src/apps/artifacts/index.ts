@@ -1,3 +1,4 @@
+import { canShareFiles, shareableFile, shareFiles } from '@/app/share';
 import './style.css';
 import { artifactsDir, deleteArtifact, listArtifacts, readArtifact, updateArtifact, versionPath, type Artifact } from '@jeevanand/agent-browserbox/ui';
 import { currentProject } from '@/app/project';
@@ -89,6 +90,13 @@ const app: AppModule = {
             Object.assign(document.createElement('a'), { href: url, download: file.split('/').pop()!.replace(/^v/, `${id}-v`) }).click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           }),
+          ...(canShareFiles()
+            ? [
+                btn('Share', 'external', () =>
+                  void shareFiles([shareableFile(file.split('/').pop()!.replace(/^v\d+/, a.title.replace(/[/\\:*?"<>|]+/g, ' ').trim() || id), r.content)], a.title).catch((err: Error) => os.notify({ title: 'Could not share', body: err.message, level: 'error' })),
+                ),
+              ]
+            : []),
           btn('Delete', 'trash', async () => {
             if (!(await confirmDialog(`Delete “${a.title}”?`, 'Every version is deleted.', 'Delete', true))) return;
             await deleteArtifact(os, folder, id);

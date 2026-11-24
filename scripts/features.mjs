@@ -1443,6 +1443,87 @@ await check('installed app: shared files and text, opened files, shortcuts, the 
   }
 });
 
+await check('share to other apps, the mini window (with an approval answered there), a voice note with its transcript', async () => {
+  // A browser of its own, with a fake microphone.
+  const b = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
+  const ctx = await b.newContext({ viewport: { width: 1200, height: 850 }, permissions: ['microphone'] });
+  await ctx.addInitScript(() => {
+    if (typeof document === 'undefined') return;
+    globalThis.__shared = [];
+    Object.defineProperty(Navigator.prototype, 'canShare', { configurable: true, value: (d) => !!d?.files?.length });
+    Object.defineProperty(Navigator.prototype, 'share', { configurable: true, value: async (d) => void globalThis.__shared.push({ title: d.title, files: d.files.map((f) => `${f.name}:${f.type}`) }) });
+    // The mini window: a popup stands in for the always-on-top one.
+    Object.defineProperty(globalThis, 'documentPictureInPicture', { configurable: true, value: { window: null, requestWindow: async () => (globalThis.__pip = window.open('', 'pip', 'width=360,height=420')) } });
+    class FakeRecognition {
+      start() {
+        setTimeout(() => this.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: 'remind me to water the plants' }], { isFinal: true })] }), 300);
+      }
+      stop() {
+        setTimeout(() => this.onend?.(), 10);
+      }
+    }
+    globalThis.SpeechRecognition = FakeRecognition;
+  });
+  const p = await ctx.newPage();
+  const steps = [];
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+
+    // Share a file from Files.
+    await p.evaluate(() => bbx.fs.writeFile('/home/agent/report.md', '# Report'));
+    await p.evaluate(() => bbx.openApp('files', { path: '/home/agent' }));
+    await p.locator('[role=row]', { hasText: 'report.md' }).first().click({ button: 'right' });
+    await p.locator('.menu .pop-item, [role=menuitem]', { hasText: 'Share…' }).first().click();
+    await p.waitForFunction(() => globalThis.__shared.length === 1, null, { timeout: 10000 });
+    const shared = await p.evaluate(() => globalThis.__shared[0]);
+    if (shared.files[0] !== 'report.md:text/plain') throw new Error(JSON.stringify(shared));
+    await p.keyboard.press('Escape');
+    steps.push('file shared');
+
+    // The mini window follows the chat and takes an approval.
+    await p.evaluate(() => (bbx.perms.mode = 'ask'));
+    await p.locator('.ag-more, [aria-label="More"]').first().click();
+    const [pip] = await Promise.all([ctx.waitForEvent('page'), p.locator('.menu .pop-item, [role=menuitem]', { hasText: 'Mini window' }).first().click()]);
+    await p.locator('.ag-input').fill('touch while away');
+    await p.locator('.ag-input').press('Enter');
+    await pip.locator('.card button', { hasText: 'Allow once' }).click({ timeout: 30000 });
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('Tool said:'), null, { timeout: 30000 });
+    if (await p.locator('.ag-approval .ag-card-actions button:not([disabled])').count()) throw new Error('the chat still asks after the mini window answered');
+    if (!(await p.evaluate(() => bbx.fs.exists('/home/user/away.txt')))) throw new Error('the approved command did not run');
+    const pipText = await pip.locator('body').textContent();
+    if (!pipText.includes('touch /home/user/away.txt') || !/Done|Working/.test(pipText)) throw new Error(`mini window: ${pipText.slice(0, 300)}`);
+    await pip.close();
+    steps.push('mini window followed the chat; its approval ran the command');
+
+    // A voice note: an audio file attached, its transcript in the message.
+    await p.locator('.cp-plus').click();
+    await p.locator('.menu .pop-item', { hasText: 'Record a voice note' }).click();
+    await p.locator('.cp-voice').waitFor({ timeout: 10000 });
+    await p.waitForTimeout(1500);
+    await p.locator('.cp-voice button', { hasText: 'Stop' }).click();
+    await p.locator('.cp-chips:not([hidden])', { hasText: /voice-.*\.(webm|ogg|m4a)/ }).waitFor({ timeout: 15000 });
+    const text = await p.locator('.ag-input').inputValue();
+    if (!text.includes('Voice note (transcript): remind me to water the plants')) throw new Error(`text: ${text}`);
+    const size = await p.evaluate(async () => {
+      const name = document.querySelector('.cp-chips').textContent.match(/voice-[\w-]+\.(webm|ogg|m4a)/)[0];
+      return (await bbx.fs.readFile(`/home/agent/uploads/${name}`)).length;
+    });
+    if (size < 1000) throw new Error(`audio only ${size} bytes`);
+    steps.push(`voice note ${size} bytes with transcript`);
+    return steps.join('; ');
+  } catch (err) {
+    throw new Error(`${steps.join('; ')} | ${err.message}`);
+  } finally {
+    await b.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();
