@@ -64,6 +64,12 @@ function respond(r) {
     if (last.content.startsWith('EVAL')) return call('preview', { action: 'screenshot' });
     if (last.content.startsWith('Screenshot')) return text(`PREVIEW DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.split('\n')[0]).join(' | ')}`);
   }
+  // Background jobs: start one, keep going, then read how it ended.
+  if (lastUser.includes('count in the background')) {
+    if (last.role === 'user') return call('shell', { command: 'echo start; sleep 2; echo finished', background: true });
+    if (last.content.startsWith('Started job')) return call('job', { action: 'output', id: 'job1', wait_ms: 10000 });
+    return text(`JOB DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.replace(/\n/g, ' / ')).join(' | ')}`);
+  }
   if (last.role === 'tool') return text(`Tool said: ${last.content.slice(0, 200)}`);
   if (lastUser.includes('serve the todo app')) return call('dev_server', { action: 'start', path: 'todo' });
   if (lastUser.includes('Plan mode')) return text('1. Read notes.txt\n2. Change the second line\n3. Check the result');
@@ -1914,6 +1920,73 @@ await check('profile settings: sign out explains what it needs; this profile can
     const names = await p.locator('.pf-modal .pf-item').allInnerTexts();
     if (names.some((n) => n.includes('Temp'))) throw new Error(`still listed: ${names.join(', ')}`);
     return `sign out: "${note.slice(0, 60)}…"; deleted Temp from itself, back in ${new URL(url).searchParams.get('profile')} (${names.length} profile${names.length === 1 ? '' : 's'} left)`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('background jobs: the agent starts a command, gets on with it, and reads how it ended', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => (bbx.perms.mode = 'auto'));
+    const t0 = Date.now();
+    await p.locator('.ag-input').fill('count in the background');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('JOB DONE'), null, { timeout: 60000 });
+    const said = await p.evaluate(() => document.querySelector('.ag-log').innerText.match(/JOB DONE[^\n]*/)[0]);
+    if (!/Started job1 \(pid \d+\) running/.test(said) || !said.includes('First output: / start')) throw new Error(`start: ${said}`);
+    if (!/job1 \(pid \d+\) ended with exit code 0/.test(said) || !said.includes('finished')) throw new Error(`end: ${said}`);
+    return `${said.slice(9, 200)}… (${((Date.now() - t0) / 1000).toFixed(1)} s)`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('apps in a tab of their own: an artifact and a page open in new tabs on the same kernel', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => bbx.fs.writeFile('/home/agent/tabsite/index.html', '<!doctype html><title>Tab site</title><h1 id=h>Hello from a tab</h1>'));
+    await p.evaluate(() => bbx.openApp('preview', { path: '/home/agent/tabsite/index.html' }));
+    await p.waitForSelector('.wb-pane[data-app="preview"]:not([hidden]) iframe');
+    const [tab] = await Promise.all([ctx.waitForEvent('page'), p.locator('.wb-actions button[aria-label="Open this tool in a new tab"]').click()]);
+    await tab.waitForLoadState();
+    const frame = await (await tab.waitForSelector('iframe.pv-frame', { timeout: 60000 })).contentFrame();
+    await frame.waitForSelector('#h');
+    const heading = await frame.locator('#h').textContent();
+    const url = new URL(tab.url());
+    if (url.searchParams.get('app') !== 'preview' || !url.searchParams.get('args')?.includes('tabsite')) throw new Error(`tab address: ${tab.url()}`);
+    // The same kernel: a file written in the tab is there in the agent window.
+    await tab.evaluate(() => bbx.fs.writeFile('/tmp/from-tab.txt', 'shared'));
+    const shared = await p.evaluate(() => bbx.fs.readText('/tmp/from-tab.txt'));
+    const closedPane = await p.locator('.wb-pane[data-app="preview"]').count();
+    // An artifact: its bar is one slim row, and it opens in a tab of its own.
+    await p.locator('.ag-input').fill('make a sales table');
+    await p.locator('.ag-input').press('Enter');
+    await p.locator('.ag-artifact').click();
+    const bar = p.locator('.wb-pane[data-app="artifacts"]:not([hidden]) .af-bar');
+    await bar.locator('.af-title').waitFor();
+    const barHeight = (await bar.boundingBox()).height;
+    if (barHeight > 48) throw new Error(`the artifact bar is ${barHeight}px tall`);
+    const [art] = await Promise.all([ctx.waitForEvent('page'), bar.locator('button[aria-label="Open in new tab"]').click()]);
+    await art.waitForSelector('.af-table', { timeout: 60000 });
+    const rows = await art.locator('.af-table tbody tr').count();
+    return `"${heading}" in ${url.pathname}?app=preview; kernel shared (${shared}); the panel's tab closed: ${closedPane === 0}; artifact bar ${Math.round(barHeight)}px, its tab shows the table (${rows} rows)`;
   } finally {
     await ctx.close();
   }

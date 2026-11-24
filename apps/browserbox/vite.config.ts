@@ -58,7 +58,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     // One entry per page: redirect, agent window, desktop GUI, docs.
-    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html' } },
+    rollupOptions: { input: { main: 'index.html', agent: 'agent/index.html', os: 'os/index.html', docs: 'docs/index.html', app: 'app/index.html' } },
     modulePreload: { polyfill: false },
     chunkSizeWarningLimit: 7000,
   },

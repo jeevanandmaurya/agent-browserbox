@@ -7,6 +7,20 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.3 (not released yet)
 
+- **Background jobs**: the agent can start a long command (a watcher, a long
+  build or test run) in the background and keep working; it reads the
+  output, waits for it or stops it with the new `job` tool, and is told when
+  one ends. Jobs stop when the chat ends.
+- **Any app in a tab of its own**: "Open in new tab" on desktop windows, on
+  the agent window's side panel, and on artifacts. The tab runs on the same
+  kernel as every other window (files, dev servers, settings are shared),
+  and its address follows what it shows (the page in Preview, the artifact
+  and version), so a reload or a copied link opens the same thing
+  (`app/?app=preview&args=…`).
+- **Artifacts**: one slim bar (back, title, version when there is more than
+  one, Edit, Open in new tab, and a menu with Copy, Download, Share and
+  Delete) instead of two rows of labelled buttons.
+
 - **Retries**: a model call that fails because the connection dropped, or
   the service is overloaded or rate-limited, is tried again by itself (after
   2, 5, 10 and 20 s, and once the browser is back online), with a countdown

@@ -42,6 +42,8 @@ interface Tab {
   btn: HTMLElement;
   pane: HTMLElement;
   app: PanelApp | null;
+  /** What the tab's app shows, for "Open in new tab". */
+  args?: Record<string, unknown>;
 }
 
 const WIDTH_KEY = 'bbx-agent-wb-width';
@@ -100,13 +102,19 @@ export class Workbench {
     this.#launcher = h('div', { class: 'wb-launcher' }, h('p', { class: 'muted' }, 'Tools run inside this window, on the same kernel as the agent.'), h('div', { class: 'wb-grid' }, toolButtons('wb-tool')));
     this.#menu = h('div', { class: 'popover wb-menu', role: 'menu', hidden: true }, toolButtons('pop-item', () => (this.#menu.hidden = true)));
     const addBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Open a tool', 'aria-label': 'Open a tool', 'aria-haspopup': 'menu', onclick: (e: Event) => this.#toggleMenu(e) }, icon('plus', 16));
+    // The tool on show moves to a browser tab of its own (same kernel, the whole screen).
+    const popBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Open in new tab', 'aria-label': 'Open this tool in a new tab', onclick: () => {
+      const tab = this.#active;
+      if (!tab) return;
+      void import('@/app/app-tab').then(({ openAppTab }) => (openAppTab(tab.id, tab.args ?? {}) ? this.#closeTab(tab) : this.os.notify({ title: 'Allow pop-ups to open it in a tab', level: 'warn' })));
+    } }, icon('external', 15));
     const closeBtn = h('button', { class: 'icon-btn', type: 'button', title: 'Close panel', 'aria-label': 'Close panel', onclick: () => this.hide() }, icon('close', 16));
     const minBtn = h('button', { class: 'icon-btn wb-min-btn', type: 'button', title: 'Minimise', 'aria-label': 'Minimise panel', onclick: () => this.setSize(this.#size === 'min' ? 'normal' : 'min') }, icon('minus', 16));
     const maxBtn = h('button', { class: 'icon-btn wb-max-btn', type: 'button', title: 'Expand', 'aria-label': 'Expand panel', onclick: () => this.setSize(this.#size === 'full' ? 'normal' : 'full') }, icon('square', 14));
     // On phones the panel is a bottom sheet: drag this to set its height.
     const grab = h('div', { class: 'wb-grab', role: 'separator', 'aria-orientation': 'horizontal', 'aria-label': 'Drag to resize the panel', tabindex: 0 }, h('i'));
     const handle = h('div', { class: 'wb-resize', role: 'separator', 'aria-orientation': 'vertical', 'aria-label': 'Resize panel', tabindex: 0 });
-    this.el = h('aside', { class: 'wb', 'aria-label': 'Workbench', hidden: true, dataset: { size: 'normal' } }, handle, grab, h('div', { class: 'wb-head', ondblclick: (e: Event) => !(e.target as HTMLElement).closest('button') && this.setSize(this.#size === 'full' ? 'normal' : 'full') }, this.#strip, h('div', { class: 'wb-actions' }, addBtn, minBtn, maxBtn, closeBtn), this.#menu), this.#panes, this.#launcher);
+    this.el = h('aside', { class: 'wb', 'aria-label': 'Workbench', hidden: true, dataset: { size: 'normal' } }, handle, grab, h('div', { class: 'wb-head', ondblclick: (e: Event) => !(e.target as HTMLElement).closest('button') && this.setSize(this.#size === 'full' ? 'normal' : 'full') }, this.#strip, h('div', { class: 'wb-actions' }, addBtn, popBtn, minBtn, maxBtn, closeBtn), this.#menu), this.#panes, this.#launcher);
     this.#sheetDrag(grab);
     this.#resizable(handle);
     this.el.addEventListener('keydown', (e) => {
@@ -203,7 +211,9 @@ export class Workbench {
     const old = tab.app;
     tab.app = null;
     old?.close();
+    tab.args = args;
     const app = mountPanelApp(this.os, tab.id, tab.pane, args, {
+      onArgs: (next) => void (tab.args = next),
       launch: (id, a) => this.host.route(id, a),
       onClosed: () => {
         // The app closed itself (or its process was killed): drop the tab unless it is being re-launched.

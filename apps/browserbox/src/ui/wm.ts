@@ -9,6 +9,8 @@ export interface WindowOptions {
   height?: number;
   minWidth?: number;
   minHeight?: number;
+  /** Offered as "Open in new tab": the app moves to a browser tab of its own. */
+  popOut?: () => void;
 }
 
 /** Phones: every window fills the screen (the phone shell sets this). */
@@ -25,6 +27,8 @@ export class WindowHandle {
   #restore: { left: string; top: string; width: string; height: string } | null = null;
   closed = false;
   minimized = false;
+  /** Set by whoever opened the window, to hear what its app shows now (see AppWindow.setArgs). */
+  setArgs?: (args: Record<string, unknown>) => void;
   title: string;
   readonly icon: IconName;
 
@@ -44,6 +48,7 @@ export class WindowHandle {
       h(
         'span',
         { class: 'win-ctl' },
+        opts.popOut ? h('button', { title: 'Open in new tab', 'aria-label': 'Open in new tab', onclick: () => opts.popOut!() }, icon('external', 13)) : null,
         h('button', { title: 'Minimize', 'aria-label': 'Minimize', onclick: () => this.minimize() }, icon('minus', 14)),
         h('button', { title: 'Maximize', 'aria-label': 'Maximize', onclick: () => this.toggleMaximize() }, icon('square', 13)),
         h('button', { class: 'close', title: 'Close', 'aria-label': 'Close', onclick: () => this.close() }, icon('close', 14)),
@@ -74,6 +79,7 @@ export class WindowHandle {
         { label: max ? 'Restore' : 'Maximize', icon: 'square', onSelect: () => this.toggleMaximize() },
         { label: 'Snap left', icon: 'panelLeft', onSelect: () => this.snap('left') },
         { label: 'Snap right', icon: 'panelRight', onSelect: () => this.snap('right') },
+        ...(opts.popOut ? [{ label: 'Open in new tab', icon: 'external' as const, onSelect: () => opts.popOut!() }] : []),
         { separator: true },
         { label: 'Close', icon: 'close', onSelect: () => this.close() },
       ], this.title);

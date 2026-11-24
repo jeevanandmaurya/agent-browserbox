@@ -1,9 +1,10 @@
 /* Artifacts: a bar (back, title, kind, version, actions) over the artifact or the list */
 .af { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.af-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-.af-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
-.af-actions { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
-.af-actions .btn { display: inline-flex; align-items: center; gap: 4px; }
+.af-bar { display: flex; align-items: center; gap: 4px; min-height: 40px; padding: 2px 4px 2px 2px; border-bottom: 1px solid var(--border); }
+.af-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.af-version { width: auto; max-width: 9em; height: 30px; padding-block: 0; font-size: 12.5px; }
+.af-version[hidden] { display: none; }
+.af-actions { display: flex; gap: 0; flex-shrink: 0; }
 .af-search { flex: 1; min-width: 140px; margin-left: auto; max-width: 280px; }
 .af-body { flex: 1; min-height: 0; overflow: auto; }
 .af-list { display: grid; gap: 4px; padding: 10px; }
@@ -22,4 +23,4 @@
 .af-table th, .af-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
 .af-table th { position: sticky; top: 0; background: var(--panel-2); }
 .af-sort { border: 0; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
-@media (max-width: 560px) { .af-title { max-width: 100%; } .af-actions .btn span { display: none; } }
+

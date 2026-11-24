@@ -5,6 +5,7 @@ import { artifactsDir, deleteArtifact, listArtifacts, readArtifact, updateArtifa
 import { currentProject } from '@/app/project';
 import type { AppModule } from '@/ui/apps';
 import { confirmDialog } from '@/ui/dialog';
+import { openMenu } from '@/ui/menu';
 import { fmtTime, h } from '@/ui/dom';
 import { icon } from '@/ui/icons';
 import { renderArtifact } from './render';
@@ -29,6 +30,7 @@ const app: AppModule = {
     async function showList(): Promise<void> {
       showing = null;
       win.setTitle('Artifacts');
+      win.setArgs?.({ folder });
       const search = h('input', { class: 'input af-search', type: 'search', placeholder: 'Search artifacts', 'aria-label': 'Search artifacts' });
       bar.replaceChildren(h('strong', null, `Artifacts · ${currentProject(os).name}`), search);
       const all = await listArtifacts(os, folder);
@@ -68,41 +70,50 @@ const app: AppModule = {
       showing = { id, ...(version !== undefined ? { version } : {}) };
       const a: Artifact = r.artifact;
       win.setTitle(a.title);
-      const versions = h('select', { class: 'select', 'aria-label': 'Version', onchange: () => void showOne(id, Number(versions.value)) }, [...a.versions].reverse().map((v) => h('option', { value: String(v.n) }, `v${v.n}${v.note ? ` · ${v.note}` : ''} · ${fmtTime(v.at)}`)));
+      win.setArgs?.({ folder, id, ...(version !== undefined ? { version } : {}) });
+      // One slim row: back, title, version, then the common actions as icons and the rest in a menu.
+      const versions = h('select', { class: 'select af-version', 'aria-label': 'Version', title: 'Version', onchange: () => void showOne(id, Number(versions.value)) }, [...a.versions].reverse().map((v) => h('option', { value: String(v.n), title: `${v.note ?? ''} ${fmtTime(v.at)}`.trim() }, `v${v.n}${v.note ? ` · ${v.note}` : ''}`)));
       versions.value = String(r.version);
+      versions.hidden = a.versions.length < 2;
       const file = versionPath(folder, a, r.version);
-      const btn = (label: string, ic: Parameters<typeof icon>[0], onclick: () => void) => h('button', { class: 'btn small', type: 'button', title: label, onclick }, icon(ic, 15), h('span', null, label));
+      const iconBtn = (label: string, ic: Parameters<typeof icon>[0], onclick: (e: Event) => void) => h('button', { class: 'icon-btn', type: 'button', title: label, 'aria-label': label, onclick }, icon(ic, 16));
+      const download = () => {
+        const url = URL.createObjectURL(new Blob([r.content], { type: 'text/plain' }));
+        Object.assign(document.createElement('a'), { href: url, download: file.split('/').pop()!.replace(/^v/, `${id}-v`) }).click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      const share = () =>
+        void shareFiles([shareableFile(file.split('/').pop()!.replace(/^v\d+/, a.title.replace(/[/\\:*?"<>|]+/g, ' ').trim() || id), r.content)], a.title).catch((err: Error) => os.notify({ title: 'Could not share', body: err.message, level: 'error' }));
+      const remove = async () => {
+        if (!(await confirmDialog(`Delete “${a.title}”?`, 'Every version is deleted.', 'Delete', true))) return;
+        await deleteArtifact(os, folder, id);
+        await showList();
+      };
+      const more = iconBtn('More', 'more', (e) =>
+        openMenu(e.currentTarget as HTMLElement, [
+          { label: 'Copy', icon: 'copy', onSelect: () => void navigator.clipboard?.writeText(r.content).then(() => os.notify({ title: 'Copied', level: 'ok' })) },
+          { label: 'Download', icon: 'download', onSelect: download },
+          ...(canShareFiles() ? [{ label: 'Share…', icon: 'external' as const, onSelect: share }] : []),
+          { separator: true },
+          { label: 'Delete', icon: 'trash', onSelect: () => void remove() },
+        ], a.title),
+      );
       bar.replaceChildren(
-        h('button', { class: 'icon-btn', type: 'button', title: 'All artifacts', 'aria-label': 'All artifacts', onclick: () => void showList() }, icon('arrowLeft', 17)),
-        h('strong', { class: 'af-title' }, a.title),
-        h('span', { class: 'badge' }, KIND_LABEL[a.kind] ?? a.kind),
+        iconBtn('All artifacts', 'arrowLeft', () => void showList()),
+        h('strong', { class: 'af-title', title: `${a.title} · ${KIND_LABEL[a.kind] ?? a.kind} · v${r.version}` }, a.title),
         versions,
         h(
           'span',
           { class: 'af-actions' },
           // Editing makes a new version, so the agent's versions stay as they were.
-          btn('Edit', 'edit', async () => {
+          iconBtn('Edit', 'edit', async () => {
             const next = await updateArtifact(os, folder, id, { content: r.content, note: 'edited by you' });
             ctx.launch('editor', { path: versionPath(folder, next) });
           }),
-          btn('Copy', 'copy', () => void navigator.clipboard?.writeText(r.content).then(() => os.notify({ title: 'Copied', level: 'ok' }))),
-          btn('Download', 'download', () => {
-            const url = URL.createObjectURL(new Blob([r.content], { type: 'text/plain' }));
-            Object.assign(document.createElement('a'), { href: url, download: file.split('/').pop()!.replace(/^v/, `${id}-v`) }).click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }),
-          ...(canShareFiles()
-            ? [
-                btn('Share', 'external', () =>
-                  void shareFiles([shareableFile(file.split('/').pop()!.replace(/^v\d+/, a.title.replace(/[/\\:*?"<>|]+/g, ' ').trim() || id), r.content)], a.title).catch((err: Error) => os.notify({ title: 'Could not share', body: err.message, level: 'error' })),
-                ),
-              ]
-            : []),
-          btn('Delete', 'trash', async () => {
-            if (!(await confirmDialog(`Delete “${a.title}”?`, 'Every version is deleted.', 'Delete', true))) return;
-            await deleteArtifact(os, folder, id);
-            await showList();
-          }),
+          iconBtn('Open in new tab', 'external', () =>
+            void import('@/app/app-tab').then(({ openAppTab }) => openAppTab('artifacts', { folder, id, ...(version !== undefined ? { version } : {}) }) || os.notify({ title: 'Allow pop-ups to open it in a tab', level: 'warn' })),
+          ),
+          more,
         ),
       );
       body.replaceChildren(h('p', { class: 'muted af-note' }, 'Loading…'));

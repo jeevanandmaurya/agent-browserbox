@@ -4,6 +4,7 @@ import type { Shell } from '../host/os.js';
 import type { ImageRef, JsonSchema } from '../types.js';
 import type { FileMemory } from '../seen.js';
 import type { Project } from '../projects.js';
+import type { Jobs } from '../jobs.js';
 
 export interface TodoItem {
   text: string;
@@ -15,6 +16,8 @@ export interface ToolContext {
   os: Kernel;
   /** The agent's own shell; its cwd is the base for relative paths. */
   shell: Shell;
+  /** Commands this chat runs in the background. */
+  jobs: Jobs;
   signal: AbortSignal;
   /** The agent's process id; children (sandboxes) are attributed to it. */
   pid: number;

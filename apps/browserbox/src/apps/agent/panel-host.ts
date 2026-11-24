@@ -18,6 +18,8 @@ export interface PanelHostOptions {
   onClosed(): void;
   /** Called when the app sets its title. */
   onTitle?(title: string): void;
+  /** Called when the app says what it shows now (see AppWindow.setArgs). */
+  onArgs?(args: Record<string, unknown>): void;
 }
 
 /**
@@ -67,6 +69,7 @@ export function mountPanelApp(os: Kernel, id: string, pane: HTMLElement, args: R
       opts.onClosed();
     },
     onClose: (fn) => void closers.push(fn),
+    setArgs: (next) => opts.onArgs?.(next),
   };
 
   const ctx: AppContext = {

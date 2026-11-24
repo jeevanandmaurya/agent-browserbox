@@ -65,6 +65,8 @@ const app: AppModule = {
       ctx.win.setTitle(`${name} — Preview`);
       label.textContent = path ?? titleArg ?? 'Untitled';
       label.title = path ?? '';
+      // A file opens again from its path; a page given as HTML (show_html) travels with it.
+      ctx.win.setArgs?.(path ? { path } : html !== null ? { html, ...(titleArg ? { title: titleArg } : {}) } : {});
       backBtn.hidden = !history.length;
       editBtn.hidden = !path || !EDITABLE.includes(kindOf(path));
     }

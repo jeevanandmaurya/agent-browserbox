@@ -2,6 +2,7 @@ import { plainText } from '../host/ansi.js';
 import { gpuCompute } from '../host/gpu.js';
 import { quote, tempPath } from '../host/os.js';
 import type { ToolContext } from './types.js';
+import { describeJob } from '../jobs.js';
 
 /** What a sandbox run produced (the box reports it as a command's output and exit code). */
 export interface RunResult {
@@ -48,14 +49,26 @@ export function report(r: RunResult): string {
 }
 
 export const execTools: ToolDef[] = [
-  tool<{ command: string }>({
+  tool<{ command: string; background?: boolean }>({
     name: 'shell',
     description:
       'Run a command line in the BrowserBox shell (not bash, but POSIX-flavoured): pipes, redirects, &&, ||, ;, $VARS and globs work. Commands include ls, cat, grep, find, head, tail, wc, sort, uniq, mkdir, rm, cp, mv, tree, du, curl, js, python, wasm, gpu, ps, kill, open, sha256sum, gzip. Run `help` to list them all. Installed packages add more commands (see `pkg list`). The working directory persists between calls (cd works). There is no npm, apt or native compiler.',
-    input_schema: obj({ command: { type: 'string' } }, ['command']),
+    input_schema: obj(
+      {
+        command: { type: 'string' },
+        background: { type: 'boolean', description: 'Start it and return at once (a watcher, a long build or test run, a server that is not a dev_server): it keeps running while you do other things. Read its output with the job tool; you are told when it ends.' },
+      },
+      ['command'],
+    ),
     cap: () => 'exec',
-    describe: (i) => i.command,
+    describe: (i) => `${i.background ? '[background] ' : ''}${i.command}`,
     async run(i, tc) {
+      if (i.background) {
+        const job = await tc.jobs.start(i.command, tc.shell.cwd, tc.shell.env);
+        // A moment for it to start (or fail straight away), so the first lines come back now.
+        const first = await tc.jobs.output(job.id, { waitMs: 1500 });
+        return `Started ${describeJob(first.job)}.${first.text.trim() ? `\nFirst output:\n${clip(first.text.trimEnd())}` : ''}\nIt runs in the background: use the job tool to read more output, wait for it or stop it.`;
+      }
       let out = '';
       const sink = (t: string) => {
         out += t;
@@ -67,6 +80,29 @@ export const execTools: ToolDef[] = [
       const text = clip(plainText(out).trimEnd() || '(no output)');
       if (code !== 0) throw new Error(`${text}\n[exit code ${code}]`);
       return text;
+    },
+  }),
+  tool<{ action: 'list' | 'output' | 'stop'; id?: string; wait_ms?: number; all?: boolean }>({
+    name: 'job',
+    description:
+      'Background jobs started with shell background=true. list: every job and whether it runs. output: what the job printed since you last read (all=true: everything kept), waiting up to wait_ms (at most 120000) for more when there is nothing new or it has not ended. stop: stop it.',
+    input_schema: obj(
+      {
+        action: { type: 'string', enum: ['list', 'output', 'stop'] },
+        id: { type: 'string', description: 'the job, e.g. job1 (output, stop)' },
+        wait_ms: { type: 'number' },
+        all: { type: 'boolean' },
+      },
+      ['action'],
+    ),
+    cap: () => null,
+    describe: (i) => `${i.action}${i.id ? ` ${i.id}` : ''}`,
+    async run(i, tc) {
+      if (i.action === 'list') return tc.jobs.list().map(describeJob).join('\n') || 'No background jobs in this chat.';
+      if (!i.id) throw new Error('give the job id');
+      if (i.action === 'stop') return (await tc.jobs.stop(i.id)) ? `Stopped ${i.id}.` : `${i.id} had already ended.`;
+      const r = await tc.jobs.output(i.id, { waitMs: i.wait_ms, all: i.all });
+      return `${describeJob(r.job)}${r.skipped ? `\n(${r.skipped} earlier characters were not kept)` : ''}\n${r.text.trim() ? clip(r.text.trimEnd()) : '(no new output)'}`;
     },
   }),
   tool<{ code: string; network?: boolean }>({

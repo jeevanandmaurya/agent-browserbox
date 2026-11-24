@@ -5,6 +5,11 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.3 (not released yet)
 
+- Background jobs: `shell` takes `background: true` (returns at once with
+  the first output); the `job` tool lists jobs, reads new output (waiting up
+  to `wait_ms`), or stops one. Ended jobs are reported at the start of the
+  next turn; `ToolContext.jobs`, `Agent.jobs`; jobs stop on dispose.
+
 - Model calls that fail with a retryable error (connection lost, 5xx, 429,
   408) are retried after 2, 5, 10 and 20 s (waiting for `online` when the
   browser is offline), as long as nothing of the reply was shown; status

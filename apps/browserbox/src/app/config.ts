@@ -12,6 +12,8 @@ const here = (rel: string) => new URL(rel, globalThis.location?.href ?? 'http://
 export const AGENT_URL: string = env.VITE_AGENT_URL || here('../agent/');
 /** The documentation, a page of its own. */
 export const DOCS_URL: string = env.VITE_DOCS_URL || here('../docs/');
+/** One app in a tab of its own (app/?app=<id>&args=<json>). */
+export const APP_URL: string = env.VITE_APP_URL || here('../app/');
 /** The optional desktop GUI. */
 export const OS_URL: string = env.VITE_OS_URL || here('../os/');
 

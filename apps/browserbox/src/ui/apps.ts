@@ -16,6 +16,11 @@ export interface AppWindow {
   focus(): void;
   close(): void;
   onClose(fn: () => void): void;
+  /**
+   * What the app shows now, as launch arguments (e.g. the page Preview is on),
+   * so "Open in new tab" and a reload open the same thing.
+   */
+  setArgs?(args: Record<string, unknown>): void;
 }
 
 /** What an app receives when it is launched. */
@@ -94,7 +99,20 @@ export class AppHost {
       existing.close(); // reopen so the new arguments (e.g. a section deep link) take effect
     }
 
-    const win = this.wm.open({ title: app.name, icon: app.icon, width: app.width, height: app.height });
+    // "Open in new tab" takes what the app shows now; the window then closes.
+    let shown = args;
+    const win = this.wm.open({
+      title: app.name,
+      icon: app.icon,
+      width: app.width,
+      height: app.height,
+      popOut: () =>
+        void import('@/app/app-tab').then(({ openAppTab }) => {
+          if (openAppTab(id, shown)) win.close();
+          else this.os.notify({ title: `Allow pop-ups to open ${app.name} in a tab`, level: 'warn' });
+        }),
+    });
+    win.setArgs = (next) => void (shown = next);
     win.body.append(h('div', { class: 'app-loading' }, loader(32, `Loading ${app.name}`)));
     const proc = this.os.procs.spawn({ name: app.name, kind: 'app', detail: app.id, onKill: () => win.close() });
     this.os.procs.update(proc.pid, { state: 'idle' });

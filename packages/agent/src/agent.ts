@@ -15,6 +15,7 @@ import { GENERAL, GENERAL_ID, type Project } from './projects.js';
 import { autoMemory, memoryPath, type MemoryScope } from './memory.js';
 import { artifactFile } from './artifacts.js';
 import { workFolder, workStore } from './session.js';
+import { describeJob, Jobs } from './jobs.js';
 import { runHooks, type HookEvent, type HookPayload } from './hooks.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
@@ -248,7 +249,11 @@ export class Agent {
     this.#folder = opts.folder ?? null;
     this.shell = new Shell(os, { cwd: this.folder });
     this.checkpoints = new Checkpoints(os);
+    this.jobs = new Jobs(() => os.box);
   }
+
+  /** Commands this chat started in the background. */
+  readonly jobs: Jobs;
 
   get busy(): boolean {
     return this.#run !== null;
@@ -260,6 +265,7 @@ export class Agent {
 
   dispose(): void {
     this.stop();
+    this.jobs.stopAll();
     this.shell.close();
     this.os.procs.exit(this.proc.pid);
   }
@@ -329,6 +335,9 @@ export class Agent {
         hookContext.push(...submitted.context);
         this.checkpoints.begin(this.transcript.length);
         const content: Block[] = [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }];
+        // Background jobs that ended since the last turn.
+        const ended = this.jobs.takeEnded();
+        if (ended.length) content.push({ type: 'text', text: `<background-jobs>\n${ended.map(describeJob).join('\n')}\nRead their output with the job tool if it matters.\n</background-jobs>` });
         if (hookContext.length) content.push({ type: 'text', text: `<hook-context>\n${hookContext.join('\n\n')}\n</hook-context>` });
         for (const path of opts.images ?? []) {
           if (lite) {
@@ -623,6 +632,7 @@ export class Agent {
     const tc = (id: string): ToolContext => ({
       os: this.os,
       shell: this.shell,
+      jobs: this.jobs,
       signal,
       pid: this.proc.pid,
       path: (p) => resolve(this.shell.cwd, String(p).replace(/^~(?=\/|$)/, this.shell.env.HOME ?? '')),

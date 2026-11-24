@@ -88,11 +88,13 @@ export function mountDev(ctx: AppContext, port: number): () => void {
       void load();
     } else if (data.type === 'bbx-dev:path') {
       path = String(data.path || '/');
+      ctx.win.setArgs?.({ dev: port, path });
       if (document.activeElement !== address) address.value = path;
     }
   }
 
   async function load(): Promise<void> {
+    ctx.win.setArgs?.({ dev: port, path });
     const g = ++gen;
     address.value = path;
     status.hidden = false;
