@@ -21,7 +21,7 @@ export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, KernelC
 export { PROTOCOL_VERSION };
 
 /** This SDK's version. Always released together with the runtime of the same version. */
-export const VERSION = '0.4.2';
+export const VERSION = '0.4.3';
 
 /**
  * The hosted runtime of exactly this SDK's version. Released runtimes never

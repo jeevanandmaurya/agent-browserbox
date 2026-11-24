@@ -5,7 +5,7 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
-## 0.4.3 (not released yet)
+## 0.4.3
 
 - Runtime: JavaScript packages can have binary files (`commands.*.assets`),
   read with `await asset(path)`; such commands may run 10 minutes. `require`

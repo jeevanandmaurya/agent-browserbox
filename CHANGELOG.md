@@ -5,7 +5,7 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
-## 0.4.3 (not released yet)
+## 0.4.3
 
 - **More packages** in the BrowserBox index (Settings → Packages, or
   `pkg install …`): **sheet** (Excel, OpenDocument, CSV, JSON), **pdf**

@@ -3,7 +3,7 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
-## 0.4.3 (not released yet)
+## 0.4.3
 
 - Seed skills pdf, spreadsheets, documents, video-audio and ocr; seeding now
   adds examples a box has never had (`agent.seeded`), not only on first run.
