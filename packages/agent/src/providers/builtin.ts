@@ -1,7 +1,7 @@
 import type { KernelCore as Kernel } from '../host/os.js';
 import type { AgentConfig } from '../config.js';
 import { ProviderError, type Block, type Provider, type TurnRequest, type TurnResult } from '../types.js';
-import { estimateTokens, parseReply, toChat } from './webllm.js';
+import { estimateTokens, holdFrom, parseReply, splitThinking, toChat } from './webllm.js';
 import { BuiltinTooLarge, hasBuiltinModel, runBuiltinPrompt, type BuiltinPromptInput, type BuiltinReply } from './builtin-run.js';
 
 /** Until the browser says how large its model's window is (Chrome reports it per session). */
@@ -18,9 +18,9 @@ let known: number | undefined;
 export async function createBuiltinProvider(os: Kernel, _cfg: AgentConfig): Promise<Provider> {
   const viaHost = os.builtinPrompt;
   if (!viaHost && !hasBuiltinModel()) throw new ProviderError('This browser has no built-in model. It is in Chrome on desktop (version 138 or later) on supported devices. Choose another source in Settings → Model.');
-  const run = async (input: BuiltinPromptInput, req: TurnRequest): Promise<BuiltinReply> => {
-    if (!viaHost) return runBuiltinPrompt(input, { signal: req.signal, onStatus: req.onStatus });
-    const r = await viaHost(input, req.signal);
+  const run = async (input: BuiltinPromptInput, req: TurnRequest, onChunk: (t: string) => void): Promise<BuiltinReply> => {
+    if (!viaHost) return runBuiltinPrompt(input, { signal: req.signal, onStatus: req.onStatus, onChunk });
+    const r = await viaHost(input, req.signal, onChunk);
     if (r.tooLarge) throw new BuiltinTooLarge(r.window);
     return r;
   };
@@ -33,6 +33,23 @@ export async function createBuiltinProvider(os: Kernel, _cfg: AgentConfig): Prom
     async turn(req: TurnRequest): Promise<TurnResult> {
       const started = performance.now();
       let reply: BuiltinReply | null = null;
+      // Streamed as it is written, holding back anything that may become a tool call.
+      let full = '';
+      let shown = 0;
+      let shownThink = 0;
+      const onChunk = (t: string) => {
+        full += t;
+        const { thinking, answer } = splitThinking(full);
+        if (thinking.length > shownThink) {
+          req.onThinking(thinking.slice(shownThink));
+          shownThink = thinking.length;
+        }
+        const safe = holdFrom(answer);
+        if (safe > shown) {
+          req.onText(answer.slice(shown, safe));
+          shown = safe;
+        }
+      };
       let chat: ReturnType<typeof toChat> = [];
       // Fit the conversation to the window; if it still does not fit, keep less of it.
       for (const fill of [1, 0.6, 0.35]) {
@@ -45,7 +62,7 @@ export async function createBuiltinProvider(os: Kernel, _cfg: AgentConfig): Prom
         };
         if (last.role !== 'user') input.initialPrompts.push(last as BuiltinPromptInput['initialPrompts'][number]);
         try {
-          reply = await run(input, req);
+          reply = await run(input, req, onChunk);
           if (reply.window) known = reply.window;
           break;
         } catch (err) {
@@ -59,9 +76,14 @@ export async function createBuiltinProvider(os: Kernel, _cfg: AgentConfig): Prom
         }
       }
       req.signal.throwIfAborted();
-      const full = reply!.text;
+      // A reply that was not streamed (an older browser) arrives whole.
+      if (!full) onChunk(reply!.text);
+      full = reply!.text || full;
       const parsed = parseReply(full, req.tools.map((t) => t.name));
-      if (parsed.text) req.onText(parsed.text);
+      // Show what was held back: up to the tool call, or the rest of the answer.
+      const { answer } = splitThinking(full);
+      const end = parsed.call ? parsed.at : answer.length;
+      if (end > shown) req.onText(answer.slice(shown, end));
       const content: Block[] = [];
       if (parsed.thinking.trim()) content.push({ type: 'thinking', text: parsed.thinking.trim() });
       if (parsed.text) content.push({ type: 'text', text: parsed.text });

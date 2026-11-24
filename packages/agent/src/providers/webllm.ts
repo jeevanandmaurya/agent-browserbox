@@ -119,7 +119,7 @@ export interface ParsedReply {
 }
 
 /** Splits `<think>…</think>` (possibly unfinished) from the answer. */
-function splitThinking(full: string): { thinking: string; answer: string; open: boolean } {
+export function splitThinking(full: string): { thinking: string; answer: string; open: boolean } {
   const lead = full.match(/^\s*<think>/);
   if (!lead) return { thinking: '', answer: full, open: false };
   const rest = full.slice(lead[0].length);
@@ -165,7 +165,7 @@ export function parseReply(full: string, tools: string[]): ParsedReply & { at: n
 }
 
 /** Where streaming must pause: anything from here on may turn out to be a tool call. */
-function holdFrom(answer: string): number {
+export function holdFrom(answer: string): number {
   if (/^\s*\{/.test(answer)) return 0;
   const marks = [answer.indexOf('<tool_call'), answer.indexOf('```')].filter((i) => i >= 0);
   // The last few characters may be the start of a marker.

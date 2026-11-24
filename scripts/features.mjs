@@ -1307,8 +1307,12 @@ await check('built-in model: the agent in its worker uses the page’s Prompt AP
         promptStreaming(input) {
           globalThis.__lm.push({ system: o.initialPrompts[0].content.slice(0, 60), turns: o.initialPrompts.length, input: input.slice(0, 200) });
           const reply = input.includes('<tool_result>') ? `The command printed ${/builtin-\w+/.exec(input)?.[0]}.` : '<tool_call>{"name": "shell", "arguments": {"command": "echo builtin-ok"}}</tool_call>';
+          // Written slowly, as a real model does, so streaming can be seen.
           return (async function* () {
-            for (const part of reply.match(/.{1,12}/gs)) yield part;
+            for (const part of reply.match(/.{1,6}/gs)) {
+              await new Promise((r) => setTimeout(r, 120));
+              yield part;
+            }
           })();
         },
       }),
@@ -1332,11 +1336,18 @@ await check('built-in model: the agent in its worker uses the page’s Prompt AP
     await p.keyboard.press('Escape');
     await p.locator('.ag-input').fill('list files please');
     await p.locator('.ag-input').press('Enter');
+    // Streamed: part of the answer is on screen before the rest has been written.
+    const partial = await p.waitForFunction(() => {
+      const t = document.querySelector('.ag-log')?.textContent ?? '';
+      return t.includes('The comm') && !t.includes('builtin-ok.') && t.slice(t.lastIndexOf('The comm'), t.lastIndexOf('The comm') + 40);
+    }, null, { timeout: 60000, polling: 30 }).then((h) => h.jsonValue());
     await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('The command printed builtin-ok.'), null, { timeout: 60000 });
+    // The tool call itself was never shown as text.
+    if (await p.evaluate(() => document.querySelector('.ag-log').textContent.includes('<tool_call>'))) throw new Error('the tool call markup was shown');
     const calls = await p.evaluate(() => globalThis.__lm);
     if (calls.length !== 2 || !calls[0].input.includes('list files please') || !calls[1].input.includes('<tool_result>')) throw new Error(JSON.stringify(calls));
     if (!picked) throw new Error('the model menu does not offer the built-in model');
-    return `2 prompts (system + ${calls[1].turns - 1} turns of history the second time); the tool ran; the menu offers it`;
+    return `streamed ("${partial.trim()}" first); 2 prompts (system + ${calls[1].turns - 1} turns of history the second time); the tool ran; the menu offers it`;
   } finally {
     await ctx.close();
   }

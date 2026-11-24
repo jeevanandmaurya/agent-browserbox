@@ -5,6 +5,8 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.1
 
+- The built-in model streams: text is shown as it arrives, holding back what
+  may become a tool call. `ui.builtinPrompt` takes an `onChunk` callback.
 - New commands `project` and `chats` (in `AGENT_COMMANDS`): manage projects
   and saved chats from a terminal; deleting needs a person at the terminal
   (`Tty.interactive`) who confirms.

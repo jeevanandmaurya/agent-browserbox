@@ -26,7 +26,8 @@ interface Client {
 const clients = new Map<number, Client>();
 let nextClient = 1;
 let nextAsk = 1;
-const asks = new Map<number, { ask: Ask; resolve: (v: unknown) => void; targets: Set<number> }>();
+/** Asks waiting for a window; `chunk` receives a reply as it is written (the built-in model). */
+const asks = new Map<number, { ask: Ask; resolve: (v: unknown) => void; targets: Set<number>; chunk?: (t: string) => void }>();
 
 /** Windows showing a chat; when none does, every window (someone must see an approval). */
 function holders(sid?: string): Client[] {
@@ -39,7 +40,7 @@ function holders(sid?: string): Client[] {
  * Asks windows something and waits for the first answer: `only` when given,
  * else the windows showing the chat it is about (`a.sid`), else all of them.
  */
-function ask<T>(a: Omit<Ask, 'askId'>, signal?: AbortSignal, only?: Client): Promise<T> {
+function ask<T>(a: Omit<Ask, 'askId'>, signal?: AbortSignal, only?: Client, chunk?: (t: string) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const askId = nextAsk++;
     const full: Ask = { ...a, askId };
@@ -50,7 +51,7 @@ function ask<T>(a: Omit<Ask, 'askId'>, signal?: AbortSignal, only?: Client): Pro
       for (const c of targets) c.peer.emit('ask:done', askId);
       resolve(v as T);
     };
-    asks.set(askId, { ask: full, resolve: done, targets: new Set(targets.map((c) => c.id)) });
+    asks.set(askId, { ask: full, resolve: done, targets: new Set(targets.map((c) => c.id)), chunk });
     signal?.addEventListener('abort', () => {
       if (!asks.delete(askId)) return;
       for (const c of targets) c.peer.emit('ask:done', askId);
@@ -173,8 +174,8 @@ function ensureWorld(): Promise<{ os: AgentOs; agents: AgentManager }> {
         clipboardWrite: (text) => ask<void>({ kind: 'ui', payload: { method: 'clipboard.write', args: [text] } }),
         speak: (text) => void ask({ kind: 'ui', payload: { method: 'speak', args: [text] } }).catch(() => undefined),
         // The browser's built-in model runs in a page: one window, the one lending the box, so it runs once.
-        builtinPrompt: async (input, signal) => {
-          const r = await ask<{ text?: string; window?: number; error?: string; tooLarge?: boolean }>({ kind: 'ui', payload: { method: 'lm.prompt', args: [input] } }, signal, provider ?? undefined);
+        builtinPrompt: async (input, signal, onChunk) => {
+          const r = await ask<{ text?: string; window?: number; error?: string; tooLarge?: boolean }>({ kind: 'ui', payload: { method: 'lm.prompt', args: [input] } }, signal, provider ?? undefined, onChunk);
           if (r?.tooLarge) return { text: '', window: r.window, tooLarge: true };
           if (typeof r?.text !== 'string') throw new Error(r?.error ?? 'no window could run the built-in model');
           return { text: r.text, window: r.window };
@@ -339,6 +340,11 @@ function connect(port: MessagePort): void {
     'agent.dispose': (sid: string) => {
       client.agents.get(sid)?.dispose();
       client.agents.delete(sid);
+    },
+    // Part of a reply still being written (the built-in model runs in a window).
+    'ask.chunk': (askId: number, text: string) => {
+      const a = asks.get(askId);
+      if (a?.targets.has(client.id)) a.chunk?.(text);
     },
     answer: (askId: number, value: unknown) => {
       const a = asks.get(askId);

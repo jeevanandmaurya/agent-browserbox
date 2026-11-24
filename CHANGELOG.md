@@ -7,6 +7,8 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- The browser's built-in model streams its replies as it writes them, like
+  the other models (it showed the whole reply only at the end).
 - **`help` in sections** (Files, Text and data, Running code, Web projects,
   The agent, Packages, Devices, You and BrowserBox, System), with installed
   package commands and your own; `help <section>` and `help <command>`.
