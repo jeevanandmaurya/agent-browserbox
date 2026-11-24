@@ -141,7 +141,7 @@ export function createComposer(
       plusBtn,
       [
         { label: 'Attach files', icon: 'clip', onSelect: () => file.click() },
-        ...(typeof MediaRecorder !== 'undefined' && 'getUserMedia' in (navigator.mediaDevices ?? {}) ? [{ label: voice ? 'Stop the voice note' : 'Record a voice note', icon: 'mic' as const, hint: SpeechRecognition ? 'Saved as audio, with a transcript' : 'Saved as an audio file', onSelect: () => void toggleVoiceNote() }] : []),
+        ...(typeof MediaRecorder !== 'undefined' && 'getUserMedia' in (navigator.mediaDevices ?? {}) ? [{ label: voiceStop ? 'Stop the voice note' : 'Record a voice note', icon: 'mic' as const, hint: SpeechRecognition ? 'Saved as audio, with a transcript' : 'Saved as an audio file', onSelect: () => void toggleVoiceNote() }] : []),
         ...('getDisplayMedia' in (navigator.mediaDevices ?? {}) ? [{ label: 'Share a screen', icon: 'image' as const, hint: 'One picture of a screen, window or tab', onSelect: () => void shareScreen() }] : []),
         { label: 'Commands', icon: 'slash', hint: '/compact, /context, your own…', onSelect: () => setText('/') },
       ],
@@ -149,64 +149,21 @@ export function createComposer(
     );
   }
 
-  // --- voice notes (MediaRecorder): an audio file, and a transcript where speech recognition exists
-  let voice: { recorder: MediaRecorder; rec: Recognition | null; transcript: string; started: number; timer: number; chip: HTMLElement } | null = null;
+  // --- voice notes (loaded when first used: media.ts)
+  let voiceStop: (() => void) | null = null;
   async function toggleVoiceNote(): Promise<void> {
-    if (voice) return void voice.recorder.stop();
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (err) {
-      os.notify({ title: 'Could not use the microphone', body: (err as DOMException).name === 'NotAllowedError' ? 'Microphone permission was denied.' : (err as Error).message, level: 'warn' });
-      return;
-    }
-    const type = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm'].find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-    const recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
-    const parts: Blob[] = [];
-    const stopBtn = h('button', { type: 'button', class: 'btn small', onclick: () => recorder.stop() }, 'Stop');
-    const clock = h('span', null, '0:00');
-    const chip = h('div', { class: 'cp-voice', role: 'status' }, h('span', { class: 'cp-voice-dot', 'aria-hidden': 'true' }), 'Recording a voice note ', clock, stopBtn);
-    el.prepend(chip);
-    const v = (voice = { recorder, rec: null as Recognition | null, transcript: '', started: Date.now(), chip, timer: 0 });
-    v.timer = window.setInterval(() => {
-      const s = Math.floor((Date.now() - v.started) / 1000);
-      clock.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      // A note is kept short: ten minutes at most.
-      if (s >= 600) recorder.stop();
-    }, 500);
-    if (SpeechRecognition) {
-      const rec = (v.rec = new SpeechRecognition());
-      rec.lang = navigator.language;
-      rec.interimResults = false;
-      rec.continuous = true;
-      rec.onresult = (e) => {
-        let text = '';
-        for (let i = 0; i < e.results.length; i++) if (e.results[i]!.isFinal) text += e.results[i]![0]!.transcript;
-        v.transcript = text.trim();
-      };
-      rec.onerror = () => undefined;
-      rec.onend = () => undefined;
-      try {
-        rec.start();
-      } catch {
-        v.rec = null;
-      }
-    }
-    recorder.ondataavailable = (e) => e.data.size && parts.push(e.data);
-    recorder.onstop = async () => {
-      clearInterval(v.timer);
-      for (const t of stream.getTracks()) t.stop();
-      v.rec?.stop();
-      chip.remove();
-      voice = null;
-      // Recognition sends its last words a moment after it stops.
-      await new Promise((r) => setTimeout(r, v.rec ? 600 : 0));
-      const ext = (recorder.mimeType || type).includes('mp4') ? 'm4a' : (recorder.mimeType || type).includes('ogg') ? 'ogg' : 'webm';
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-      await attachFiles([new File(parts, `voice-${stamp}.${ext}`, { type: recorder.mimeType || type || 'audio/webm' })]);
-      if (v.transcript) setText(`${input.value ? `${input.value.replace(/\s+$/, '')}\n\n` : ''}Voice note (transcript): ${v.transcript}`);
-    };
-    recorder.start(1000);
+    if (voiceStop) return voiceStop();
+    const { recordVoiceNote } = await import('./media');
+    voiceStop = await recordVoiceNote({
+      recognition: SpeechRecognition,
+      show: (chip) => el.prepend(chip),
+      notify: (n) => os.notify(n),
+      done: async (file, transcript) => {
+        voiceStop = null;
+        await attachFiles([file]);
+        if (transcript) setText(`${input.value ? `${input.value.replace(/\s+$/, '')}\n\n` : ''}Voice note (transcript): ${transcript}`);
+      },
+    });
   }
 
   // --- dictation (Web Speech API, where the browser has it) --------------------
@@ -284,7 +241,7 @@ export function createComposer(
   async function shareScreen(): Promise<void> {
     let file: File;
     try {
-      file = await captureScreen();
+      file = await (await import('./media')).captureScreen();
     } catch (err) {
       const e = err as DOMException;
       if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') os.notify({ title: 'Could not capture the screen', body: e.message, level: 'error' });
@@ -392,33 +349,3 @@ export function createComposer(
     },
   };
 }
-
-/** The longest side of a captured screen, in pixels: enough to read text, small enough for a model. */
-const MAX_CAPTURE = 1920;
-
-/** Asks the browser for a screen, window or tab, takes one frame, and stops sharing at once. */
-async function captureScreen(): Promise<File> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-  try {
-    const video = document.createElement('video');
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = stream;
-    await video.play();
-    // The first frame can arrive a moment after play() resolves.
-    for (let i = 0; i < 50 && !video.videoWidth; i++) await new Promise((r) => setTimeout(r, 20));
-    if (!video.videoWidth) throw new Error('The shared screen sent no picture.');
-    const scale = Math.min(1, MAX_CAPTURE / Math.max(video.videoWidth, video.videoHeight));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
-    canvas.getContext('2d')!.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
-    if (!blob) throw new Error('Could not encode the picture.');
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    return new File([blob], `screen-${stamp}.png`, { type: 'image/png' });
-  } finally {
-    for (const t of stream.getTracks()) t.stop();
-  }
-}
-

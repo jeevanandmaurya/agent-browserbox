@@ -1,6 +1,7 @@
 import type { DevApi } from '../kernel/dev/types';
 import type { FsApi, Kernel, MountInfo, PackagesApi, ProcsApi, SecretsApi, ShellHandle, ShellIo, ShellsApi } from '../kernel/api';
 import { Bus } from '../kernel/bus';
+import { SerialHost } from './serial';
 import { detectCaps, type PlatformCap } from '../kernel/caps';
 import { KCore } from '../kernel/kcore';
 import { Permissions, type PermRequest, type Prompter } from '../kernel/perms';
@@ -154,10 +155,12 @@ export class RemoteKernel implements Kernel {
         if (method === 'clipboard.write') value = await navigator.clipboard.writeText(String(args[0]));
         else if (method === 'clipboard.read') value = await navigator.clipboard.readText();
         else if (method === 'speak') speechSynthesis.speak(new SpeechSynthesisUtterance(String(args[0])));
+        else if (method.startsWith('serial.')) value = { ok: await this.serial.call(method, args) };
       }
     } catch (err) {
       if (ctl.signal.aborted) return;
-      value = ask.kind === 'perm' ? 'deny' : ask.kind === 'ui' ? `failed: ${(err as Error).message}` : null;
+      const { method } = (ask.payload ?? {}) as { method?: string };
+      value = ask.kind === 'perm' ? 'deny' : method?.startsWith('serial.') ? { error: (err as Error).message } : ask.kind === 'ui' ? `failed: ${(err as Error).message}` : null;
     }
     if (ctl.signal.aborted) return;
     this.#asking.delete(ask.askId);
@@ -255,6 +258,9 @@ export class RemoteKernel implements Kernel {
     unlockWithPasskey: (id, prf) => this.call('secrets.unlockWithPasskey', id, prf),
     removePasskey: (id) => this.call('secrets.removePasskey', id),
   };
+
+  /** Serial devices this window reaches (Web Serial); the kernel's `serial` command uses them through it. */
+  readonly serial = new SerialHost();
 
   readonly pkg: PackagesApi = {
     builtin: () => this.call('pkg.builtin'),

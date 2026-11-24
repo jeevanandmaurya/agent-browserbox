@@ -43,6 +43,15 @@ the GitHub release notes.
   feature; `use` is empty when it does not. Uses that did not exist are gone,
   and passkeys, App badge, File Handling, Document Picture-in-Picture, Idle
   Detection and MediaRecorder are detected.
+- **`Kernel.pkg`** (optional, windows only): the package manager for a
+  person's UI: `builtin`, `index`, `installed`, `install`, `describeUrl`,
+  `installFrom`, `remove`, `dependents`, `upgradable`, `verify`, `sources`,
+  `addSource`, `removeSource`. Package types moved to `package-types`.
+- **`serial` command** and `SerialHost` (Web Serial): list, open, send, read,
+  monitor, close; the kernel reaches devices through a window
+  (`serial.*` UI calls; `RemoteKernel.serial`). SDK (confined) shells ask
+  before using a device.
+- Fixed: `serial` reading on the first open.
 
 ## 0.3.1
 

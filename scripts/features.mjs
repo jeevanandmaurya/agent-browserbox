@@ -1206,8 +1206,8 @@ await check('platform: honest capabilities, notifications while away, a screen p
     // 1. The capability list says what is used, and only that.
     await p.evaluate(() => bbx.openApp('sysinfo', { section: 'caps' }));
     await p.getByText('Used for: Sharing a picture of a screen with the agent').waitFor({ timeout: 15000 });
-    const caps = await p.evaluate(() => bbx.caps.filter((c) => ['webrtc', 'share', 'capture', 'passkeys', 'notifications'].includes(c.id)).map((c) => `${c.id}:${c.used}`).join(' '));
-    if (caps !== 'notifications:true share:false passkeys:true webrtc:false capture:true') throw new Error(`capabilities: ${caps}`);
+    const caps = await p.evaluate(() => bbx.caps.filter((c) => ['webcodecs', 'share', 'capture', 'passkeys', 'notifications'].includes(c.id)).map((c) => `${c.id}:${c.used}`).join(' '));
+    if (caps !== 'notifications:true share:true passkeys:true webcodecs:false capture:true') throw new Error(`capabilities: ${caps}`);
     await p.keyboard.press('Escape');
     done.push('capabilities honest');
 
@@ -1520,6 +1520,109 @@ await check('share to other apps, the mini window (with an approval answered the
   } catch (err) {
     throw new Error(`${steps.join('; ')} | ${err.message}`);
   } finally {
+    await b.close();
+  }
+});
+
+await check('devices: a serial device from the terminal, a folder sent to another device, reminders of due tasks', async () => {
+  const boot = async (p) => {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+  };
+  const run = (p, line) =>
+    p.evaluate(async (line) => {
+      const sh = await bbx.shells.open({ cwd: '/home/user' });
+      let out = '';
+      const code = await sh.run(line, { out: (s) => (out += s), err: (s) => (out += s) });
+      sh.close();
+      return { code, out };
+    }, line);
+  // Two "devices": separate browser contexts.
+  const a = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const b = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  await a.addInitScript(() => {
+    if (typeof document === 'undefined') return;
+    // A serial device that answers each line with "echo: <line>".
+    const port = {
+      opened: false,
+      getInfo: () => ({ usbVendorId: 0x2341, usbProductId: 0x0043 }),
+      async open() {
+        let push;
+        this.readable = new ReadableStream({ start: (c) => (push = c) });
+        this.writable = new WritableStream({ write: (chunk) => push.enqueue(new TextEncoder().encode(`echo: ${new TextDecoder().decode(chunk)}`)) });
+      },
+      async close() {},
+      async forget() {},
+      readable: null,
+      writable: null,
+    };
+    const granted = [];
+    Object.defineProperty(Navigator.prototype, 'serial', { configurable: true, get: () => ({ getPorts: async () => granted, requestPort: async () => (granted.includes(port) || granted.push(port), port) }) });
+  });
+  const steps = [];
+  try {
+    const pa = await a.newPage();
+    const pb = await b.newPage();
+    await Promise.all([boot(pa), boot(pb)]);
+
+    // Serial: connected once in Settings, then used from a shell (through the window).
+    await pa.evaluate(() => bbx.openApp('settings', { section: 'devices' }));
+    await pa.getByRole('button', { name: 'Connect a device…' }).click();
+    await pa.locator('.st-sched-item', { hasText: 'USB 2341:0043' }).waitFor({ timeout: 10000 });
+    const list = await run(pa, 'serial list');
+    if (!list.out.includes('0  USB 2341:0043')) throw new Error(`serial list: ${list.out}`);
+    const sent = await run(pa, 'serial send 0 hello device');
+    const got = await run(pa, 'serial read 0 --ms 2000');
+    if (sent.code !== 0 || !got.out.includes('echo: hello device')) throw new Error(`serial: ${sent.out} | ${got.out}`);
+    steps.push('serial device connected, then send/read from the shell');
+
+    // A folder from device A to device B, through the Settings UI on both.
+    await pa.evaluate(async () => {
+      await bbx.fs.mkdir('/home/user/proj/src');
+      await bbx.fs.writeFile('/home/user/proj/README.md', '# Project');
+      await bbx.fs.writeFile('/home/user/proj/src/big.bin', new Uint8Array(300000).map((_, i) => i % 251));
+      await bbx.fs.writeFile('/home/user/proj/empty.txt', '');
+    });
+    await pb.evaluate(() => bbx.openApp('settings', { section: 'devices' }));
+    await pa.getByLabel('Folder or file to send').fill('/home/user/proj');
+    await pa.getByRole('button', { name: 'Send…' }).click();
+    await pa.waitForFunction(() => document.querySelector('textarea[aria-label="Your code"]')?.value.startsWith('BBX1.'), null, { timeout: 15000 });
+    const offer = await pa.getByLabel('Your code').inputValue();
+    await pb.getByLabel('The other device’s code').fill(offer);
+    await pb.getByRole('button', { name: 'Connect', exact: true }).click();
+    await pb.waitForFunction(() => document.querySelector('textarea[aria-label="Your code"]')?.value.startsWith('BBX1.'), null, { timeout: 15000 });
+    const answer = await pb.getByLabel('Your code').inputValue();
+    await pa.getByLabel('The other device’s code').fill(answer);
+    await pa.getByRole('button', { name: 'Connect', exact: true }).click();
+    await pa.locator('.st-note', { hasText: 'Sent 3 files' }).waitFor({ timeout: 30000 });
+    await pb.locator('.st-note', { hasText: 'Received 3 files' }).waitFor({ timeout: 30000 });
+    const recv = await pb.evaluate(async () => {
+      const big = await bbx.fs.readFile('/home/user/Received/proj/src/big.bin');
+      return { readme: await bbx.fs.readText('/home/user/Received/proj/README.md'), big: big.length, ok: big.every((v, i) => v === i % 251), empty: await bbx.fs.exists('/home/user/Received/proj/empty.txt') };
+    });
+    if (recv.readme !== '# Project' || recv.big !== 300000 || !recv.ok || !recv.empty) throw new Error(`received: ${JSON.stringify(recv)}`);
+    steps.push('folder (3 files, 300 KB) sent device to device, byte for byte');
+
+    // Reminders: the summary the service worker reads when the browser wakes it.
+    await pa.evaluate(() => bbx.settings.set('agent.schedules', [{ id: 't1', name: 'Morning summary', prompt: 'x', schedule: { every: 'day', at: '08:00' }, allow: { edits: false, commands: false, network: false }, missed: 'run', notify: true, enabled: true, nextRun: Date.now() - 1000 }]));
+    const summary = await pa.waitForFunction(async () => {
+      const c = await caches.open('bbx-flags');
+      for (const k of await c.keys()) if (k.url.includes('/schedules/')) return (await c.match(k)).json();
+      return null;
+    }, null, { timeout: 10000 }).then((h) => h.jsonValue());
+    if (summary.tasks?.[0]?.name !== 'Morning summary') throw new Error(JSON.stringify(summary));
+    await pa.evaluate(() => bbx.settings.set('agent.schedules', []));
+    steps.push('due-task summary kept for the service worker');
+    return steps.join('; ');
+  } catch (err) {
+    throw new Error(`${steps.join('; ')} | ${err.message}`);
+  } finally {
+    await a.close();
     await b.close();
   }
 });

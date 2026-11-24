@@ -43,6 +43,21 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   source (Settings → Model), where the browser has it.
 - System → Capabilities says honestly what BrowserBox uses each feature for,
   and which are available but not used yet.
+- **Settings → Packages**: search, install, remove, update and verify
+  packages, and manage package sources, without the terminal.
+- **Installed app**: open files from your computer with BrowserBox, share
+  text, links and files to it from other apps, see how many chats wait for
+  you on its icon, use its shortcuts, and get reminders of scheduled tasks
+  due while it is closed.
+- **Share** artifacts and files to other apps (Web Share).
+- **Mini window** (⋯ → Mini window): follow the agent on top of other apps
+  and answer approvals there.
+- **Voice notes** (+ → Record a voice note), with a transcript.
+- **Settings → Devices**: connect serial devices (Arduino, ESP32, …) for the
+  new `serial` command, and send a folder straight to another device's
+  BrowserBox with a pair of codes (WebRTC, no server).
+- Fixed: a chat waiting for your approval now shows as waiting (amber) in
+  the chat list.
 
 ## 0.3.2
 

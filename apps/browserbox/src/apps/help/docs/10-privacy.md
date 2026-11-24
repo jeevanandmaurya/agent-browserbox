@@ -19,6 +19,10 @@ With a password set, you can add **passkeys** (Settings → Profile → Passkeys
 - **Publishing** you ask for: GitHub, Netlify, Vercel.
 - **Downloads**: packages from jsDelivr, npm packages from esm.sh and npm, Python packages from PyPI, and models from Hugging Face.
 
+## Sending to your other devices
+
+**Settings → Devices → Send to another device** copies a folder straight from one BrowserBox to another (WebRTC), with no server in between: each side gives the other a code. The codes contain your devices' network addresses, so share them only with yourself. With **Use a public STUN server** ticked (needed across networks), Google's STUN server learns those addresses too, but never sees the files. Transfers are encrypted (DTLS).
+
 ## Keys and tokens
 
 API keys and tokens are stored encrypted. BrowserBox's windows can save or remove them but never read them back; only the kernel uses them, and each is sent only to its own service.

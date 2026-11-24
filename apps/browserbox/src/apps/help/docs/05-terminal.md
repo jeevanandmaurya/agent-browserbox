@@ -68,6 +68,21 @@ Your own commands: put a `name`, `name.wasm`, `name.js` or `name.sh` file in `~/
 
 Only a person typing in a terminal can change profiles: the agent and scripts can see who you are, but not switch, create, rename, delete, change the password or sign out.
 
+## Serial devices
+
+Microcontrollers (Arduino, ESP32, Raspberry Pi Pico), modems and instruments connected by USB serial, in Chrome, Edge and Opera on a computer. Connect a device once in **Settings → Devices** (the browser asks you to pick it); then:
+
+| Command | Does |
+| --- | --- |
+| `serial list` | the connected devices, numbered |
+| `serial open 0 --baud 9600` | open device 0 (115200 baud unless you say) |
+| `serial send 0 AT` | send a line (`\r\n` added; `--raw` sends exactly what you typed; `\n`, `\xHH` work) |
+| `serial read 0 --ms 2000` | print what arrived, waiting up to 2 s |
+| `serial monitor 0` | print everything it sends until Ctrl+C |
+| `serial close 0` | close it |
+
+The agent can use these too, with your approval of each command. Settings → Devices also has a small monitor.
+
 ## Python and pip
 
 `python script.py`, `python -c "…"`, `python -m pip …`. `pip install` adds pure-Python packages from PyPI and the packages Pyodide builds for the browser (numpy, pandas, scipy, matplotlib, scikit-learn and more). Packages with other compiled code cannot install. Installed packages are remembered and reinstalled when Python restarts.

@@ -1,6 +1,6 @@
 import '../ui/base.css';
 import agentApp from '@/apps/agent/index';
-import { appKernel } from '@/app/boot';
+import { appKernel, PROFILE } from '@/app/boot';
 import type { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { bootConsole } from '@/ui/boot';
 import { profileGate } from '@/ui/profiles';
@@ -19,6 +19,8 @@ const root = document.getElementById('app')!;
 bootConsole(os, root)
   .then(() => profileGate(os, root))
   .then(() => mountStandalone(os, agentApp, 'Agent', root, { embedsApps: true }))
+  // Reminders of due scheduled tasks for the installed app (loaded after startup).
+  .then(() => void Promise.all([PROFILE, import('@/app/background')]).then(([id, m]) => m.followSchedules(os, id)))
   .then(
   () => os.mark('ready'),
   (err: Error) => {

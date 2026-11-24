@@ -1,4 +1,4 @@
-import { setWaitingBadge } from '@/app/launch';
+import { setWaitingBadge } from '@/app/attention';
 import { agentsOf } from '@/app/agents';
 import { deleteSession, listSessions, loadProjects, PROJECTS_KEY, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
 import { currentProject } from '@/app/project';

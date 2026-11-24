@@ -148,7 +148,7 @@ export function scheduledSection(ctx: AppContext, saved: () => void): HTMLElemen
     h(
       'p',
       { class: 'st-callout muted' },
-      'Tasks run only while BrowserBox is open in some window or tab: a browser cannot wake a closed web page. When it was closed at the time, a task runs as soon as BrowserBox opens again, or skips that run, as you choose. For frequent tasks, install BrowserBox as an app and keep a window open.',
+      'Tasks run only while BrowserBox is open in some window or tab: a browser cannot wake a closed web page. When it was closed at the time, a task runs as soon as BrowserBox opens again, or skips that run, as you choose. For frequent tasks, install BrowserBox as an app and keep a window open. Installed in Chrome or Edge, BrowserBox can also remind you when a task is due while it is closed (the browser decides how often it checks).',
     ),
     list,
     h('button', { class: 'btn', type: 'button', onclick: () => void edit() }, 'New scheduled task'),

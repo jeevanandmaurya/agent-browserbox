@@ -30,4 +30,9 @@ The agent shows each step as it works: the tools it runs, the files it changes (
 
 ## Install it as an app
 
-BrowserBox can be installed like an app (Chrome: the install icon in the address bar; Safari on iPhone: Share → Add to Home Screen). It then opens in its own window and starts offline.
+BrowserBox can be installed like an app (Chrome: the install icon in the address bar; Safari on iPhone: Share → Add to Home Screen). It then opens in its own window and starts offline. Installed, it also:
+
+- **Opens files** from your computer: right-click a file → Open with → BrowserBox (text, code, Markdown, CSV, JSON, PDF, images, zip). The file is attached to a new message.
+- **Takes things shared to it** from other apps (the share sheet on phones and some computers): text, links and files arrive in the message box.
+- Shows on its icon **how many chats are waiting for you**, and has shortcuts (right-click the icon) for a new chat, the terminal and the desktop.
+- Can **remind you of scheduled tasks** that are due while it is closed (Chrome and Edge; the browser decides how often it checks).

@@ -40,7 +40,7 @@ The agent works in \`/home/agent\`. Files there survive reloads.
 
 /** Things only a window can do; the kernel borrows one when a tool needs them. */
 export interface UiBridge {
-  call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak', ...args: unknown[]): Promise<T>;
+  call<T>(method: 'clipboard.read' | 'clipboard.write' | 'speak' | `serial.${'list' | 'open' | 'send' | 'read' | 'close'}`, ...args: unknown[]): Promise<T>;
 }
 
 /**

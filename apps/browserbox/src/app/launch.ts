@@ -41,13 +41,3 @@ export async function takeShared(): Promise<Incoming | null> {
   const text = [meta.title, meta.text, meta.url].filter((x) => x && x.trim()).filter((x, i, a) => a.indexOf(x) === i).join('\n');
   return { files, text };
 }
-
-/** The number on the installed app's icon: chats waiting for you (Badging API). */
-export function setWaitingBadge(n: number): void {
-  const nav = navigator as Navigator & { setAppBadge?(n?: number): Promise<void>; clearAppBadge?(): Promise<void> };
-  try {
-    void (n > 0 ? nav.setAppBadge?.(n) : nav.clearAppBadge?.())?.catch(() => undefined);
-  } catch {
-    /* not available */
-  }
-}

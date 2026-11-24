@@ -35,6 +35,7 @@ Only changes made with the agent's file tools are tracked. Changes made by shell
 - **Esc** stops the agent.
 - Switch to another chat at any time: the first keeps working. In the chat list, a pulsing dot means working and an amber dot means it is waiting for you.
 - **Away from the window?** If you allow notifications (Settings → Permissions), BrowserBox tells you when the agent needs an approval or asks a question, and when a chat finishes. Click the notification to go to that chat.
+- **Mini window** (⋯ → Mini window, in Chrome and Edge): a small window that stays on top of other apps and shows what the agent is doing; approvals can be answered right there.
 
 ## Projects
 
@@ -57,7 +58,7 @@ Tasks run only while BrowserBox is open in some window or tab: a browser cannot 
 ## Giving it context
 
 - **@** picks a file from the agent's folder; its contents go with your message.
-- **+ → Attach files** uploads files from your device into `/home/agent/uploads`. You can also paste a screenshot into the message box, or use **+ → Share a screen**: pick a screen, window or tab and one picture of it is attached (nothing is recorded or shared after that).
+- **+ → Attach files** uploads files from your device into `/home/agent/uploads`. You can also paste a screenshot into the message box, or use **+ → Share a screen**: pick a screen, window or tab and one picture of it is attached (nothing is recorded or shared after that). **+ → Record a voice note** attaches an audio recording and, where the browser can recognise speech, writes its transcript into the message (most models cannot listen to audio themselves).
 - **Images** (PNG, JPEG, GIF or WebP, up to 5 MB) that you attach or @mention are shown to the model, which can also look at image files itself (`view_image`). This needs a model that can see images: Claude, GPT and other vision models do; the small in-browser models do not.
 - **AGENTS.md** in `/home/agent` is read at the start of every chat: put how your project is built, tested and laid out there. `/init` has the agent write it.
 - **MEMORY.md** in `/home/agent` is the agent's long-term notes about you and your work.

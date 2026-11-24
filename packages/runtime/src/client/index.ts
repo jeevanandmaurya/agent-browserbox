@@ -28,3 +28,4 @@ export * from '../kernel/filetypes';
 export * from '../kernel/format';
 export { C, plainText, stripAnsi } from '../shell/ansi';
 export { embeddable } from '../sandbox/isolation';
+export { SerialHost, serialAvailable, type SerialPortInfo } from './serial';

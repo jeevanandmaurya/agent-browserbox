@@ -56,6 +56,46 @@ function withIsolation(res) {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
+// Installed as an app, Chromium may wake this worker now and then (Periodic
+// Background Sync). It cannot run the agent (that needs a window), but it can
+// say that a scheduled task is due while no BrowserBox window is open. Windows
+// keep the summary it reads (app/background.ts).
+self.addEventListener('periodicsync', (e) => {
+  if (e.tag !== 'bbx-scheduled-tasks') return;
+  e.waitUntil(remindDue());
+});
+async function remindDue() {
+  const open = await self.clients.matchAll({ type: 'window' });
+  if (open.length) return; // an open window runs them itself
+  const cache = await caches.open(FLAGS);
+  const now = Date.now();
+  const due = [];
+  for (const req of await cache.keys()) {
+    if (!req.url.startsWith('https://flags.browserbox.local/schedules/')) continue;
+    const s = await (await cache.match(req)).json().catch(() => null);
+    for (const t of s?.tasks ?? []) if (t.nextRun <= now) due.push({ ...t, profile: s.profile });
+  }
+  if (!due.length) return;
+  const names = due.map((t) => t.name);
+  await self.registration.showNotification(due.length === 1 ? `Scheduled task due: ${names[0]}` : `${due.length} scheduled tasks are due`, {
+    body: `${due.length === 1 ? '' : `${names.slice(0, 3).join(', ')}${due.length > 3 ? '…' : ''}. `}Open BrowserBox to run ${due.length === 1 ? 'it' : 'them'}.`,
+    tag: 'bbx-scheduled-due',
+    icon: './icon.svg',
+    data: { url: new URL(`./agent/?profile=${encodeURIComponent(due[0].profile)}`, self.registration.scope).href },
+  });
+}
+self.addEventListener('notificationclick', (e) => {
+  const url = e.notification.data?.url;
+  e.notification.close();
+  if (!url) return;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((list) => {
+      const w = list.find((c) => c.url.startsWith(new URL('./agent/', self.registration.scope).href));
+      return w ? w.focus() : self.clients.openWindow(url);
+    }),
+  );
+});
+
 // Shared to BrowserBox from another app (the manifest's share_target): keep what
 // was shared for the agent page, then open it. Kept in Cache Storage under a
 // one-off id; the page takes it and deletes it.
