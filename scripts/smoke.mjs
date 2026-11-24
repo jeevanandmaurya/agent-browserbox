@@ -54,6 +54,9 @@ const check = async (name, fn) => {
 };
 let popups = 0;
 context.on('page', () => popups++);
+// Startup time budgets for a cached start, generous for slow CI machines (see the check).
+const READY_MS = Number(process.env.READY_MS ?? 600); // measured about 160 ms when set
+const READY_SLOW_MS = Number(process.env.READY_SLOW_MS ?? 1500); // measured about 440 ms when set
 const ready = (page) => page.waitForFunction(() => globalThis.bbx?.bootMarks.some((m) => m.name === 'ready'), null, { timeout: 20000 });
 
 // ---- The agent window: no desktop, just the kernel and one page --------------
@@ -83,9 +86,11 @@ await check('startup bundles stay within budget, with nothing loaded early that 
   if (!read('apps/browserbox/dist/assets', 'agent-worker-').includes('Your context window is nearly full')) problems0.push('the agent worker does not contain the agent');
   const kb = (t) => gzipSync(t).length / 1024;
   const problems = problems0;
-  // Budgets, compressed (they were 54 and 20 KB when set).
+  // Budgets, compressed (they were 54 and 20 KB when set; the agent window's was raised to 32 KB
+  // once it was clear that, served from the service worker's cache, a few KB cost milliseconds:
+  // it guards against something heavy slipping into startup; the timing check below guards speed).
   if (kb(kernel) > 60) problems.push(`kernel worker ${kb(kernel).toFixed(1)} KB > 60 KB`);
-  if (kb(agent) > 24) problems.push(`agent window ${kb(agent).toFixed(1)} KB > 24 KB`);
+  if (kb(agent) > 32) problems.push(`agent window ${kb(agent).toFixed(1)} KB > 32 KB`);
   // Kernel-only code in the window, or on-demand code in the kernel's startup file.
   if (agent.includes('Your context window is nearly full')) problems.push('the agent loop is bundled into the agent window');
   if (kernel.includes('BrowserBox dev runtime')) problems.push('the dev server loads at kernel startup');
@@ -111,6 +116,29 @@ await check('later boots show the log but do not ask again', async () => {
   await ready(agent);
   if (await agent.locator('.boot-console .term-line:not(.busy)').count()) throw new Error('setup asked again');
   return 'straight to the agent window';
+});
+await check('startup is quick from the cache, also on a slow phone', async () => {
+  // A later start (pages from the service worker's cache), timed by the page's own marks:
+  // "ready" is when the chat can be used. Then the same on a CPU four times slower (a cheap phone).
+  const cdp = await agent.context().newCDPSession(agent);
+  const timeIt = async () => {
+    const runs = [];
+    for (let i = 0; i < 3; i++) {
+      await agent.reload();
+      await ready(agent);
+      runs.push(await agent.evaluate(() => bbx.bootMarks.find((m) => m.name === 'ready').at));
+    }
+    return runs.sort((a, b) => a - b)[1];
+  };
+  const fast = await timeIt();
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  const slow = await timeIt().finally(() => cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 }));
+  await cdp.detach();
+  const problems = [];
+  if (fast > READY_MS) problems.push(`ready after ${Math.round(fast)} ms > ${READY_MS} ms`);
+  if (slow > READY_SLOW_MS) problems.push(`ready after ${Math.round(slow)} ms on a 4× slower CPU > ${READY_SLOW_MS} ms`);
+  if (problems.length) throw new Error(problems.join('; '));
+  return `ready in ${Math.round(fast)} ms, ${Math.round(slow)} ms on a 4× slower CPU (median of 3)`;
 });
 await check('root redirects to the agent window; kernel boots headless', async () => {
   await ready(agent);
