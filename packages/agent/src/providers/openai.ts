@@ -6,25 +6,30 @@ type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { u
 interface WireMsg {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | Part[] | null;
-  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string }; extra_content?: unknown }>;
   tool_call_id?: string;
 }
 
 interface Chunk {
   model?: string;
   choices?: Array<{
-    delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> };
+    delta?: { content?: string | null; reasoning_content?: string | null; reasoning?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string }; extra_content?: Record<string, unknown> }> };
     finish_reason?: string | null;
   }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
 }
 
-export function toWire(system: string, messages: Msg[]): WireMsg[] {
+/**
+ * The conversation in the OpenAI chat format. `echo`: send back the provider
+ * fields kept on tool calls (Gemini needs its thought signatures returned;
+ * other servers may refuse fields they do not know, so only when asked).
+ */
+export function toWire(system: string, messages: Msg[], echo = false): WireMsg[] {
   const out: WireMsg[] = [{ role: 'system', content: system }];
   for (const m of messages) {
     if (m.role === 'assistant') {
       const text = m.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-      const calls = m.content.flatMap((b) => (b.type === 'tool_use' ? [{ id: b.id, type: 'function' as const, function: { name: b.name, arguments: JSON.stringify(b.input) } }] : []));
+      const calls = m.content.flatMap((b) => (b.type === 'tool_use' ? [{ id: b.id, type: 'function' as const, function: { name: b.name, arguments: JSON.stringify(b.input) }, ...(echo && b.extra?.extra_content ? { extra_content: b.extra.extra_content } : {}) }] : []));
       out.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
     } else {
       for (const b of m.content) if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.is_error ? `ERROR: ${b.content}` : b.content });
@@ -74,6 +79,14 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
   // Hosted APIs without CORS (ollama.com) go through the relay the user set; local servers never do.
   const relay = target.kind === 'api' ? cfg.corsRelay : '';
   let usageOption = true;
+  // Google's OpenAI-compatible API wants the signatures it put on tool calls sent back.
+  const echoExtra = /(^|\.)googleapis\.com$/.test((() => {
+    try {
+      return new URL(base).hostname;
+    } catch {
+      return '';
+    }
+  })());
   return {
     id: target.kind === 'api' ? 'openai' : 'local',
     contextBudget: Math.floor(cfg.contextWindow * 0.75),
@@ -90,7 +103,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
             stream: true,
             // Without this, OpenAI and most compatible servers send no token counts in a stream.
             ...(withUsage && usageOption ? { stream_options: { include_usage: true } } : {}),
-            messages: toWire(req.system, req.messages),
+            messages: toWire(req.system, req.messages, echoExtra),
             ...(req.tools.length ? { tools: req.tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })) } : {}),
           }),
         });
@@ -119,7 +132,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
       let finish = '';
       let model = target.model;
       const usage = { input: 0, output: 0, cacheRead: 0 };
-      const calls: Array<{ id: string; name: string; args: string }> = [];
+      const calls: Array<{ id: string; name: string; args: string; extra?: Record<string, unknown> }> = [];
       for await (const data of sse(res.body)) {
         if (data === '[DONE]') break;
         let chunk: Chunk;
@@ -149,6 +162,8 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
           if (tc.id) slot.id = tc.id;
           if (tc.function?.name) slot.name += tc.function.name;
           if (tc.function?.arguments) slot.args += tc.function.arguments;
+          // Gemini signs its tool calls (extra_content.google.thought_signature) and needs the signature back.
+          if (tc.extra_content) slot.extra = { extra_content: tc.extra_content };
         }
         if (choice.finish_reason) finish = choice.finish_reason;
       }
@@ -166,7 +181,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
         } catch {
           invalid = c.args;
         }
-        content.push({ type: 'tool_use', id: c.id || `call_${Date.now()}_${i}`, name: c.name, input, invalid });
+        content.push({ type: 'tool_use', id: c.id || `call_${Date.now()}_${i}`, name: c.name, input, invalid, ...(c.extra ? { extra: c.extra } : {}) });
       });
       const hasCalls = content.some((b) => b.type === 'tool_use');
       // Cut off by the output limit: a tool call in it may be half-written, so it must not run.

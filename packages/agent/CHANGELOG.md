@@ -5,6 +5,9 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.1
 
+- Fixed: Gemini (OpenAI-compatible API) refused the second request of a tool
+  call: the `extra_content` signature on its tool calls is kept on the block
+  (`extra`) and echoed back to Google's API only.
 - Google Gemini preset; `apiBase()` corrects Google's bare address; clearer
   `unreachable()` messages for services that accept browser requests.
 - The built-in model streams: text is shown as it arrives, holding back what

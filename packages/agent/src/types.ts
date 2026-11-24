@@ -15,7 +15,16 @@ export type Block =
   /** An image the user attached. */
   | ({ type: 'image' } & ImageRef)
   | { type: 'thinking'; text: string }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown>; /** Set when the model produced unparseable arguments. */ invalid?: string }
+  | {
+      type: 'tool_use';
+      id: string;
+      name: string;
+      input: Record<string, unknown>;
+      /** Set when the model produced unparseable arguments. */
+      invalid?: string;
+      /** Provider fields to send back with the call as they came, e.g. Gemini's thought signature (`extra_content`). */
+      extra?: Record<string, unknown>;
+    }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean; /** Images the tool showed the model (view_image). */ images?: ImageRef[] }
   /** Something the provider did on its side (e.g. a web search). Display only. */
   | { type: 'server_note'; text: string };

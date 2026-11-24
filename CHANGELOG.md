@@ -7,6 +7,8 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- Fixed: Google Gemini failed after its first tool call ("missing a
+  thought_signature"): its tool-call signatures are now kept and sent back.
 - **Google Gemini** is a preset in Settings → Model → API, and the bare
   Google address is corrected to the right one. A failing request to a
   service that does accept web pages now says to check the address, not
