@@ -56,9 +56,25 @@ function withIsolation(res) {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
+// Shared to BrowserBox from another app (the manifest's share_target): keep what
+// was shared for the agent page, then open it. Kept in Cache Storage under a
+// one-off id; the page takes it and deletes it.
+const SHARE = 'bbx-share';
+async function receiveShare(req) {
+  const form = await req.formData();
+  const id = crypto.randomUUID();
+  const cache = await caches.open(SHARE);
+  const files = form.getAll('files').filter((f) => typeof f !== 'string');
+  const meta = { title: String(form.get('title') ?? ''), text: String(form.get('text') ?? ''), url: String(form.get('url') ?? ''), files: files.map((f, i) => ({ key: `https://share.browserbox.local/${id}/${i}`, name: f.name || `shared-${i}`, type: f.type })) };
+  for (const [i, f] of files.entries()) await cache.put(meta.files[i].key, new Response(f, { headers: { 'content-type': f.type || 'application/octet-stream' } }));
+  await cache.put(`https://share.browserbox.local/${id}`, new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }));
+  return Response.redirect(new URL(`./?shared=${id}`, req.url).href, 303);
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
+  if (req.method === 'POST' && url.origin === self.location.origin && url.pathname.endsWith('/agent/share-target')) return e.respondWith(receiveShare(req));
   if (req.method !== 'GET' || url.origin !== self.location.origin) return; // never touch LLM / network calls
   const immutable = url.pathname.includes('/assets/');
   e.respondWith(

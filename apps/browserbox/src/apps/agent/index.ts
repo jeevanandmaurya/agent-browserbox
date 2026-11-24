@@ -4,6 +4,7 @@ import './chat.css';
 import './workbench.css';
 import { OS_URL } from '@/app/config';
 import { notifyAway, OPEN_CHAT_EVENT } from '@/app/attention';
+import { onLaunchFiles, takeShared, type Incoming } from '@/app/launch';
 import { profileWindow, withProfile } from '@/app/boot';
 import type { AgentHandle } from '@jeevanand/agent-browserbox/ui';
 import type { TodoItem } from '@jeevanand/agent-browserbox/ui';
@@ -481,6 +482,20 @@ const app: AppModule = {
     await showState();
     composer.focus();
     if (typeof ctx.args.prompt === 'string') submit(ctx.args.prompt);
+
+    // Launched as the installed app: files opened with it, things shared to it, its shortcuts.
+    const incoming = async ({ files, text }: Incoming) => {
+      if (text) composer.setText(text);
+      if (files.length) await composer.attach(files);
+      composer.focus();
+    };
+    onLaunchFiles((i) => void incoming(i));
+    void takeShared().then((i) => i && incoming(i));
+    const params = new URLSearchParams(location.search);
+    if (params.get('new') === '1' || params.get('open')) history.replaceState(null, '', location.pathname);
+    if (params.get('new') === '1') void newSession();
+    const tool = params.get('open');
+    if (tool) route(tool);
     return () => {
       agent.detach();
       settings.close();

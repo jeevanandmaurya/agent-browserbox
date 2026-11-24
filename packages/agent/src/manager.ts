@@ -78,7 +78,7 @@ export class AgentManager implements AgentsApi {
     return [...this.#sessions.entries()]
       .filter(([, s]) => !s.private)
       .sort((a, b) => b[1].created - a[1].created)
-      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, title: titleFrom(s.agent.transcript), project: s.agent.project.id }));
+      .map(([sid, s]) => ({ sid, pid: s.agent.proc.pid, busy: s.agent.busy, waiting: s.agent.proc.state === 'blocked', title: titleFrom(s.agent.transcript), project: s.agent.project.id }));
   }
 
   probeMcp(name: string): Promise<Array<{ name: string; description: string }>> {

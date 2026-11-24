@@ -37,6 +37,8 @@ export interface AgentInfo {
   sid: string;
   pid: number;
   busy: boolean;
+  /** Waiting for you: an approval or an answer to a question. */
+  waiting?: boolean;
   title: string;
   project: string;
 }

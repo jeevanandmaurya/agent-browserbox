@@ -1369,6 +1369,80 @@ await check('Settings → Packages: lists the BrowserBox index, adds a source, i
   }
 });
 
+await check('installed app: shared files and text, opened files, shortcuts, the badge for chats waiting', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  await ctx.addInitScript(() => {
+    if (typeof document === 'undefined') return;
+    globalThis.__badges = [];
+    Object.defineProperty(Navigator.prototype, 'setAppBadge', { configurable: true, value: async (n) => void globalThis.__badges.push(n) });
+    Object.defineProperty(Navigator.prototype, 'clearAppBadge', { configurable: true, value: async () => void globalThis.__badges.push(0) });
+    Object.defineProperty(globalThis, 'launchQueue', { configurable: true, value: { setConsumer: (fn) => (globalThis.__launch = fn) } });
+  });
+  const p = await ctx.newPage();
+  const steps = [];
+  const boot = async () => {
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+  };
+  try {
+    await p.goto(base + 'agent/');
+    await boot();
+    // The service worker must control the page for the share target.
+    await p.evaluate(() => navigator.serviceWorker.ready);
+    if (!(await p.evaluate(() => !!navigator.serviceWorker.controller))) await p.reload(), await p.waitForSelector('.ag-input', { timeout: 120000 });
+
+    // Shared from another app: the service worker keeps it and opens the agent with it.
+    const to = await p.evaluate(async () => {
+      const form = new FormData();
+      form.append('title', 'A note');
+      form.append('text', 'please summarise this');
+      form.append('files', new File(['shared body'], 'shared-note.txt', { type: 'text/plain' }));
+      const res = await fetch('./share-target', { method: 'POST', body: form });
+      return res.url;
+    });
+    if (!/\?shared=[0-9a-f-]{36}$/.test(to)) throw new Error(`share target answered ${to}`);
+    await p.goto(to);
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.locator('.cp-chips:not([hidden])', { hasText: 'shared-note.txt' }).waitFor({ timeout: 20000 });
+    const typed = await p.locator('.ag-input').inputValue();
+    if (!typed.includes('A note') || !typed.includes('please summarise this') || p.url().includes('shared=')) throw new Error(`text ${JSON.stringify(typed)} url ${p.url()}`);
+    const kept = await p.evaluate(async () => (await (await caches.open('bbx-share')).keys()).length);
+    if (kept) throw new Error('the share was not cleaned up');
+    steps.push('shared file and text arrive in the message box');
+
+    // Opened with the installed app (file_handlers → launchQueue).
+    await p.evaluate(() => globalThis.__launch({ files: [{ getFile: async () => new File(['a,b\n1,2\n'], 'opened.csv', { type: 'text/csv' }) }] }));
+    await p.locator('.cp-chips', { hasText: 'opened.csv' }).waitFor({ timeout: 10000 });
+    steps.push('opened file attached');
+
+    // A chat waiting for an approval shows on the icon; answered, the badge clears.
+    await p.locator('.ag-input').fill('touch while away');
+    await p.locator('.ag-input').press('Enter');
+    await p.locator('.ag-approval').waitFor({ timeout: 30000 });
+    await p.waitForFunction(() => globalThis.__badges.at(-1) === 1, null, { timeout: 10000 });
+    await p.locator('.sb-live.waiting').waitFor({ timeout: 5000 });
+    await p.locator('.ag-approval button', { hasText: 'Deny' }).click();
+    await p.waitForFunction(() => globalThis.__badges.at(-1) === 0, null, { timeout: 15000 });
+    steps.push('badge 1 while waiting, cleared after');
+
+    // Shortcuts: the terminal.
+    await p.goto(base + 'agent/?open=terminal');
+    await p.locator('.term-input').first().waitFor({ timeout: 60000 });
+    steps.push('terminal shortcut');
+    const manifest = await p.evaluate(() => fetch('../manifest.webmanifest').then((r) => r.json()));
+    if (!manifest.file_handlers?.length || manifest.share_target?.method !== 'POST' || manifest.shortcuts?.length !== 3) throw new Error('manifest');
+    return steps.join('; ');
+  } catch (err) {
+    throw new Error(`${steps.join('; ')} | ${err.message}`);
+  } finally {
+    await ctx.close();
+  }
+});
+
 await browser.close();
 await server.close();
 llm.close();

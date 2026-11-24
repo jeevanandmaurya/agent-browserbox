@@ -1,3 +1,4 @@
+import { setWaitingBadge } from '@/app/launch';
 import { agentsOf } from '@/app/agents';
 import { deleteSession, listSessions, loadProjects, PROJECTS_KEY, type SessionInfo } from '@jeevanand/agent-browserbox/ui';
 import { currentProject } from '@/app/project';
@@ -195,11 +196,13 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
       const sessions = await agentsOf(os).live().catch(() => []);
       const next = new Map<string, 'running' | 'waiting'>();
       for (const s of sessions) {
-        const state = os.procs.get(s.pid)?.state;
-        if (s.busy) next.set(s.sid, state === 'blocked' ? 'waiting' : 'running');
+        // `waiting` comes from the agent itself (its process ids are its worker's, not the kernel's).
+        if (s.busy) next.set(s.sid, (s.waiting ?? os.procs.get(s.pid)?.state === 'blocked') ? 'waiting' : 'running');
       }
       const changed = next.size !== live.size || [...next].some(([k, v]) => live.get(k) !== v);
       live = next;
+      // The installed app's icon shows how many chats wait for you.
+      setWaitingBadge([...next.values()].filter((v) => v === 'waiting').length);
       if (changed) void refresh(active);
     }, 250);
   };

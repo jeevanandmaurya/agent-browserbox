@@ -1,10 +1,46 @@
 {
+  "id": "./agent/",
   "name": "BrowserBox — Agent OS",
   "short_name": "BrowserBox",
   "description": "A sandboxed operating system for AI agents that runs entirely in your browser.",
   "start_url": "./agent/",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#131312",
   "theme_color": "#1a1a19",
-  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "launch_handler": { "client_mode": ["focus-existing", "auto"] },
+  "file_handlers": [
+    {
+      "action": "./agent/",
+      "accept": {
+        "text/plain": [".txt", ".log", ".csv", ".tsv", ".ini", ".toml", ".env"],
+        "text/markdown": [".md", ".markdown"],
+        "application/json": [".json", ".jsonl"],
+        "text/yaml": [".yaml", ".yml"],
+        "text/html": [".html", ".htm"],
+        "text/css": [".css"],
+        "text/javascript": [".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"],
+        "text/x-python": [".py"],
+        "application/pdf": [".pdf"],
+        "image/png": [".png"],
+        "image/jpeg": [".jpg", ".jpeg"],
+        "image/webp": [".webp"],
+        "image/gif": [".gif"],
+        "application/zip": [".zip"]
+      }
+    }
+  ],
+  "share_target": {
+    "action": "./agent/share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "title", "text": "text", "url": "url", "files": [{ "name": "files", "accept": ["*/*"] }] }
+  },
+  "shortcuts": [
+    { "name": "New chat", "url": "./agent/?new=1" },
+    { "name": "Terminal", "url": "./agent/?open=terminal" },
+    { "name": "Desktop", "url": "./os/" }
+  ]
 }

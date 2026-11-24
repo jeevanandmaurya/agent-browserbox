@@ -31,6 +31,8 @@ export interface Composer {
   setQueue(items: string[]): void;
   /** Redraws the mode chip after the mode changed elsewhere. */
   syncMode(): void;
+  /** Attaches files (opened with or shared to the app) as if uploaded with +. */
+  attach(files: File[]): Promise<void>;
 }
 
 /** Picks a name in the uploads folder that does not overwrite an earlier upload. */
@@ -307,6 +309,7 @@ export function createComposer(
     setText,
     meterSlot,
     syncMode,
+    attach: (files) => attachFiles(files),
     setQueue(items) {
       queueBox.hidden = !items.length;
       queueBox.replaceChildren(
