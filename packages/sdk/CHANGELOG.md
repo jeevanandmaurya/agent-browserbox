@@ -5,6 +5,13 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.4.1
+
+- **`help` in sections**, with installed package commands and `~/.local/bin`
+  commands; `help <section>`; descriptions wrap under themselves.
+- `Command.section` and `ContributedCommand.section`: where `help` lists a
+  command. Contributed commands get `interactive` (a person is typing).
+
 ## 0.4.0
 
 - **Accept-edits permission mode**: `PermMode` is `'ask' | 'edits' | 'auto'`.

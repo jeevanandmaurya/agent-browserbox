@@ -1,4 +1,4 @@
-import { ARTIFACT_KINDS, artifactsDir, createArtifact, listArtifacts, readArtifact, updateArtifact, versionPath, type ArtifactKind } from '../artifacts.js';
+import { ARTIFACT_KINDS, artifactsDir, createArtifact, deleteArtifact, listArtifacts, readArtifact, readArtifactMeta, updateArtifact, versionPath, type ArtifactKind } from '../artifacts.js';
 import { clip, obj, tool, type ToolDef } from './types.js';
 
 const artifactFolder = (workspace: string, id: string) => `${artifactsDir(workspace)}/${id}`;
@@ -28,24 +28,39 @@ export const artifactTools: ToolDef[] = [
       return artifactLine('Created', a, 1);
     },
   }),
-  tool<{ id: string; content?: string; edits?: Array<{ old: string; new: string }>; note?: string }>({
+  tool<{ id: string; content?: string; edits?: Array<{ old: string; new: string }>; restore?: number; note?: string }>({
     name: 'update_artifact',
-    description: 'Make a new version of an artifact: exact edits to the latest version (each old text must occur once; best for small changes), or the whole new content. Earlier versions are kept.',
+    description: 'Make a new version of an artifact: exact edits to the latest version (each old text must occur once; best for small changes), the whole new content, or `restore` an earlier version (it becomes the newest). Earlier versions are kept.',
     input_schema: obj(
       {
         id: { type: 'string' },
         edits: { type: 'array', items: { type: 'object', properties: { old: { type: 'string' }, new: { type: 'string' } }, required: ['old', 'new'] } },
         content: { type: 'string', description: 'the whole new version, instead of edits' },
+        restore: { type: 'integer', description: 'an earlier version number to bring back, instead of edits or content' },
         note: { type: 'string', description: 'what changed, in a few words' },
       },
       ['id'],
     ),
     cap: () => null,
-    describe: (i) => `Update artifact ${i.id}${i.note ? `: ${i.note}` : ''}`,
+    describe: (i) => (i.restore ? `Restore version ${i.restore} of artifact ${i.id}` : `Update artifact ${i.id}${i.note ? `: ${i.note}` : ''}`),
     async run(i, tc) {
-      const a = await updateArtifact(tc.os, tc.workspace, i.id, { content: i.content, edits: i.edits, note: i.note });
+      const old = i.restore ? await readArtifact(tc.os, tc.workspace, i.id, i.restore) : null;
+      const a = await updateArtifact(tc.os, tc.workspace, i.id, old ? { content: old.content, note: i.note ?? `restored version ${i.restore}` } : { content: i.content, edits: i.edits, note: i.note });
       tc.created(versionPath(tc.workspace, a));
       return artifactLine('Updated', a, a.versions.at(-1)!.n);
+    },
+  }),
+  tool<{ id: string }>({
+    name: 'delete_artifact',
+    description: 'Delete an artifact with all its versions. Only when the user asks for it to be deleted.',
+    input_schema: obj({ id: { type: 'string' } }, ['id']),
+    // The user's work: asked for in Ask mode, like changing a file.
+    cap: () => 'fs.write',
+    describe: (i) => `Delete artifact ${i.id}`,
+    async run(i, tc) {
+      const a = await readArtifactMeta(tc.os, tc.workspace, i.id);
+      await deleteArtifact(tc.os, tc.workspace, i.id);
+      return `Deleted artifact "${a.title}" (${a.versions.length} version${a.versions.length === 1 ? '' : 's'}).`;
     },
   }),
   tool<{ id?: string; version?: number }>({

@@ -167,7 +167,10 @@ export interface ContributedCommand {
   name: string;
   summary: string;
   usage?: string;
-  run(io: { args: string[]; stdin: string; cwd: string; out(text: string): void; err(text: string): void; signal: AbortSignal; readLine?(prompt: string, secret: boolean): Promise<string | null> }): Promise<number>;
+  /** Where `help` lists it. */
+  section?: string;
+  /** `interactive`: a person is typing in this terminal (not the agent or a script). */
+  run(io: { args: string[]; stdin: string; cwd: string; out(text: string): void; err(text: string): void; signal: AbortSignal; readLine?(prompt: string, secret: boolean): Promise<string | null>; interactive?: boolean }): Promise<number>;
 }
 
 export interface ShellsApi {

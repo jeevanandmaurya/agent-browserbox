@@ -18,6 +18,7 @@ export class ShellManager implements ShellsApi {
       name: c.name,
       summary: c.summary,
       usage: c.usage,
+      section: c.section,
       run: (ctx) =>
         c.run({
           args: ctx.args,
@@ -27,6 +28,7 @@ export class ShellManager implements ShellsApi {
           err: ctx.err,
           signal: ctx.signal,
           readLine: ctx.tty ? (prompt, secret) => ctx.tty!.readLine(prompt, { secret }) : undefined,
+          interactive: !!ctx.tty?.interactive,
         }),
     };
     contribute(command);

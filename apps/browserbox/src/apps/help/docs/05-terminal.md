@@ -1,6 +1,6 @@
 # Terminal and packages
 
-The Terminal runs BrowserBox's own shell. It works like a Unix shell for everyday use: pipes (`|`), redirects (`>`, `>>`), `&&`, `||`, `;`, `$VARIABLES`, wildcards, history (↑) and Tab completion. It is not bash: there are no loops, functions, `$(…)` or background jobs. Type `help` to list the commands.
+The Terminal runs BrowserBox's own shell. It works like a Unix shell for everyday use: pipes (`|`), redirects (`>`, `>>`), `&&`, `||`, `;`, `$VARIABLES`, wildcards, history (↑) and Tab completion. It is not bash: there are no loops, functions, `$(…)` or background jobs. Type `help` to list the commands by section; `help <command>` shows how to use one, and `help <section>` (`files`, `text`, `code`, `web`, `ai`, `packages`, `devices`, `you`, `system`) lists one section.
 
 ## Packages
 
@@ -67,6 +67,23 @@ Your own commands: put a `name`, `name.wasm`, `name.js` or `name.sh` file in `~/
 | `exit` | close this terminal |
 
 Only a person typing in a terminal can change profiles: the agent and scripts can see who you are, but not switch, create, rename, delete, change the password or sign out.
+
+## Projects, chats and the look
+
+What the sidebar and Settings do, by typing (the agent can use these too):
+
+| Command | Does |
+| --- | --- |
+| `project list`, `project show [id]` | your projects, or one in detail (folder, model, knowledge files, instructions) |
+| `project new <name> [--folder /path]` | make a project |
+| `project rename <id> <name>`, `project use <id>` | rename one; choose the one new chats and windows start in |
+| `project knowledge <id> add <path>` | a file always given to the agent in that project (`remove` takes it off) |
+| `chats [list]`, `chats search <words>` | saved chats, newest first; search titles and what was said |
+| `chats show <id>`, `chats export <id> [file.md]` | read a chat, or save it as Markdown |
+| `theme list`, `theme set <name>` | the themes; use one (`system` follows your device) |
+| `theme wallpaper [style]` | the wallpaper styles; use one (`theme` = the theme's own) |
+
+Deleting a project (`project delete`) or a chat (`chats delete`) asks you to confirm, and only a person typing in a terminal can do it.
 
 ## Serial devices
 

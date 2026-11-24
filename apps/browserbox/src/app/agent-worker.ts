@@ -1,6 +1,7 @@
 import { BrowserBox } from '@jeevanand/agent-browserbox-sdk';
 import { AGENT_COMMANDS, AgentManager, AgentOs, BrowserSecrets, Scheduler, pathIn, type AgentHandle, type PermDecision, type PermRequest, type ProcTable, type SettingsApi } from '@jeevanand/agent-browserbox';
 import { RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
+import { themeCommand } from './theme-command';
 import { Peer } from '@jeevanand/agent-browserbox-runtime/client';
 import { APP_MANIFESTS } from '@/ui/app-manifest';
 
@@ -217,11 +218,14 @@ function startScheduler(os: AgentOs, agents: AgentManager): void {
  * The agent's terminal commands (setup, agent, gh, deploy), offered in every
  * shell of the box: the kernel forwards them here and streams their I/O.
  */
+/** The agent's commands, and the app's own (the theme). */
+const COMMANDS = [...AGENT_COMMANDS, themeCommand];
+
 async function offerCommands(kernel: RemoteKernel, os: AgentOs): Promise<void> {
   const aborts = new Map<number, AbortController>();
   const peer = await kernel.handle({
-    'cmd.run': async (runId: number, name: string, o: { args: string[]; stdin: string; cwd: string; tty: boolean }) => {
-      const cmd = AGENT_COMMANDS.find((c) => c.name === name);
+    'cmd.run': async (runId: number, name: string, o: { args: string[]; stdin: string; cwd: string; tty: boolean; interactive?: boolean }) => {
+      const cmd = COMMANDS.find((c) => c.name === name);
       const err = (t: string) => peer.emit('cmd:out', { runId, s: 'e', t });
       if (!cmd) return err(`${name}: not available\n`), 127;
       const ctl = new AbortController();
@@ -236,7 +240,7 @@ async function offerCommands(kernel: RemoteKernel, os: AgentOs): Promise<void> {
           signal: ctl.signal,
           out: (t) => peer.emit('cmd:out', { runId, s: 'o', t }),
           err,
-          tty: o.tty ? { readLine: (prompt, opts) => kernel.call<string | null>('cmd.readLine', runId, prompt, !!opts?.secret) } : undefined,
+          tty: o.tty ? { readLine: (prompt, opts) => kernel.call<string | null>('cmd.readLine', runId, prompt, !!opts?.secret), interactive: !!o.interactive } : undefined,
         });
         return typeof code === 'number' ? code : 0;
       } catch (e) {
@@ -248,7 +252,7 @@ async function offerCommands(kernel: RemoteKernel, os: AgentOs): Promise<void> {
     },
   });
   peer.on<number>('cmd:abort', (runId) => aborts.get(runId)?.abort());
-  await kernel.call('shell.contribute', AGENT_COMMANDS.map(({ name, summary, usage }) => ({ name, summary, usage })));
+  await kernel.call('shell.contribute', COMMANDS.map(({ name, summary, usage, section }) => ({ name, summary, usage, section })));
 }
 
 /** The window that lent the box went away: move to another window's box and kernel client. */

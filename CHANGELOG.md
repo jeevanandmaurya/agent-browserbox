@@ -7,6 +7,16 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- **`help` in sections** (Files, Text and data, Running code, Web projects,
+  The agent, Packages, Devices, You and BrowserBox, System), with installed
+  package commands and your own; `help <section>` and `help <command>`.
+- **New terminal commands** for what was only in the sidebar and Settings:
+  `project` (list, show, new, rename, use, knowledge, delete), `chats`
+  (list, search, show, export, delete) and `theme` (list, set, wallpaper).
+  The agent can use them too; deleting stays with you.
+- The agent can delete an artifact (asking first in Ask mode) and bring back
+  an earlier version of one.
+
 - **Themes**: nine themes (Graphite, Midnight, Forest, Ember, Frost, Petal,
   Ink, Paper, Dune) colour the agent window, the desktop, terminal colours
   and the wallpaper together. Settings → Appearance shows each as a little

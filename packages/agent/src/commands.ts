@@ -1,4 +1,5 @@
 import { Agent } from './agent.js';
+import { chatsCommand, projectCommand } from './manage.js';
 import { API_PRESETS, DEFAULT_CONFIG, describeModel, loadConfig, probeModels, saveConfig, SECRET } from './config.js';
 import { C } from './host/ansi.js';
 import { Shell, type AgentOs } from './host/os.js';
@@ -13,6 +14,8 @@ import type { PermDecision } from './host/perms.js';
  */
 export interface Tty {
   readLine(prompt: string, opts?: { secret?: boolean }): Promise<string | null>;
+  /** A person is typing (not the agent or a script). */
+  interactive?: boolean;
 }
 
 export interface CommandContext {
@@ -34,6 +37,8 @@ export interface AgentCommand {
   name: string;
   summary: string;
   usage?: string;
+  /** Where the shell's `help` lists it. */
+  section?: string;
   run(ctx: CommandContext): Promise<number | void>;
 }
 
@@ -297,4 +302,4 @@ export const deployCommand: Command = {
 };
 
 
-export const AGENT_COMMANDS: AgentCommand[] = [setupCommand, agentCommand, ghCommand, deployCommand];
+export const AGENT_COMMANDS: AgentCommand[] = [setupCommand, agentCommand, ghCommand, deployCommand, projectCommand, chatsCommand];

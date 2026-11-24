@@ -38,6 +38,8 @@ export interface Command {
   name: string;
   summary: string;
   usage?: string;
+  /** Where `help` lists it (see SECTIONS in commands/sys.ts); built-ins are placed by name. */
+  section?: string;
   run(ctx: CommandContext): Promise<number | void>;
 }
 

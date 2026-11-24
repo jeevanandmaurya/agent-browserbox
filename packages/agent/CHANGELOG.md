@@ -5,6 +5,12 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.1
 
+- New commands `project` and `chats` (in `AGENT_COMMANDS`): manage projects
+  and saved chats from a terminal; deleting needs a person at the terminal
+  (`Tty.interactive`) who confirms.
+- `delete_artifact` tool (an `fs.write` permission), and `update_artifact`
+  takes `restore: <version>` (the old version becomes the newest).
+- `AgentCommand.section`: where the shell's `help` lists a command.
 - A chat opened in a second window while it works shows what it is doing:
   `AgentSnapshot.live` holds the current step's events not yet in
   `messages` (text so far, running tools), for the window to replay.

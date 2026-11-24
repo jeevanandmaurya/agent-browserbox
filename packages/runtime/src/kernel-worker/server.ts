@@ -292,19 +292,20 @@ export class KernelServer {
         client.shells.delete(id);
       },
       // Commands this client runs for every shell (the app's agent offers agent, setup, gh, deploy).
-      'shell.contribute': (defs: Array<{ name: string; summary: string; usage?: string }>) => {
+      'shell.contribute': (defs: Array<{ name: string; summary: string; usage?: string; section?: string }>) => {
         for (const d of defs) {
           const off = os.shells.contribute?.({
             name: d.name,
             summary: d.summary,
             usage: d.usage,
+            section: d.section,
             run: async (io) => {
               const runId = this.#nextCmd++;
               this.#cmdRuns.set(runId, io);
               const abort = () => peer.emit('cmd:abort', runId);
               io.signal.addEventListener('abort', abort);
               try {
-                return await peer.call<number>('cmd.run', runId, d.name, { args: io.args, stdin: io.stdin, cwd: io.cwd, tty: !!io.readLine });
+                return await peer.call<number>('cmd.run', runId, d.name, { args: io.args, stdin: io.stdin, cwd: io.cwd, tty: !!io.readLine, interactive: !!io.interactive });
               } finally {
                 io.signal.removeEventListener('abort', abort);
                 this.#cmdRuns.delete(runId);

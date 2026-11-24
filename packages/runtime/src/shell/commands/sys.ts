@@ -3,19 +3,77 @@ import { listApps } from '../../kernel/apps';
 import { fmtBytes, fmtDuration } from '../../kernel/format';
 import type { Command } from '../shell';
 import { C } from '../ansi';
+import { localCommandNames } from '../runners';
+
+/** `help`'s sections, in order, and the built-in commands each lists. Others say their own (`Command.section`). */
+const SECTIONS: Array<{ id: string; title: string; about: string; names: string[] }> = [
+  { id: 'files', title: 'Files', about: 'look at, change and find files', names: ['ls', 'cd', 'pwd', 'tree', 'cat', 'head', 'tail', 'cp', 'mv', 'rm', 'mkdir', 'touch', 'stat', 'find', 'du', 'df', 'mount', 'open'] },
+  { id: 'text', title: 'Text and data', about: 'filter and transform text', names: ['echo', 'grep', 'sort', 'uniq', 'wc', 'tee', 'sha256sum', 'gzip', 'gunzip', 'zip', 'unzip', 'sqlite3'] },
+  { id: 'code', title: 'Running code', about: 'programs in sandboxes', names: ['js', 'python', 'python3', 'pip', 'pip3', 'wasm', 'gpu'] },
+  { id: 'web', title: 'Web projects', about: 'build, serve and ship', names: ['serve', 'build', 'esbuild', 'npm', 'npx', 'git', 'gh', 'deploy', 'curl'] },
+  { id: 'ai', title: 'The agent', about: 'chats, projects and the agent itself', names: ['agent', 'setup'] },
+  { id: 'packages', title: 'Packages', about: 'more software; installed commands are listed here too', names: ['pkg'] },
+  { id: 'devices', title: 'Devices', about: 'hardware connected to this computer', names: ['serial'] },
+  { id: 'you', title: 'You and BrowserBox', about: 'profiles, look and feel', names: ['profile', 'passwd', 'signout', 'logout', 'whoami'] },
+  { id: 'system', title: 'System', about: 'processes, environment and the shell', names: ['ps', 'kill', 'sysinfo', 'uptime', 'uname', 'date', 'env', 'export', 'which', 'hash', 'history', 'sleep', 'notify', 'dmesg', 'clear', 'exit', 'true', 'false', 'help'] },
+];
+const sectionOf = (c: Command): string => c.section ?? SECTIONS.find((s) => s.names.includes(c.name))?.id ?? 'system';
+
+/** The commands under one heading: name, then what it does, wrapped to the terminal's width. */
+function block(out: (t: string) => void, title: string, about: string, rows: Array<[string, string]>): void {
+  if (!rows.length) return;
+  out(`\n${C.bold}${title}${C.reset} ${C.dim}— ${about}${C.reset}\n`);
+  const width = Math.max(10, ...rows.map(([n]) => n.length + 2));
+  // Wrapped under the description (the terminal's width is not known: 64 columns fits a side panel).
+  const room = Math.max(24, 64 - 2 - width);
+  for (const [name, summary] of rows) {
+    const lines: string[] = [];
+    let line = '';
+    for (const word of summary.split(' ')) {
+      const visible = (line + ' ' + word).replace(/\x1b\[[0-9;]*m/g, '').trim();
+      if (line && visible.length > room) (lines.push(line), (line = word));
+      else line = line ? `${line} ${word}` : word;
+    }
+    lines.push(line);
+    out(`  ${C.cyan}${name.padEnd(width)}${C.reset}${lines.join(`\n  ${' '.repeat(width)}`)}\n`);
+  }
+}
 
 export const sysCommands: Command[] = [
   {
     name: 'help',
-    summary: 'list commands',
-    usage: 'help [command]',
-    async run({ args, shell, out }) {
-      const one = args[0] ? (shell.commands.get(args[0]) ?? findContributed(args[0])) : undefined;
-      if (args[0] && !one) throw new Error(`no such command: ${args[0]}`);
-      if (one) return void out(`${C.bold}${one.name}${C.reset} — ${one.summary}\n${one.usage ? `usage: ${one.usage}\n` : ''}`);
-      out(`${C.bold}BrowserBox shell${C.reset} — pipes (|), redirects (> >> <), && || ;, $VARS, globs, quotes.\n\n`);
-      const all = new Map([...contributedNames().map((n) => [n, findContributed(n)!] as const), ...shell.commands]);
-      for (const c of [...all.values()].sort((a, b) => a.name.localeCompare(b.name))) out(`  ${C.cyan}${c.name.padEnd(10)}${C.reset} ${c.summary}\n`);
+    summary: 'list commands by section; help <command> for one, help <section> for a section',
+    usage: 'help [command | section]',
+    async run({ args, shell, out, os }) {
+      const all = new Map<string, Command>([...contributedNames().map((n) => [n, findContributed(n)!] as const), ...shell.commands]);
+      const want = args[0];
+      const one = want ? all.get(want) : undefined;
+      if (one) {
+        out(`${C.bold}${one.name}${C.reset} — ${one.summary}\n`);
+        if (one.usage) out(`${C.dim}usage:${C.reset} ${one.usage.replace(/\n\s*/g, '\n       ')}\n`);
+        return;
+      }
+      const section = want ? SECTIONS.find((s) => s.id === want || s.title.toLowerCase() === want.toLowerCase()) : undefined;
+      // Commands from installed packages and from ~/.local/bin are commands too.
+      const external = os.packages.externalCommands();
+      const local = await localCommandNames(os).catch(() => [] as string[]);
+      if (want && !section && !external.includes(want) && !local.includes(want)) throw new Error(`no such command or section: ${want} (help lists them)`);
+      if (want && !section) return void out(`${C.bold}${want}${C.reset} — ${external.includes(want) ? `from an installed package (pkg info, or ${want} --help)` : `your command in ~/.local/bin`}\n`);
+      if (!section) {
+        out(`${C.bold}BrowserBox shell${C.reset}\n`);
+        out(`  pipes ${C.cyan}|${C.reset}, redirects ${C.cyan}> >> <${C.reset}, ${C.cyan}&& || ;${C.reset}, ${C.cyan}$VARS${C.reset}, wildcards, quotes, history (↑), Tab completion. Not bash: no loops, functions or $(…).\n`);
+      }
+      for (const s of SECTIONS) {
+        if (section && s !== section) continue;
+        const rows = [...all.values()]
+          .filter((c) => sectionOf(c) === s.id)
+          .sort((a, b) => (s.names.indexOf(a.name) + 1 || 999) - (s.names.indexOf(b.name) + 1 || 999) || a.name.localeCompare(b.name))
+          .map((c) => [c.name, c.summary] as [string, string]);
+        if (s.id === 'packages') for (const name of external.filter((n) => !all.has(n)).sort()) rows.push([name, `${C.dim}from an installed package${C.reset}`]);
+        block(out, s.title, s.about, rows);
+      }
+      if (!section || section.id === 'packages') block(out, 'Your commands', '~/.local/bin', local.sort().map((n) => [n, `${C.dim}~/.local/bin/${n}${C.reset}`]));
+      if (!section) out(`\n${C.dim}help <command> for its usage · help <section> (${SECTIONS.map((s) => s.id).join(', ')}) for one section${C.reset}\n`);
     },
   },
   {
