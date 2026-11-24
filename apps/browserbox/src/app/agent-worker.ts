@@ -323,7 +323,7 @@ function connect(port: MessagePort): void {
     'agent.live': async () => (await agents()).live(),
     'agent.probeModels': async (baseUrl: string, kind?: 'local' | 'api') => (await agents()).probeModels(baseUrl, kind),
     'agent.probeMcp': async (name: string) => (await agents()).probeMcp(name),
-    'agent.send': (sid: string, text: string, opts?: { plan?: boolean; images?: string[] }) => agent(sid).send(text, opts),
+    'agent.send': (sid: string, text: string, opts?: { plan?: boolean; images?: string[]; again?: boolean }) => agent(sid).send(text, opts),
     'agent.rewind': (sid: string, index: number, files: boolean) => agent(sid).rewind(index, files),
     'agent.changes': (sid: string) => agent(sid).changes(),
     'agent.isolation': (sid: string) => agent(sid).isolation(),

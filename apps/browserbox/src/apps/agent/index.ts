@@ -160,6 +160,14 @@ const app: AppModule = {
     const sidebar = createSidebar(os, {
       newChat: () => void newSession(),
       openChat: (id) => void openSession(id),
+      closeChat: async (id) => {
+        if (id === agent.sid) {
+          // Ended rather than left running: a stopped turn must not save the chat again.
+          setBusy(false);
+          return newSession();
+        }
+        if ((await agentsOf(os).live()).some((l) => l.sid === id)) (await agentsOf(os).attach(id)).dispose();
+      },
       settings: () => settings.open(),
       profileSettings: () => settings.open('profile'),
       switchProject: (id) => void switchProject(id),
@@ -250,7 +258,7 @@ const app: AppModule = {
           log.addNote(`${e.auto ? 'The context was nearly full, so the conversation was summarised' : 'Conversation summarised'}: about ${e.before.toLocaleString()} → ${e.after.toLocaleString()} tokens. The full history stays visible here.`);
           meter.refresh();
         }
-        else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => settings.open('model') } : undefined);
+        else if (e.type === 'error') log.addNote(e.message, 'error', /Settings/.test(e.message) ? { label: 'Open Settings', run: () => settings.open('model') } : { label: 'Retry', run: () => void retry() });
         else if (e.type === 'file_change') void syncChanges();
         else if (e.type === 'done') {
           setBusy(false);
@@ -409,6 +417,18 @@ const app: AppModule = {
       });
     }
 
+    /** Asks the model again after an error, from the conversation as it is (without what the failed reply had shown). */
+    async function retry(): Promise<void> {
+      if (busy) return;
+      const snap = await agent.snapshot();
+      log.restore(snap.messages, snap.diffs, true);
+      setBusy(true);
+      void agent.send('', { again: true }).catch((err: Error) => {
+        log.addNote(`Lost the agent session: ${err.message}`, 'error');
+        setBusy(false);
+      });
+    }
+
     /** After a reply: offer to run a plan, then send whatever was queued. */
     function afterReply(reason: string): void {
       if (lastPlan && reason === 'end' && !queue.length) {
@@ -499,8 +519,15 @@ const app: AppModule = {
       }
     };
 
+    // A name given at first boot (before this window was listening) names the profile too.
+    if (os.settings.get<string>('user.name', '')) void import('@/app/profile-name').then((m) => m.nameProfileAfterUser(os, os.settings.get<string>('user.name', '')));
     ctx.on('settings:change', ({ key }) => {
       if (key === 'agent.config') refreshModel();
+      // A name entered at first boot or in Settings: the greeting and the profile follow it.
+      if (key === 'user.name') {
+        void agent.snapshot().then((s) => shell.setPrivate(s.private), () => undefined);
+        void import('@/app/profile-name').then((m) => m.nameProfileAfterUser(os, os.settings.get<string>('user.name', '')));
+      }
     });
     // Sessions are saved by the kernel; refresh the list when one changes on disk.
     ctx.on('fs:change', ({ path }) => path.includes('/.sessions/') && void sidebar.refresh());

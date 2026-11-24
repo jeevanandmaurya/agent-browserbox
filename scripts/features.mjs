@@ -77,6 +77,7 @@ function respond(r) {
   if (lastUser.includes('make a sales table')) return call('create_artifact', { title: 'Sales by region', kind: 'csv', content: 'region,amount\nWest,30\nEast,120\nNorth,7\n' });
   if (lastUser.includes('write the report')) return call('create_artifact', { title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\nAll good.' });
   if (lastUser.includes('improve the report')) return call('update_artifact', { id: 'weekly-report', edits: [{ old: 'All good.', new: 'All good, shipped 3 features.' }], note: 'more detail' });
+  if (lastUser.includes('flaky') || lastUser.includes('broken')) return text(`ANSWERED ${lastUser}`);
   if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
   if (lastUser.includes('isolated edit')) return call('shell', { command: 'echo v2 > iso/hello.txt && rm iso/gone.txt && echo new > iso/added.txt && pwd' });
   if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
@@ -110,8 +111,13 @@ const llm = createServer(async (req, res) => {
   const lastText = JSON.stringify(r.messages.findLast((m) => m.role === 'user')?.content ?? '');
   // "slow" messages take a while, so the tests can act while the agent works.
   if (/\bslow\b/.test(lastText) && r.messages.at(-1).role === 'user') await new Promise((ok) => setTimeout(ok, 3000));
+  // "flaky": overloaded twice, then fine (the agent retries by itself). "broken": refused once (the user retries).
+  const failures = (failCounts[lastText] ??= 0);
+  if (/\bflaky\b/.test(lastText) && failures < 2) return (failCounts[lastText]++, res.writeHead(503, cors).end('overloaded'));
+  if (/\bbroken\b/.test(lastText) && failures < 1) return (failCounts[lastText]++, res.writeHead(400, cors).end('bad request, once'));
   res.writeHead(200, { ...cors, 'content-type': 'text/event-stream' }).end(sse(respond(r)));
 }).listen(11436);
+const failCounts = {};
 
 const browser = await chromium.launch();
 // ignoreHTTPSErrors: some CI and sandbox networks re-sign TLS through a proxy the test browser does not trust (pip reaches pypi.org).
@@ -1728,7 +1734,7 @@ await check('a chat open in two windows: one opened mid-turn shows it working, g
     };
     let f = await open();
     // Mid-turn: shown working, not idle.
-    await f.waitForFunction(() => !!document.querySelector('.cp-send.stop:not([hidden])') && /Thinking/.test(document.querySelector('.ag-log')?.innerText ?? ''), null, { timeout: 10000 });
+    await f.waitForFunction(() => !!document.querySelector('.cp-send.stop:not([hidden])') && /Working|Waiting|Thinking/.test(document.querySelector('.ag-log')?.innerText ?? ''), null, { timeout: 10000 });
     // The approval reaches the frame, and the desktop shows no second dialog.
     await A.locator('.ag-approval:not(.settled)').waitFor({ timeout: 20000 });
     await f.waitForSelector('.ag-approval:not(.settled)', { timeout: 10000 });
@@ -1824,6 +1830,90 @@ await check('the preview tool: the agent opens its page, types, reads, checks an
     const sawImage = requests.slice(before).some((r) => JSON.stringify(r.messages).includes('data:image/png;base64'));
     if (!sawImage) throw new Error('the screenshot was not shown to the model');
     return 'opened (fields numbered), typed and submitted, read the new entry, eval → 1, screenshot shown to the model';
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('errors: a dropped or overloaded model is retried by itself; a failed reply has Retry; deleting the open chat clears it', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['Ada', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    // The name entered at first boot greets and names the profile.
+    await p.waitForFunction(() => document.querySelector('.bb-greet')?.textContent.includes('Ada') && document.querySelector('.sb-profile')?.textContent.includes('Ada'), null, { timeout: 10000 }).catch(async () => {
+      throw new Error(`greeting "${await p.locator('.bb-greet').textContent()}", profile "${await p.locator('.sb-profile').textContent()}"`);
+    });
+    // Before the model answers, the chat says it is waiting for it, not that it is thinking.
+    const statuses = [];
+    await p.exposeFunction('seenStatus', (t) => statuses.push(t));
+    await p.evaluate(() => new MutationObserver(() => document.querySelectorAll('.ag-status span').forEach((s) => seenStatus(s.textContent))).observe(document.querySelector('.ag-log'), { childList: true, subtree: true }));
+    await p.locator('.ag-input').fill('flaky question');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('ANSWERED flaky question'), null, { timeout: 30000 });
+    if (!statuses.some((s) => /Trying again in \d s/.test(s))) throw new Error(`no retry shown: ${[...new Set(statuses)].join(' | ')}`);
+    if (statuses.some((s) => /Thinking/.test(s))) throw new Error(`said Thinking: ${[...new Set(statuses)].join(' | ')}`);
+    if (await p.locator('.bb-spin').count()) throw new Error('a second spinner in the header');
+    await p.locator('.ag-input').fill('broken question');
+    await p.locator('.ag-input').press('Enter');
+    const retry = p.locator('.ag-note.error button', { hasText: 'Retry' });
+    await retry.waitFor({ timeout: 20000 });
+    await retry.click();
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('ANSWERED broken question'), null, { timeout: 20000 });
+    const users = await p.locator('.ag-msg.user').count();
+    if (users !== 2) throw new Error(`retry sent a new message: ${users} user messages`);
+    // Deleting the chat that is open leaves an empty new chat, and the chat does not come back.
+    await p.waitForSelector('.sb-chat .sb-chat-open[aria-current="page"]', { state: 'attached', timeout: 10000 });
+    const sid = await p.evaluate(() => [...document.querySelectorAll('.sb-chat')].find((c) => c.querySelector('[aria-current="page"]'))?.querySelector('.sb-chat-del')?.getAttribute('aria-label'));
+    await p.evaluate(() => [...document.querySelectorAll('.sb-chat')].find((c) => c.querySelector('[aria-current="page"]')).querySelector('.sb-chat-del').click());
+    await p.waitForFunction(() => !document.querySelector('.ag-msg.user'), null, { timeout: 10000 });
+    await p.waitForTimeout(1500);
+    const left = await p.evaluate(() => bbx.fs.readdir('/home/agent/.sessions').then((l) => l.filter((e) => e.name.endsWith('.json') && e.name !== 'index.json').length));
+    if (left !== 0) throw new Error(`the deleted chat is still saved (${left})`);
+    return `retried by itself (${[...new Set(statuses.filter((s) => /Trying|Waiting/.test(s)))].slice(0, 3).join(' · ')}); Retry answered without a new message; deleted ${sid?.replace('Delete chat ', '')}: chat cleared, nothing saved`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('profile settings: sign out explains what it needs; this profile can be deleted from itself', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+  const p = await ctx.newPage();
+  const setup = async () => {
+    for (const a of ['', '', '']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+  };
+  try {
+    await p.goto(base + 'agent/');
+    await setup();
+    await p.evaluate(() => bbx.openApp('settings', { section: 'profile' }));
+    await p.getByRole('button', { name: 'Sign out' }).click();
+    const note = await p.locator('.st-note[role="status"]', { hasText: 'Signing out' }).first().innerText();
+    await p.getByLabel('Name of the new profile').fill('Temp');
+    await Promise.all([p.waitForEvent('load'), p.getByRole('button', { name: 'New profile' }).click()]);
+    await setup();
+    await p.evaluate(() => bbx.openApp('settings', { section: 'profile' }));
+    await p.getByRole('button', { name: 'Delete this profile…' }).click();
+    await Promise.all([p.waitForEvent('load'), p.locator('.modal button', { hasText: 'Delete profile' }).click()]);
+    await p.waitForSelector('.ag-input', { timeout: 60000 });
+    const url = p.url();
+    await p.waitForFunction(() => [...document.querySelectorAll('.toast, .notice, [role="status"]')].some((n) => /Temp was deleted/.test(n.textContent)), null, { timeout: 15000 });
+    await p.locator('.sb-profile').click();
+    await p.locator('.menu .pop-item', { hasText: 'Switch profile' }).click();
+    await p.locator('.pf-modal .pf-item').first().waitFor();
+    const names = await p.locator('.pf-modal .pf-item').allInnerTexts();
+    if (names.some((n) => n.includes('Temp'))) throw new Error(`still listed: ${names.join(', ')}`);
+    return `sign out: "${note.slice(0, 60)}…"; deleted Temp from itself, back in ${new URL(url).searchParams.get('profile')} (${names.length} profile${names.length === 1 ? '' : 's'} left)`;
   } finally {
     await ctx.close();
   }

@@ -1,5 +1,5 @@
 import { passkeyProblem, passkeysAvailable, usePasskey } from '@/app/passkeys';
-import { createProfile, listProfiles, type Profile, type RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
+import { createProfile, DEFAULT_PROFILE, deleteProfile, listProfiles, type Profile, type RemoteKernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { PROFILE, switchProfile } from '@/app/boot';
 import { modal } from './dialog';
 import { h } from './dom';
@@ -101,6 +101,42 @@ export async function chooseProfile(): Promise<void> {
 export async function signOut(os: { secrets: { lock(): Promise<void> } }): Promise<void> {
   await os.secrets.lock();
   location.reload();
+}
+
+const PENDING_DELETE = 'bbx-delete-profile';
+
+/**
+ * Deletes the profile this window shows: the window moves to the first
+ * profile, which deletes it once this profile's kernel has stopped.
+ */
+export function deleteThisProfile(id: string): void {
+  if (id === DEFAULT_PROFILE) return;
+  try {
+    localStorage.setItem(PENDING_DELETE, id);
+  } catch {
+    /* storage blocked: nothing to do it with */
+  }
+  const url = new URL(location.href);
+  url.searchParams.set('profile', DEFAULT_PROFILE);
+  location.replace(url);
+}
+
+async function finishPendingDelete(os: RemoteKernel, current: string): Promise<void> {
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem(PENDING_DELETE);
+  } catch {
+    return;
+  }
+  if (!id || id === current) return;
+  localStorage.removeItem(PENDING_DELETE);
+  const name = (await listProfiles().catch(() => [])).find((p) => p.id === id)?.name ?? 'The profile';
+  // Its kernel stops once its last window has gone.
+  await new Promise((r) => setTimeout(r, 1500));
+  await deleteProfile(id).then(
+    () => os.notify({ title: `${name} was deleted`, body: 'Its files, settings, keys and chats are gone from this browser.', level: 'ok' }),
+    (err: Error) => os.notify({ title: `Could not delete ${name}`, body: err.message, level: 'error' }),
+  );
 }
 
 /** The sign-in screen of a locked profile. Resolves once the password is right. */
@@ -207,4 +243,5 @@ export async function profileGate(os: RemoteKernel, root: HTMLElement): Promise<
     await signInScreen(os, root, profile);
   }
   os.bus.on('secrets:lock', ({ state }) => state === 'locked' && location.reload());
+  void finishPendingDelete(os, id);
 }

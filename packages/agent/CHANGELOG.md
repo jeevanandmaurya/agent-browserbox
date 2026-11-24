@@ -3,6 +3,17 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
+## 0.4.3 (not released yet)
+
+- Model calls that fail with a retryable error (connection lost, 5xx, 429,
+  408) are retried after 2, 5, 10 and 20 s (waiting for `online` when the
+  browser is offline), as long as nothing of the reply was shown; status
+  events show the countdown. OpenAI-compatible 429 and 408 are retryable.
+- `send('', { again: true })`: retry after an error, answering the
+  conversation as it is.
+- A status event ("Waiting for the model…") before every model call.
+- A chat that was disposed is not saved again by its last events.
+
 ## 0.4.2
 
 - **Isolated chats**: `create({ isolated: true })`, or `handle.isolate(on)`,

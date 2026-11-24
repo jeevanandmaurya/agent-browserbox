@@ -5,6 +5,27 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
+## 0.4.3 (not released yet)
+
+- **Retries**: a model call that fails because the connection dropped, or
+  the service is overloaded or rate-limited, is tried again by itself (after
+  2, 5, 10 and 20 s, and once the browser is back online), with a countdown
+  in the chat. A reply that still fails has a **Retry** button, which asks
+  again without sending a new message.
+- **Honest status**: the chat says "Waiting for the model…", "Loading …",
+  "Trying again in 5 s…" instead of always "Thinking…"; "Thinking" shows only
+  when the model really is. The second spinner in the header is gone.
+- Fixed: deleting the chat that is open left it on screen (and a running chat
+  could save itself again): it now ends, and a new chat opens.
+- Fixed: the name you give at first boot (or in Appearance) did not update
+  the greeting until a reload, and the profile kept the name "Default": both
+  follow it now (a profile you renamed keeps its name).
+- **Settings → Profile**: Switch profile, Sign out (which explains it needs a
+  password when there is none) and **Delete this profile** (any profile but
+  the first) are always there.
+- Fixed: with developer tools open, Python logged a Content Security Policy
+  error for `pyodide.js.map`.
+
 ## 0.4.2
 
 - **Isolated chats**: a chat can work on its own copy of the project folder

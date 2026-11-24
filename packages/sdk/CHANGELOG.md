@@ -5,6 +5,12 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.4.3 (not released yet)
+
+- Runtime: the Python runtime's scripts lose their source map links when run
+  from the cache, so developer tools no longer log a CSP error for
+  `pyodide.js.map`.
+
 ## 0.4.2
 
 - **Overlay folders**: `box.fs.overlay(point, lower, store)` mounts a

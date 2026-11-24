@@ -220,7 +220,7 @@ export class Transcript {
     this.#finishTurn();
     this.el.querySelectorAll('.ag-choices').forEach((c) => c.remove());
     this.el.append(this.#userMsg(text));
-    this.#setStatus('Thinking…');
+    this.#setStatus('Sending…');
     this.#scroll(true);
   }
 
@@ -355,7 +355,7 @@ export class Transcript {
       case 'tool_end': {
         const card = this.#tools.get(e.id);
         if (card) this.#finishTool(card, e.result, e.isError, e.ms);
-        this.#setStatus('Thinking…');
+        this.#setStatus('Waiting for the model…');
         break;
       }
       case 'note':
@@ -401,7 +401,7 @@ export class Transcript {
   resume(messages: Msg[], diffs: Record<string, FileDiff>, live: AgentEvent[]): void {
     this.restore(messages, diffs, true);
     // The turn in progress stays open: the last message is the user's, or the agent's with tools still running.
-    this.#setStatus('Thinking…');
+    this.#setStatus('Working…');
     for (const e of live) this.handle(e);
     this.#scroll(true);
   }

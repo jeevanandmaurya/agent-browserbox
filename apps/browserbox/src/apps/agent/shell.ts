@@ -1,6 +1,6 @@
 import { h } from '@/ui/dom';
 import type { Composer } from './composer';
-import { icon, loader, mark } from './icons';
+import { icon, mark } from './icons';
 import type { Sidebar } from './sidebar';
 import type { Transcript } from './view';
 import type { Workbench } from './workbench';
@@ -49,11 +49,10 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
   const toggleBtn = h('button', { class: 'icon-btn bb-sb-toggle', type: 'button', title: 'Chats', 'aria-label': 'Open chats', 'aria-expanded': 'false', onclick: () => openSidebar() }, icon('menu', 22));
   const title = h('h1', { class: 'bb-title' });
   const titleBox = h('div', { class: 'bb-titlebox' }, title);
-  const spinner = h('span', { class: 'bb-spin', hidden: true }, loader(20, 'Working'));
   const wbBtn = h('button', { class: 'icon-btn bb-wb-toggle', type: 'button', title: 'Workbench', 'aria-label': 'Toggle workbench', 'aria-pressed': 'false', onclick: () => workbench.toggle() }, icon('panel', 20));
   const privateBtn = h('button', { class: 'icon-btn bb-private', type: 'button', title: 'Private chat', 'aria-label': 'Private chat: not saved, gone when you leave', 'aria-pressed': 'false', onclick: () => actions.togglePrivate() }, icon('ghost', 22));
   const moreBtn = h('button', { class: 'icon-btn bb-more', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', onclick: () => actions.more(moreBtn) }, icon('more', 22));
-  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, spinner, privateBtn, wbBtn, moreBtn));
+  const head = h('header', { class: 'bb-head' }, toggleBtn, titleBox, h('div', { class: 'bb-head-end' }, privateBtn, wbBtn, moreBtn));
 
   // An empty chat is just the mark and a greeting.
   const greet = h('h2', { class: 'bb-greet' });
@@ -137,8 +136,9 @@ export function createShell(parts: { sidebar: Sidebar; workbench: Workbench; com
     setSubtitle(text) {
       composer.setModel(text);
     },
+    // What the agent is doing shows at the end of the conversation; the header stays quiet.
     setBusy(busy) {
-      spinner.hidden = !busy;
+      el.classList.toggle('is-busy', busy);
     },
     setPrivate(on) {
       el.classList.toggle('is-private', on);

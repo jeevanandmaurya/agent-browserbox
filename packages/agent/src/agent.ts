@@ -92,6 +92,9 @@ function changedPaths(call: { name: string; input: Record<string, unknown> }, pa
 /** How many times Stop hooks may send the agent back to work for one message. */
 const MAX_STOP_ROUNDS = 3;
 
+/** Seconds between attempts at a model call that failed for a reason that may pass. */
+const RETRY_WAITS = [2, 5, 10, 20];
+
 /** Sub-agents that run at the same time. */
 const MAX_SUBAGENTS = 4;
 
@@ -272,7 +275,7 @@ export class Agent {
    * `plan`: look but do not change anything, and answer with a plan.
    * `images`: paths of image files in the box for the model to see with the message.
    */
-  async send(text: string, opts: { plan?: boolean; images?: string[] } = {}): Promise<void> {
+  async send(text: string, opts: { plan?: boolean; images?: string[]; again?: boolean } = {}): Promise<void> {
     if (this.busy) return;
     const run = (this.#run = new AbortController());
     const emit = (e: AgentEvent) => this.host.onEvent(e);
@@ -311,27 +314,35 @@ export class Agent {
         this.#started = true;
         hookContext.push(...(await this.#hooks('SessionStart', {}, run.signal, emit)).context);
       }
-      const submitted = await this.#hooks('UserPromptSubmit', { prompt: text }, run.signal, emit);
-      if (submitted.blocked !== undefined) {
-        emit({ type: 'note', text: `A hook blocked this message: ${submitted.blocked}` });
-        return;
-      }
-      hookContext.push(...submitted.context);
-      this.checkpoints.begin(this.transcript.length);
-      const content: Block[] = [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }];
-      if (hookContext.length) content.push({ type: 'text', text: `<hook-context>\n${hookContext.join('\n\n')}\n</hook-context>` });
-      for (const path of opts.images ?? []) {
-        if (lite) {
-          content.push({ type: 'text', text: `(The image ${path} was attached, but this model cannot see images.)` });
-          continue;
+      if (opts.again) {
+        // Retrying: the conversation already ends with what the model has to answer.
+        if (this.messages.at(-1)?.role !== 'user') {
+          emit({ type: 'note', text: 'There is nothing to retry: the last reply is complete. Send a message to continue.' });
+          return;
         }
-        try {
-          content.push({ type: 'image', ...(await imageRef(this.os, path)) });
-        } catch (err) {
-          content.push({ type: 'text', text: `(Could not attach the image: ${(err as Error).message}.)` });
+      } else {
+        const submitted = await this.#hooks('UserPromptSubmit', { prompt: text }, run.signal, emit);
+        if (submitted.blocked !== undefined) {
+          emit({ type: 'note', text: `A hook blocked this message: ${submitted.blocked}` });
+          return;
         }
+        hookContext.push(...submitted.context);
+        this.checkpoints.begin(this.transcript.length);
+        const content: Block[] = [{ type: 'text', text: opts.plan ? `${text}\n\n<mode>${PLAN_NOTE}</mode>` : text }];
+        if (hookContext.length) content.push({ type: 'text', text: `<hook-context>\n${hookContext.join('\n\n')}\n</hook-context>` });
+        for (const path of opts.images ?? []) {
+          if (lite) {
+            content.push({ type: 'text', text: `(The image ${path} was attached, but this model cannot see images.)` });
+            continue;
+          }
+          try {
+            content.push({ type: 'image', ...(await imageRef(this.os, path)) });
+          } catch (err) {
+            content.push({ type: 'text', text: `(Could not attach the image: ${(err as Error).message}.)` });
+          }
+        }
+        this.#push({ role: 'user', content });
       }
-      this.#push({ role: 'user', content });
 
       let stopRounds = 0;
       for (let step = 0; ; step++) {
@@ -341,7 +352,8 @@ export class Agent {
           break;
         }
         if (step > 0) tools = this.#tools = await toolset();
-        const result = await this.#turn(provider, tools, run.signal, emit);
+        emit({ type: 'status', text: 'Waiting for the model…' });
+        const result = await this.#turnRetrying(provider, tools, run.signal, emit);
         this.#push({ role: 'assistant', content: result.content, raw: result.raw });
         for (const k of ['input', 'output', 'cacheRead'] as const) this.total[k] += result.usage[k];
         this.#lastContext = result.usage.input + result.usage.cacheRead + result.usage.output;
@@ -548,6 +560,39 @@ export class Agent {
   }
 
   /** One model call, timed: time to first token, and output speed over the time spent generating. */
+  /**
+   * A model call that rides out a dropped connection, an overloaded or rate-limited
+   * service: tried again after 2, 5, 10 and 20 s (once the browser is back online),
+   * as long as nothing of the reply was shown yet.
+   */
+  async #turnRetrying(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
+    for (let attempt = 0; ; attempt++) {
+      let shown = false;
+      try {
+        return await this.#turn(provider, tools, signal, (e) => ((shown ||= e.type !== 'status'), emit(e)));
+      } catch (err) {
+        const network = err instanceof TypeError && /fetch|network|load|connection/i.test(err.message);
+        if (signal.aborted || shown || attempt >= RETRY_WAITS.length || !(network || (err instanceof ProviderError && err.retryable))) throw err;
+        const why = network ? 'The connection was lost.' : (err as Error).message.replace(/\s*Wait a moment and try again\.?$/, '');
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          emit({ type: 'status', text: 'Offline: waiting for the connection to come back…' });
+          await new Promise<void>((resolve) => {
+            const done = () => (removeEventListener('online', done), signal.removeEventListener('abort', done), resolve());
+            addEventListener('online', done);
+            signal.addEventListener('abort', done);
+          });
+        } else {
+          for (let left = RETRY_WAITS[attempt]!; left > 0 && !signal.aborted; left--) {
+            emit({ type: 'status', text: `${why} Trying again in ${left} s (${attempt + 1} of ${RETRY_WAITS.length})…` });
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+        signal.throwIfAborted();
+        emit({ type: 'status', text: 'Trying again…' });
+      }
+    }
+  }
+
   async #turn(provider: Provider, tools: ToolDef[], signal: AbortSignal, emit: (e: AgentEvent) => void) {
     // A status message (e.g. "Loading model…") means the model has not started yet: time from the last one.
     let t0 = performance.now();

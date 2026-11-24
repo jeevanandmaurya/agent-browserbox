@@ -4,7 +4,7 @@ import { createPasskey, passkeyProblem, passkeysAvailable } from '@/app/passkeys
 import type { AppContext } from '@/ui/apps';
 import { confirmDialog } from '@/ui/dialog';
 import { debounce, h } from '@/ui/dom';
-import { profileList, signOut } from '@/ui/profiles';
+import { chooseProfile, deleteThisProfile, profileList, signOut } from '@/ui/profiles';
 import { errText, heading, nextId } from './nav';
 
 /**
@@ -39,6 +39,7 @@ export function profileSection(ctx: AppContext, saved: () => void): HTMLElement 
       );
     name.addEventListener('input', debounce(storeName, 500));
     name.addEventListener('change', storeName);
+    ctx.on('settings:change', ({ key }) => key === 'profile.name' && document.activeElement !== name && void getProfile(id).then((p) => p && (name.value = p.name)));
 
     // ---- Password
     const pwBox = h('div', { class: 'st-panel' });
@@ -110,15 +111,6 @@ export function profileSection(ctx: AppContext, saved: () => void): HTMLElement 
             ? h(
                 'div',
                 { class: 'row st-wrap' },
-                h(
-                  'button',
-                  {
-                    class: 'btn',
-                    type: 'button',
-                    onclick: () => void signOut(os),
-                  },
-                  'Sign out',
-                ),
                 h(
                   'button',
                   {
@@ -253,8 +245,43 @@ export function profileSection(ctx: AppContext, saved: () => void): HTMLElement 
     };
     await renderOthers();
 
+    // ---- Signing out, switching, deleting
+    const accountNote = h('p', { class: 'muted st-note', role: 'status' });
+    const account = h(
+      'div',
+      { class: 'st-panel' },
+      h('h3', null, 'This profile'),
+      h(
+        'div',
+        { class: 'row st-wrap' },
+        h('button', { class: 'btn', type: 'button', onclick: () => void chooseProfile() }, 'Switch profile…'),
+        h('button', {
+          class: 'btn',
+          type: 'button',
+          onclick: async () => {
+            if ((await os.secrets.status().catch(() => 'open')) !== 'open') return void signOut(os);
+            accountNote.textContent = 'Signing out locks this profile behind its password, and it has none yet: set one above first. (Without a password anyone using this browser can open it, so there is nothing to sign out of; Switch profile changes who is using BrowserBox.)';
+            pwBox.querySelector<HTMLInputElement>('input')?.focus();
+          },
+        }, 'Sign out'),
+        id === DEFAULT_PROFILE
+          ? null
+          : h('button', {
+              class: 'btn danger',
+              type: 'button',
+              onclick: async () => {
+                if (!(await confirmDialog(`Delete ${name.value || me.name}?`, 'Its files, settings, API keys and chats are deleted from this browser, and this window opens the first profile. Close this profile’s other windows first. This cannot be undone.', 'Delete profile', true))) return;
+                deleteThisProfile(id);
+              },
+            }, 'Delete this profile…'),
+      ),
+      accountNote,
+      id === DEFAULT_PROFILE ? h('p', { class: 'muted st-note' }, 'The first profile cannot be deleted (it holds the data BrowserBox had before profiles), but it can be renamed and protected with a password.') : null,
+    );
+
     body.replaceChildren(
-      h('div', { class: 'field' }, h('label', { for: nameId }, 'Profile name'), name, h('p', { class: 'muted st-note' }, id === DEFAULT_PROFILE ? 'The first profile, with the data BrowserBox had before profiles.' : 'Shown in the profile list.')),
+      h('div', { class: 'field' }, h('label', { for: nameId }, 'Profile name'), name, h('p', { class: 'muted st-note' }, id === DEFAULT_PROFILE ? 'The first profile, with the data BrowserBox had before profiles. Your name (first boot, or Appearance) names it until you rename it here.' : 'Shown in the profile list.')),
+      account,
       pwBox,
       pkBox,
       others,

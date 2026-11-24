@@ -13,6 +13,8 @@ import { icon } from './icons';
 export interface SidebarActions {
   newChat(): void;
   openChat(id: string): void;
+  /** Ends a chat before it is deleted: the open one makes way for a new chat, a running one stops. */
+  closeChat(id: string): Promise<void>;
   settings(): void;
   /** Settings → Profile. */
   profileSettings(): void;
@@ -170,7 +172,11 @@ export function createSidebar(os: Kernel, act: SidebarActions): Sidebar {
               type: 'button',
               title: 'Delete chat',
               'aria-label': `Delete chat ${s.title}`,
-              onclick: () => void deleteSession(os, s.id).then(() => refresh(active)),
+              onclick: async () => {
+                await act.closeChat(s.id).catch(() => undefined);
+                await deleteSession(os, s.id);
+                await refresh(s.id === active ? undefined : active);
+              },
             },
             icon('trash', 15),
           ),

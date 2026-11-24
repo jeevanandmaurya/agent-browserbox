@@ -304,7 +304,12 @@ async function cachedPythonRuntime(): Promise<FileBlob[] | undefined> {
     const files = await Promise.all(
       PYTHON_RUNTIME_FILES.map(async (name) => {
         const hit = await cache.match(PYODIDE_URL + name);
-        return hit ? { path: name, data: new Uint8Array(await hit.arrayBuffer()) } : null;
+        if (!hit) return null;
+        let data = new Uint8Array(await hit.arrayBuffer());
+        // Run from here, a script's source map link would point at this site, where the
+        // sandbox may not connect: the browser's developer tools then log a CSP error.
+        if (name.endsWith('.js')) data = new TextEncoder().encode(new TextDecoder().decode(data).replace(/\n\/\/# sourceMappingURL=\S+\s*$/, '\n'));
+        return { path: name, data };
       }),
     );
     return files.every((f) => f !== null) ? (files as FileBlob[]) : undefined;

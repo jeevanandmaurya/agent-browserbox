@@ -121,7 +121,8 @@ export class AgentManager implements AgentsApi {
   }
 
   async #save(s: Session): Promise<void> {
-    if (s.private || !s.agent.transcript.length) return;
+    // A chat that was ended (deleted, closed) is not saved again by its last events.
+    if (s.private || !s.agent.transcript.length || this.#sessions.get(s.agent.id) !== s) return;
     await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), project: s.agent.project.id, messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents, isolated: s.agent.isolated || undefined }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );

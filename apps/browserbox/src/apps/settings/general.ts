@@ -52,6 +52,7 @@ export function appearanceSection(ctx: AppContext, saved: () => void): HTMLEleme
   const name = h('input', { class: 'input', id: nextId('name'), value: os.settings.get<string>('user.name', ''), placeholder: 'Optional', autocomplete: 'given-name', maxlength: 40 });
   name.addEventListener('change', () => {
     os.settings.set('user.name', name.value.trim());
+    void import('@/app/profile-name').then((m) => m.nameProfileAfterUser(os, name.value.trim()));
     saved();
   });
   return h('div', { class: 'st-section' }, heading('Appearance'), theme.el, h('div', { class: 'field' }, h('label', { for: name.id }, 'Your name, for the greeting'), name), h('h3', null, 'Wallpaper'), wallpaperPicker(os, ctx.on));

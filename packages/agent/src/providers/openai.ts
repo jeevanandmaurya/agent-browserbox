@@ -124,7 +124,7 @@ export function createOpenAiProvider(cfg: AgentConfig, target: ServerTarget, api
       }
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => '');
-        throw new ProviderError(`${base} answered ${res.status}: ${detail.slice(0, 400) || res.statusText}`, res.status >= 500);
+        throw new ProviderError(`${base} answered ${res.status}: ${detail.slice(0, 400) || res.statusText}`, res.status >= 500 || res.status === 429 || res.status === 408);
       }
 
       let text = '';
