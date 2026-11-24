@@ -4,6 +4,7 @@
 //   npm run build && NODE_PATH=$(npm root -g) node scripts/catalog-test.mjs
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { strToU8, zipSync } from 'fflate';
 import { preview } from 'vite';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -100,6 +101,57 @@ await check('yaml: yaml2json and json2yaml', async () => {
   await expect('yaml2json conf.yaml', (o) => JSON.parse(o).items[1] === 'two' && JSON.parse(o).nested.ok === true);
   await expect('json2yaml data.json', (o) => o.includes('name: demo') && o.includes('  x: null'));
   return expect('yaml2json --compact conf.yaml', (o) => o.trim().startsWith('{"name":"demo"'));
+});
+// Binary samples: a Word file (built here) and a picture with text (drawn in the page).
+const docx = zipSync({
+  '[Content_Types].xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),
+  '_rels/.rels': strToU8('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+  'word/document.xml': strToU8('<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Quarterly plan</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Ship</w:t></w:r><w:r><w:t xml:space="preserve"> the new importer.</w:t></w:r></w:p></w:body></w:document>'),
+});
+await page.evaluate(async (bytes) => {
+  await bbx.fs.writeFile('/home/user/cat/plan.docx', new Uint8Array(bytes));
+  const c = new OffscreenCanvas(900, 220);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, 900, 220);
+  g.fillStyle = '#000';
+  g.font = '56px sans-serif';
+  g.fillText('Invoice 4217', 40, 90);
+  g.fillText('Total due: 380 EUR', 40, 170);
+  await bbx.fs.writeFile('/home/user/cat/scan.png', new Uint8Array(await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer()));
+  await bbx.fs.writeFile('/home/user/cat/sales.csv', 'region,amount\nWest,30\nEast,120\nNorth,7\n');
+}, [...docx]);
+await check('sheet: CSV to Excel and back, info, JSON, OpenDocument', async () => {
+  await expect('sheet make sales.csv -o sales.xlsx', (o) => o.includes('wrote sales.xlsx (1 sheet)'));
+  await expect('sheet info sales.xlsx', (o) => o.includes('sales: 4 rows × 2 columns') && o.includes('first row: region | amount'));
+  await expect('sheet csv sales.xlsx', (o) => o.trim() === 'region,amount\nWest,30\nEast,120\nNorth,7');
+  await expect('sheet json sales.xlsx', (o) => JSON.parse(o)[1].region === 'East' && JSON.parse(o)[1].amount === 120);
+  await expect('sheet convert sales.xlsx sales.ods');
+  return expect('sheet csv sales.ods', (o) => o.includes('North,7'));
+});
+await check('pdf: text to PDF, info, text back, merge, pick pages, rotate, a picture to PDF', async () => {
+  await expect('pdf from-text notes.md -o notes.pdf', (o) => o.includes('wrote notes.pdf (1 page'));
+  await expect('pdf info notes.pdf', (o) => o.includes('1 pages') && o.includes('210×297 mm') && o.includes('title: Notes'));
+  await expect('pdf text notes.pdf', (o) => o.includes('--- page 1 ---') && o.includes('Notes') && o.includes('Some text and a link'));
+  await expect('pdf merge notes.pdf notes.pdf notes.pdf -o three.pdf', (o) => o.includes('3 pages'));
+  await expect('pdf pages three.pdf --pages 3,1 -o two.pdf', (o) => o.includes('2 pages'));
+  await expect('pdf rotate two.pdf 90 --pages 1 -o rotated.pdf', (o) => o.includes('2 pages'));
+  return expect('pdf images scan.png -o scan.pdf', (o) => o.includes('wrote scan.pdf (1 page'));
+});
+await check('docx: a Word file as text, Markdown and HTML', async () => {
+  await expect('docx text plan.docx', (o) => o.includes('Quarterly plan') && o.includes('Ship the new importer.'));
+  await expect('docx md plan.docx', (o) => o.includes('# Quarterly plan') && o.includes('__Ship__'));
+  return expect('docx html plan.docx', (o) => o.includes('<h1>Quarterly plan</h1>') && o.includes('<strong>Ship</strong>'));
+});
+await check('ocr: reads the text of a picture', () => expect('ocr scan.png', (o) => /Invoice 4217/.test(o) && /Total due: 380 EUR/.test(o)));
+await check('ffmpeg: makes a test video, ffprobe reads it, a frame becomes a picture and the sound an MP3', async () => {
+  await expect('ffmpeg -hide_banner -f lavfi -i testsrc=duration=2:size=320x240:rate=10 -f lavfi -i sine=frequency=440:duration=2 -c:v libx264 -pix_fmt yuv420p -shortest clip.mp4', (o) => o.includes('wrote clip.mp4'));
+  await expect('ffprobe -hide_banner clip.mp4', (o) => /Video: h264.*320x240/.test(o) && /Audio:/.test(o));
+  await expect('ffmpeg -hide_banner -i clip.mp4 -ss 1 -frames:v 1 frame.png', (o) => o.includes('wrote frame.png'));
+  await expect('ffmpeg -hide_banner -i clip.mp4 -vn -c:a libmp3lame tone.mp3', (o) => o.includes('wrote tone.mp3'));
+  const sizes = await page.evaluate(async () => Promise.all(['clip.mp4', 'frame.png', 'tone.mp3'].map(async (f) => (await bbx.fs.stat(`/home/user/cat/${f}`)).size)));
+  if (sizes.some((s) => !s)) throw new Error(sizes.join());
+  return `clip.mp4 ${sizes[0]} B, frame.png ${sizes[1]} B, tone.mp3 ${sizes[2]} B`;
 });
 await check('Tab completion offers package commands', async () => {
   const c = await page.evaluate(async () => (await (await bbx.shells.open({})).complete('prett')).options);

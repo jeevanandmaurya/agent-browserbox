@@ -65,6 +65,11 @@ export interface PackageCommand {
   args?: string[];
   /** JavaScript packages: library files loaded first, which `run` gets with `require(path)`. */
   load?: string[];
+  /**
+   * JavaScript packages: binary files (WebAssembly, data) the program reads with
+   * `await asset(path)` (a Uint8Array). Such a command may run for 10 minutes.
+   */
+  assets?: string[];
 }
 
 export interface ExternalPackage {

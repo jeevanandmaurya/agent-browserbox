@@ -83,9 +83,16 @@ async function runJs(m, out, err) {
   const exit = (code = 0) => {
     throw new Exit(Number(code) | 0);
   };
-  const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', 'exit', 'stdin', m.code);
+  // A package's binary files (WebAssembly, data), by their path in the package.
+  const assets = m.assets ?? {};
+  const asset = async (path) => {
+    const a = assets[path] ?? assets[String(path).replace(/^\.\//, '')];
+    if (!a) throw new Error('no asset ' + path + (Object.keys(assets).length ? ' (has: ' + Object.keys(assets).join(', ') + ')' : ''));
+    return a;
+  };
+  const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', 'exit', 'stdin', 'asset', m.code);
   try {
-    const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }), exit, m.stdin ?? '');
+    const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }), exit, m.stdin ?? '', asset);
     return { value: value === undefined ? undefined : show(value) };
   } catch (e) {
     if (e instanceof Exit) return { exitCode: e.code };

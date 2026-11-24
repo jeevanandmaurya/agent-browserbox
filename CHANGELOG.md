@@ -7,6 +7,16 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.3 (not released yet)
 
+- **More packages** in the BrowserBox index (Settings → Packages, or
+  `pkg install …`): **sheet** (Excel, OpenDocument, CSV, JSON), **pdf**
+  (text out, merge, pick pages, rotate, pictures or text to PDF), **docx**
+  (Word to text, HTML or Markdown), **ffmpeg** and **ffprobe** (video and
+  audio), and **ocr** (text from pictures, English). Each was installed and
+  run on real files before release.
+- **New skills** for the agent: pdf, spreadsheets, documents, video-audio
+  and ocr. They are added to existing setups too, once; a skill you deleted
+  stays deleted.
+
 - **Web search for every model**: `web_search` and `web_fetch` now work with
   Gemini, OpenAI-compatible, local and in-browser models too (Anthropic's API
   keeps its own). Search uses the service you choose in Settings → Model →

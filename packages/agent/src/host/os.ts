@@ -446,11 +446,21 @@ export class AgentOs {
     return p ? Promise.resolve(typeof p === 'function' ? p() : p) : null;
   }
 
-  /** Example skills, agents and commands, the first time an agent works in this box. */
+  /**
+   * Example skills, agents and commands: all of them the first time an agent
+   * works in this box, and later only ones it has never had (a new version's
+   * skills), so a file the user deleted does not come back.
+   */
   async #seed(): Promise<void> {
-    if (await this.fs.exists(`${AGENT_HOME}/skills`)) return;
     const { SEED } = await import('../ext/library.js');
-    for (const [path, text] of SEED) await this.fs.writeFile(path, text);
+    const KEY = 'agent.seeded';
+    let had = this.settings.get<string[] | null>(KEY, null);
+    // Boxes seeded before this list was kept had the first four examples.
+    if (!had && (await this.fs.exists(`${AGENT_HOME}/skills`))) had = ['skills/data-analysis/SKILL.md', 'skills/web-page/SKILL.md', 'agents/explorer.md', 'commands/explain.md'].map((p) => `${AGENT_HOME}/${p}`);
+    const seen = new Set(had ?? []);
+    const fresh = SEED.filter(([path]) => !seen.has(path));
+    for (const [path, text] of fresh) if (!(await this.fs.exists(path))) await this.fs.writeFile(path, text);
+    if (fresh.length || !had) this.settings.set(KEY, SEED.map(([path]) => path).concat([...seen].filter((p) => !SEED.some(([s]) => s === p))));
   }
 
   hasCap(id: string): boolean {

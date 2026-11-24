@@ -5,6 +5,9 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.3 (not released yet)
 
+- Seed skills pdf, spreadsheets, documents, video-audio and ocr; seeding now
+  adds examples a box has never had (`agent.seeded`), not only on first run.
+
 - `web_search` and `web_fetch` tools running in the browser, offered when
   the provider has no server-side web tools (`hasBrowserWebTools`): search
   via Tavily, Serper or Jina Search (keys `search.tavily`, `search.serper`,

@@ -7,6 +7,11 @@ the GitHub release notes.
 
 ## 0.4.3 (not released yet)
 
+- Runtime: JavaScript packages can have binary files (`commands.*.assets`),
+  read with `await asset(path)`; such commands may run 10 minutes. `require`
+  is declared (empty) while a package's libraries load, so `typeof require`
+  checks work. Five packages in the index: sheet, pdf, docx, ffmpeg, ocr.
+
 - Runtime: the Python runtime's scripts lose their source map links when run
   from the cache, so developer tools no longer log a CSP error for
   `pyodide.js.map`.

@@ -45,6 +45,10 @@ export function validatePackage(p: unknown): ExternalPackage {
       if (x.kind !== 'js') bad(`command ${name}: only JavaScript packages load files`);
       if (!Array.isArray(c.load) || c.load.some((l) => !x.files.some((f) => f.path === l))) bad(`command ${name} loads a file that is not one of its files`);
     }
+    if (c.assets !== undefined) {
+      if (x.kind !== 'js') bad(`command ${name}: only JavaScript packages have assets`);
+      if (!Array.isArray(c.assets) || c.assets.some((l) => !x.files.some((f) => f.path === l))) bad(`command ${name} has an asset that is not one of its files`);
+    }
   }
   return { ...x, summary: typeof x.summary === 'string' ? x.summary : '', depends: Array.isArray(x.depends) ? x.depends.filter((d) => typeof d === 'string') : [] };
 }
@@ -59,7 +63,8 @@ export function bundleJs(libs: ReadonlyArray<readonly [string, string]>, entry: 
     ([path, code]) =>
       `{ const module = { exports: {} }; (function (module, exports, define, self, window) {\n${code}\n}).call(globalThis, module, module.exports, undefined, globalThis, globalThis); __libs[${JSON.stringify(path)}] = module.exports; }`,
   );
-  return `const __libs = {};\n${parts.join('\n')}\nconst require = (p) => { const m = __libs[p] ?? __libs[String(p).replace(/^\\.\\//, '')]; if (m === undefined) throw new Error('cannot require ' + p); return m; };\n${entry}`;
+  // \`require\` exists (undefined) while the libraries run: many check \`typeof require\`, which must not throw.
+  return `const __libs = {};\nlet require;\n${parts.join('\n')}\nrequire = (p) => { const m = __libs[p] ?? __libs[String(p).replace(/^\\.\\//, '')]; if (m === undefined) throw new Error('cannot require ' + p); return m; };\n${entry}`;
 }
 
 /** Compares dotted versions numerically (1.10 > 1.9); non-numeric parts compare as text. */
@@ -398,7 +403,7 @@ export class PackageManager {
   }
 
   /** An installed package's command: what runs it, and its file's bytes (a JavaScript entry with its libraries loaded first). */
-  externalCommand(name: string): { pkg: ExternalPackage; entry: PackageCommand; file(): Promise<Uint8Array> } | null {
+  externalCommand(name: string): { pkg: ExternalPackage; entry: PackageCommand; file(): Promise<Uint8Array>; assets(): Promise<Record<string, Uint8Array>> } | null {
     for (const r of Object.values(this.externals())) {
       const entry = r.pkg.commands[name];
       if (!entry) continue;
@@ -419,6 +424,7 @@ export class PackageManager {
           const libs = await Promise.all(entry.load.map(async (path) => [path, dec.decode(await read(path))] as const));
           return new TextEncoder().encode(bundleJs(libs, dec.decode(await read(entry.run))));
         },
+        assets: async () => Object.fromEntries(await Promise.all((entry.assets ?? []).map(async (path) => [path, await read(path)] as const))),
       };
     }
     return null;

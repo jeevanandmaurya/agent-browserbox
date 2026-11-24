@@ -45,7 +45,7 @@ interface FileBlob {
 }
 
 type Job =
-  | { op: 'js'; code: string; args?: string[]; stdin?: string; env?: Record<string, string> }
+  | { op: 'js'; code: string; args?: string[]; stdin?: string; env?: Record<string, string>; assets?: Record<string, Uint8Array> }
   | { op: 'python'; code: string; packages?: string[]; files?: FileBlob[]; pyodideUrl: string; env?: Record<string, string>; runtime?: FileBlob[] }
   | { op: 'wasm'; wasm: Uint8Array; args?: string[]; stdin?: string; name?: string; files?: FileBlob[]; cwd?: string; env?: Record<string, string> }
   | { op: 'server-load'; code: string; env?: Record<string, string> }
@@ -263,11 +263,11 @@ export function setSandboxHost(h: SandboxHost): void {
   host = h;
 }
 
-export async function runJs(os: Kernel, code: string, opts: RunOptions & { network?: boolean; args?: string[]; stdin?: string; ppid?: number } = {}): Promise<RunResult> {
-  if (host) return host.run('js', { code, args: opts.args, stdin: opts.stdin, network: opts.network, ppid: opts.ppid, env: opts.env }, opts);
+export async function runJs(os: Kernel, code: string, opts: RunOptions & { network?: boolean; args?: string[]; stdin?: string; ppid?: number; assets?: Record<string, Uint8Array> } = {}): Promise<RunResult> {
+  if (host) return host.run('js', { code, args: opts.args, stdin: opts.stdin, network: opts.network, ppid: opts.ppid, env: opts.env, assets: opts.assets }, opts);
   const sb = new Sandbox(os, { name: 'js', network: opts.network, ppid: opts.ppid });
   try {
-    return await sb.run({ op: 'js', code, args: opts.args, stdin: opts.stdin, env: opts.env }, opts);
+    return await sb.run({ op: 'js', code, args: opts.args, stdin: opts.stdin, env: opts.env, assets: opts.assets }, opts);
   } finally {
     sb.dispose();
   }

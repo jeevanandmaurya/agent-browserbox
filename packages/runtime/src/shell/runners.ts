@@ -13,12 +13,13 @@ export type ProgramKind = 'wasm' | 'js' | 'script';
 export const LOCAL_BIN = `${HOME}/.local/bin`;
 
 /** Runs a program file: WASI WebAssembly, a BrowserBox JavaScript program, or a shell script. */
-export async function runProgram(ctx: CommandContext, kind: ProgramKind, bytes: Uint8Array, name: string, args: string[]): Promise<number> {
+export async function runProgram(ctx: CommandContext, kind: ProgramKind, bytes: Uint8Array, name: string, args: string[], assets?: Record<string, Uint8Array>): Promise<number> {
   const env = { ...userEnv(ctx.shell.env), PWD: ctx.shell.cwd };
   const io = { signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, cwd: ctx.shell.cwd, env };
   if (kind === 'wasm') return finish(ctx, await runWasm(ctx.os, bytes, { ...io, name, args, stdin: ctx.stdin }));
   const text = new TextDecoder().decode(bytes);
-  if (kind === 'js') return finish(ctx, await runJs(ctx.os, text, { ...io, args, stdin: ctx.stdin, timeoutMs: 120000 }));
+  // A program with assets (a video or OCR engine) may work on big files for a while.
+  if (kind === 'js') return finish(ctx, await runJs(ctx.os, text, { ...io, args, stdin: ctx.stdin, assets, timeoutMs: assets && Object.keys(assets).length ? 600_000 : 120_000 }));
   // A shell script runs line by line in this shell (like `source`): $1… are not set, $ARGS holds the arguments.
   const before = ctx.shell.env.ARGS;
   ctx.shell.env.ARGS = args.join(' ');
@@ -38,11 +39,11 @@ const kindOfFile = (path: string, bytes: Uint8Array): ProgramKind | null => {
 };
 
 /** A command from an installed package. */
-export function packageCommand(name: string, ext: { pkg: { id: string; kind: ProgramKind; summary: string }; entry: { args?: string[] }; file(): Promise<Uint8Array> }): Command {
+export function packageCommand(name: string, ext: { pkg: { id: string; kind: ProgramKind; summary: string }; entry: { args?: string[] }; file(): Promise<Uint8Array>; assets?(): Promise<Record<string, Uint8Array>> }): Command {
   return {
     name,
     summary: `${ext.pkg.summary || name} (${ext.pkg.id} package)`,
-    run: async (ctx) => runProgram(ctx, ext.pkg.kind, await ext.file(), name, [...(ext.entry.args ?? []), ...ctx.args]),
+    run: async (ctx) => runProgram(ctx, ext.pkg.kind, await ext.file(), name, [...(ext.entry.args ?? []), ...ctx.args], await ext.assets?.()),
   };
 }
 

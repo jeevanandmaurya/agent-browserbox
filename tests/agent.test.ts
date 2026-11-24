@@ -523,6 +523,25 @@ describe('agent package', () => {
       expect(next.model.requests[0]!.system).toContain('# Memory: this project\n- Builds with build --prod');
     });
 
+    it('seeds every example once; a later version adds only new ones, and a deleted one stays deleted', async () => {
+      const fresh = fakeBox();
+      await AgentOs.create(fresh, {});
+      expect(fresh.files.has(`${AGENT_HOME}/skills/pdf/SKILL.md`)).toBe(true);
+      // A box seeded by an older version: the first four examples, one of them deleted since.
+      const old = fakeBox();
+      await old.fs.writeFile(`${AGENT_HOME}/skills/data-analysis/SKILL.md`, 'my own edit');
+      await old.fs.writeFile(`${AGENT_HOME}/agents/explorer.md`, SEED_FILES['agents/explorer.md']!);
+      const settings: Record<string, unknown> = {};
+      const os = await AgentOs.create(old, { settings });
+      expect(old.files.get(`${AGENT_HOME}/skills/data-analysis/SKILL.md`)).toBe('my own edit');
+      expect(old.files.has(`${AGENT_HOME}/skills/web-page/SKILL.md`)).toBe(false); // deleted by the user: not back
+      for (const s of ['pdf', 'spreadsheets', 'documents', 'video-audio', 'ocr']) expect(old.files.has(`${AGENT_HOME}/skills/${s}/SKILL.md`)).toBe(true);
+      // Deleting a new one is respected next time too.
+      old.files.delete(`${AGENT_HOME}/skills/ocr/SKILL.md`);
+      await AgentOs.create(old, { settings: { 'agent.seeded': os.settings.get('agent.seeded', []) } });
+      expect(old.files.has(`${AGENT_HOME}/skills/ocr/SKILL.md`)).toBe(false);
+    });
+
     it('offers no memory tool when the user turned automatic memories off', async () => {
       const { model, agent } = await setup([() => ({ content: [say('ok')] })], { settings: { 'agent.memory.auto': false } });
       await agent.send('hi');

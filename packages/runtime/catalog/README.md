@@ -33,7 +33,7 @@
 | `id` | lowercase letters, digits, `.` `_` `-` |
 | `kind` | `wasm` (WASI preview 1), `js` or `script` |
 | `files` | each with a `url` (any https host that allows CORS) or inline `text`, and always its `sha256`. A file that does not match is not installed |
-| `commands` | command name → `run` (one of the files), optional fixed `args`, and for `js`, `load`: libraries run first |
+| `commands` | command name → `run` (one of the files), optional fixed `args`, and for `js`, `load`: libraries run first, and `assets`: binary files (WebAssembly, data) the program reads with `await asset(path)` |
 | `depends` | other packages, `id` or `id>=version`, installed first |
 
 An index is `{ "packages": [ … ] }`. A single package can also be installed
@@ -53,7 +53,10 @@ every time.
   `exists`, `mkdir`, `rm`, `glob`), `console`, `print`, `args`, `env`,
   `stdin` (piped input, as text), `exit(code)` and, with `load`, `require(path)`.
   Each loaded library gets its own `module`/`exports`, so UMD and CommonJS
-  builds work. No network.
+  builds work (`require` is defined, but empty, while they load). With
+  `assets`, `asset(path)` gives a binary file of the package as a Uint8Array,
+  e.g. an Emscripten build's `.wasm` passed as `wasmBinary`; such a command
+  may run for 10 minutes instead of 2. No network.
 - **script**: shell lines run in the calling shell; `$ARGS` holds the
   arguments.
 
@@ -66,6 +69,11 @@ every time.
 | prettier 3.10.1 | `prettier` | `prettier` standalone + plugins |
 | marked 18.3.0 | `marked` | `marked` UMD build |
 | yaml 4.1.0 | `yaml2json`, `json2yaml` | `js-yaml` |
+| sheet 0.18.5 | `sheet` | SheetJS (`xlsx`): Excel, OpenDocument, CSV, JSON |
+| pdf 1.17.1 | `pdf` | `pdf-lib`, and `pdfjs-dist` 3 (legacy UMD build) for text |
+| docx 1.11.0 | `docx` | `mammoth` browser build: Word to text, HTML, Markdown |
+| ffmpeg 0.12.10 | `ffmpeg`, `ffprobe` | `@ffmpeg/core` (ffmpeg.wasm, one thread; GPL) |
+| ocr 6.0.0 | `ocr` | `tesseract.js-core` (WebAssembly inside the script) and `@tesseract.js-data/eng` |
 
 Every file is the upstream build, served by jsDelivr from npm, pinned by sha256.
 

@@ -200,6 +200,200 @@
      "bytes": 1457
     }
    ]
+  },
+  {
+   "id": "sheet",
+   "version": "0.18.5",
+   "kind": "js",
+   "summary": "Spreadsheets: Excel, OpenDocument, CSV and JSON (sheet info|csv|json|make|convert)",
+   "license": "Apache-2.0",
+   "homepage": "https://sheetjs.com",
+   "commands": {
+    "sheet": {
+     "run": "sheet.js",
+     "load": [
+      "lib/xlsx.full.min.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/xlsx.full.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+     "sha256": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99",
+     "bytes": 881727
+    },
+    {
+     "path": "sheet.js",
+     "text": "// sheet: spreadsheets (Excel .xlsx/.xls, OpenDocument .ods, CSV, JSON) with SheetJS.\nconst XLSX = require('lib/xlsx.full.min.js');\nconst usage = `usage: sheet <command> …\n  sheet info book.xlsx                      sheets, their size and first row\n  sheet csv book.xlsx [--sheet Name] [-o out.csv]\n  sheet json book.xlsx [--sheet Name] [-o out.json]   rows as objects (first row = keys)\n  sheet make in.csv|in.json … -o out.xlsx  one sheet per input (named after the file)\n  sheet convert in.xlsx out.(xlsx|xls|ods|csv|html|json)`;\nconst opts = { sheet: null, out: null };\nconst rest = [];\nfor (let i = 0; i < args.length; i++) {\n  const a = args[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  if (a === '--sheet' || a === '-s') opts.sheet = args[++i];\n  else if (a === '-o' || a === '--output') opts.out = args[++i];\n  else rest.push(a);\n}\nconst [cmd, ...files] = rest;\nif (!cmd) return print(usage);\nconst fail = (msg) => (console.error(`sheet: ${msg}`), exit(1));\nconst ext = (p) => (/\\.([^./]+)$/.exec(p)?.[1] ?? '').toLowerCase();\nconst read = async (p) => {\n  const e = ext(p);\n  if (e === 'csv' || e === 'tsv' || e === 'txt') return XLSX.read(await fs.readText(p), { type: 'string', raw: false, FS: e === 'tsv' ? '\\t' : undefined });\n  if (e === 'json') {\n    const data = JSON.parse(await fs.readText(p));\n    const wb = XLSX.utils.book_new();\n    XLSX.utils.book_append_sheet(wb, Array.isArray(data) && Array.isArray(data[0]) ? XLSX.utils.aoa_to_sheet(data) : XLSX.utils.json_to_sheet(Array.isArray(data) ? data : [data]), 'Sheet1');\n    return wb;\n  }\n  return XLSX.read(await fs.readFile(p), { type: 'array', cellDates: true });\n};\nconst pick = (wb) => {\n  const name = opts.sheet ?? wb.SheetNames[0];\n  const ws = wb.Sheets[name];\n  if (!ws) fail(`no sheet \"${name}\" (sheets: ${wb.SheetNames.join(', ')})`);\n  return ws;\n};\nconst emit = async (text) => {\n  if (opts.out) {\n    await fs.writeFile(opts.out, text);\n    print(`wrote ${opts.out}`);\n  } else console.log(text.replace(/\\n$/, ''));\n};\nconst write = async (wb, path) => {\n  const e = ext(path);\n  if (e === 'csv') return fs.writeFile(path, XLSX.utils.sheet_to_csv(pick(wb)));\n  if (e === 'json') return fs.writeFile(path, JSON.stringify(XLSX.utils.sheet_to_json(pick(wb)), null, 2));\n  if (e === 'html') return fs.writeFile(path, XLSX.utils.sheet_to_html(pick(wb)));\n  const bookType = { xlsx: 'xlsx', xls: 'biff8', ods: 'ods', xlsb: 'xlsb' }[e];\n  if (!bookType) fail(`cannot write .${e} (xlsx, xls, ods, xlsb, csv, json or html)`);\n  return fs.writeFile(path, new Uint8Array(XLSX.write(wb, { type: 'array', bookType })));\n};\n\nif (cmd === 'info') {\n  if (!files[0]) fail('which file?');\n  const wb = await read(files[0]);\n  for (const name of wb.SheetNames) {\n    const ws = wb.Sheets[name];\n    const ref = ws['!ref'];\n    const r = ref ? XLSX.utils.decode_range(ref) : null;\n    const head = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0 })[0] ?? [];\n    print(`${name}: ${r ? `${r.e.r - r.s.r + 1} rows × ${r.e.c - r.s.c + 1} columns (${ref})` : 'empty'}${head.length ? `\\n  first row: ${head.join(' | ')}` : ''}`);\n  }\n} else if (cmd === 'csv') {\n  if (!files[0]) fail('which file?');\n  await emit(XLSX.utils.sheet_to_csv(pick(await read(files[0]))));\n} else if (cmd === 'json') {\n  if (!files[0]) fail('which file?');\n  await emit(JSON.stringify(XLSX.utils.sheet_to_json(pick(await read(files[0])), { defval: null }), null, 2));\n} else if (cmd === 'make') {\n  if (!files.length || !opts.out) fail('usage: sheet make in.csv|in.json … -o out.xlsx');\n  const wb = XLSX.utils.book_new();\n  for (const f of files) {\n    const src = await read(f);\n    const base = f.replace(/^.*\\//, '').replace(/\\.[^.]+$/, '').slice(0, 31) || 'Sheet';\n    let name = base;\n    for (let n = 2; wb.SheetNames.includes(name); n++) name = `${base.slice(0, 28)} ${n}`;\n    XLSX.utils.book_append_sheet(wb, src.Sheets[src.SheetNames[0]], name);\n  }\n  await write(wb, opts.out);\n  print(`wrote ${opts.out} (${wb.SheetNames.length} sheet${wb.SheetNames.length === 1 ? '' : 's'})`);\n} else if (cmd === 'convert') {\n  const [from, to] = files;\n  if (!from || !to) fail('usage: sheet convert in.xlsx out.ods');\n  await write(await read(from), to);\n  print(`wrote ${to}`);\n} else fail(`unknown command ${cmd}\\n${usage}`);\n",
+     "sha256": "b6dd80fdbe80002523a202b0f4bd7d6d1fc8f978336d4cbc96a31a86e69eacaa",
+     "bytes": 4295
+    }
+   ]
+  },
+  {
+   "id": "pdf",
+   "version": "1.17.1",
+   "kind": "js",
+   "summary": "PDF files: info, text, merge, pick pages, rotate, pictures or text to PDF (pdf-lib, pdf.js)",
+   "license": "MIT AND Apache-2.0",
+   "homepage": "https://pdf-lib.js.org",
+   "commands": {
+    "pdf": {
+     "run": "pdf.js",
+     "load": [
+      "lib/pdf-lib.min.js",
+      "lib/pdf.worker.min.js",
+      "lib/pdf.min.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/pdf-lib.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js",
+     "sha256": "0f9a5cad07941f0826586c94e089d89b918c46e5c17cf2d5a3c6f666e3bc694f",
+     "bytes": 525099
+    },
+    {
+     "path": "lib/pdf.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js",
+     "sha256": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c",
+     "bytes": 377116
+    },
+    {
+     "path": "lib/pdf.worker.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js",
+     "sha256": "38cde5311957b86bc3669f93e7d2566de333a90055ed6635bef60d9bf00e96f2",
+     "bytes": 1133660
+    },
+    {
+     "path": "pdf.js",
+     "text": "// pdf: read, combine and make PDF files (pdf-lib; text with pdf.js).\nconst PDFLib = require('lib/pdf-lib.min.js');\nconst usage = `usage: pdf <command> …\n  pdf info file.pdf                        pages, size, title, author\n  pdf text file.pdf [--pages 1-3] [-o out.txt]   the text, page by page\n  pdf merge a.pdf b.pdf … -o out.pdf\n  pdf pages file.pdf --pages 1-3,7 -o out.pdf    keep (and order) some pages\n  pdf rotate file.pdf 90 [--pages 2,4] -o out.pdf\n  pdf images a.png b.jpg … -o out.pdf      one page per picture (PNG or JPEG)\n  pdf from-text notes.txt|notes.md [-o out.pdf] [--title T]   plain text laid out on A4\nPages are numbered from 1; ranges like 2-5, lists like 1,3,9-10.`;\nconst opts = { out: null, pages: null, title: null };\nconst rest = [];\nfor (let i = 0; i < args.length; i++) {\n  const a = args[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  if (a === '-o' || a === '--output') opts.out = args[++i];\n  else if (a === '--pages' || a === '-p') opts.pages = args[++i];\n  else if (a === '--title') opts.title = args[++i];\n  else rest.push(a);\n}\nconst [cmd, ...files] = rest;\nif (!cmd) return print(usage);\nconst fail = (msg) => (console.error(`pdf: ${msg}`), exit(1));\nconst pagesOf = (spec, count) => {\n  if (!spec) return [...Array(count).keys()];\n  const out = [];\n  for (const part of String(spec).split(',')) {\n    const m = /^\\s*(\\d+)\\s*(?:-\\s*(\\d+|end))?\\s*$/.exec(part);\n    if (!m) fail(`bad page range \"${part}\"`);\n    const a = Number(m[1]);\n    const b = m[2] === undefined ? a : m[2] === 'end' ? count : Number(m[2]);\n    for (let p = a; a <= b ? p <= b : p >= b; p += a <= b ? 1 : -1) {\n      if (p < 1 || p > count) fail(`page ${p} does not exist (the file has ${count})`);\n      out.push(p - 1);\n    }\n  }\n  return out;\n};\nconst load = async (p) => PDFLib.PDFDocument.load(await fs.readFile(p), { ignoreEncryption: true });\nconst save = async (doc) => {\n  if (!opts.out) fail('where to? add -o out.pdf');\n  const bytes = await doc.save();\n  await fs.writeFile(opts.out, bytes);\n  print(`wrote ${opts.out} (${doc.getPageCount()} page${doc.getPageCount() === 1 ? '' : 's'}, ${Math.round(bytes.length / 1024)} KB)`);\n};\n\nif (cmd === 'info') {\n  if (!files[0]) fail('which file?');\n  const doc = await load(files[0]);\n  const p = doc.getPage(0).getSize();\n  const meta = [['title', doc.getTitle()], ['author', doc.getAuthor()], ['subject', doc.getSubject()], ['creator', doc.getCreator()], ['created', doc.getCreationDate()?.toISOString()]].filter(([, v]) => v);\n  print(`${files[0]}: ${doc.getPageCount()} pages, first page ${Math.round(p.width)}×${Math.round(p.height)} pt (${(p.width / 72 * 25.4).toFixed(0)}×${(p.height / 72 * 25.4).toFixed(0)} mm)`);\n  for (const [k, v] of meta) print(`${k}: ${v}`);\n} else if (cmd === 'text') {\n  if (!files[0]) fail('which file?');\n  // pdf.js, run on this thread (its worker code is loaded as a library).\n  globalThis.pdfjsWorker = require('lib/pdf.worker.min.js');\n  const pdfjs = require('lib/pdf.min.js');\n  const doc = await pdfjs.getDocument({ data: await fs.readFile(files[0]), isEvalSupported: false, useSystemFonts: false, disableFontFace: true, verbosity: 0 }).promise;\n  const parts = [];\n  for (const i of pagesOf(opts.pages, doc.numPages)) {\n    const page = await doc.getPage(i + 1);\n    const content = await page.getTextContent();\n    let text = '';\n    for (const item of content.items) text += (item.str ?? '') + (item.hasEOL ? '\\n' : item.str && !item.str.endsWith(' ') ? ' ' : '');\n    parts.push(`--- page ${i + 1} ---\\n${text.replace(/[ \\t]+\\n/g, '\\n').trim()}`);\n  }\n  const all = parts.join('\\n\\n');\n  if (opts.out) {\n    await fs.writeFile(opts.out, all);\n    print(`wrote ${opts.out}`);\n  } else print(all || '(no text: a scanned PDF needs OCR, see the ocr package)');\n} else if (cmd === 'merge') {\n  if (files.length < 2) fail('give two or more PDF files');\n  const out = await PDFLib.PDFDocument.create();\n  for (const f of files) {\n    const src = await load(f);\n    for (const p of await out.copyPages(src, src.getPageIndices())) out.addPage(p);\n  }\n  await save(out);\n} else if (cmd === 'pages') {\n  if (!files[0]) fail('which file?');\n  const src = await load(files[0]);\n  const out = await PDFLib.PDFDocument.create();\n  for (const p of await out.copyPages(src, pagesOf(opts.pages, src.getPageCount()))) out.addPage(p);\n  await save(out);\n} else if (cmd === 'rotate') {\n  const [file, deg] = files;\n  if (!file || !/^-?\\d+$/.test(deg ?? '') || Number(deg) % 90) fail('usage: pdf rotate file.pdf 90|180|270 [--pages …] -o out.pdf');\n  const doc = await load(file);\n  for (const i of pagesOf(opts.pages, doc.getPageCount())) {\n    const page = doc.getPage(i);\n    page.setRotation(PDFLib.degrees((page.getRotation().angle + Number(deg) + 360) % 360));\n  }\n  await save(doc);\n} else if (cmd === 'images') {\n  if (!files.length) fail('give PNG or JPEG files');\n  const doc = await PDFLib.PDFDocument.create();\n  for (const f of files) {\n    const bytes = await fs.readFile(f);\n    const png = bytes[0] === 0x89 && bytes[1] === 0x50;\n    const jpg = bytes[0] === 0xff && bytes[1] === 0xd8;\n    if (!png && !jpg) fail(`${f}: only PNG and JPEG pictures`);\n    const img = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);\n    doc.addPage([img.width, img.height]).drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });\n  }\n  await save(doc);\n} else if (cmd === 'from-text') {\n  if (!files[0]) fail('which file?');\n  const src = await fs.readText(files[0]);\n  const md = /\\.md$/i.test(files[0]);\n  opts.out ??= files[0].replace(/\\.[^./]+$/, '') + '.pdf';\n  const doc = await PDFLib.PDFDocument.create();\n  const fonts = { body: await doc.embedFont(PDFLib.StandardFonts.Helvetica), bold: await doc.embedFont(PDFLib.StandardFonts.HelveticaBold), mono: await doc.embedFont(PDFLib.StandardFonts.Courier) };\n  doc.setTitle(opts.title ?? (/^#\\s+(.+)$/m.exec(src)?.[1] ?? files[0].replace(/^.*\\//, '')));\n  // The standard fonts only have Western European letters: others become '?'.\n  const safe = (t) => t.replace(/[‘’]/g, \"'\").replace(/[“”]/g, '\"').replace(/[–—]/g, '-').replace(/…/g, '...').replace(/[^\\x20-\\x7e\\xa0-\\xff]/g, '?');\n  const [W, H, M] = [595.28, 841.89, 56];\n  let page = doc.addPage([W, H]);\n  let y = H - M;\n  const line = (text, font, size, gap = 1.35) => {\n    if (y - size < M) {\n      page = doc.addPage([W, H]);\n      y = H - M;\n    }\n    page.drawText(text, { x: M, y: y - size, size, font });\n    y -= size * gap;\n  };\n  const wrap = (text, font, size) => {\n    const words = safe(text).split(/(\\s+)/);\n    let cur = '';\n    for (const w of words) {\n      if (cur && font.widthOfTextAtSize((cur + w).trimEnd(), size) > W - 2 * M) {\n        line(cur.trimEnd(), font, size);\n        cur = w.trimStart();\n      } else cur += w;\n    }\n    line(cur.trimEnd(), font, size);\n  };\n  let code = false;\n  for (const raw of src.replace(/\\r\\n?/g, '\\n').split('\\n')) {\n    if (md && /^\\s*```/.test(raw)) {\n      code = !code;\n      continue;\n    }\n    if (code) {\n      line(safe(raw) || ' ', fonts.mono, 9.5, 1.3);\n      continue;\n    }\n    const h = md && /^(#{1,6})\\s+(.*)$/.exec(raw);\n    if (h) {\n      y -= 6;\n      wrap(h[2].replace(/[*_`]/g, ''), fonts.bold, [20, 16, 13.5, 12, 11, 11][h[1].length - 1]);\n      y -= 2;\n    } else if (!raw.trim()) y -= 7;\n    else wrap(md ? raw.replace(/\\*\\*|__|`/g, '').replace(/(^|\\W)[*_](\\S[^*_]*?)[*_](?=\\W|$)/g, '$1$2').replace(/^\\s*[-*+]\\s+/, '• ').replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '$1 ($2)') : raw, fonts.body, 11);\n  }\n  await save(doc);\n} else fail(`unknown command ${cmd}\\n${usage}`);\n",
+     "sha256": "32cd6f4fe0aaaa13cf8d96651394a940593e1458585f7d85579fc9aa7b3a6a24",
+     "bytes": 7613
+    }
+   ]
+  },
+  {
+   "id": "docx",
+   "version": "1.11.0",
+   "kind": "js",
+   "summary": "Word documents to text, HTML or Markdown (docx text|html|md, mammoth)",
+   "license": "BSD-2-Clause",
+   "homepage": "https://github.com/mwilliamson/mammoth.js",
+   "commands": {
+    "docx": {
+     "run": "docx.js",
+     "load": [
+      "lib/mammoth.browser.min.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/mammoth.browser.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/mammoth@1.11.0/mammoth.browser.min.js",
+     "sha256": "62773d3b21c7130342148e78abf7b97dbd3103463d3ffc5a68601a2a007e1cf1",
+     "bytes": 635562
+    },
+    {
+     "path": "docx.js",
+     "text": "// docx: read Word documents (mammoth).\nconst mammoth = require('lib/mammoth.browser.min.js');\nconst usage = `usage: docx <command> file.docx [-o out]\n  docx text file.docx     the text\n  docx html file.docx     HTML (headings, lists, tables, links, pictures inline)\n  docx md file.docx       Markdown`;\nlet out = null;\nconst rest = [];\nfor (let i = 0; i < args.length; i++) {\n  if (args[i] === '-h' || args[i] === '--help') return print(usage);\n  if (args[i] === '-o' || args[i] === '--output') out = args[++i];\n  else rest.push(args[i]);\n}\nconst [cmd, file] = rest;\nif (!cmd || !file) return print(usage);\nconst bytes = await fs.readFile(file);\nconst input = { arrayBuffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };\nconst r = cmd === 'text' ? await mammoth.extractRawText(input) : cmd === 'html' ? await mammoth.convertToHtml(input) : cmd === 'md' ? await mammoth.convertToMarkdown(input) : null;\nif (!r) {\n  console.error(`docx: unknown command ${cmd}\\n${usage}`);\n  exit(2);\n}\nfor (const m of r.messages ?? []) if (m.type === 'error') console.error(`docx: ${m.message}`);\nif (out) {\n  await fs.writeFile(out, r.value);\n  print(`wrote ${out}`);\n} else console.log(r.value.replace(/\\n+$/, ''));\n",
+     "sha256": "b67bf1fc56988eb1fe13e2ccbef62774293da76545101ec53c7d01792f00bd42",
+     "bytes": 1232
+    }
+   ]
+  },
+  {
+   "id": "ffmpeg",
+   "version": "0.12.10",
+   "kind": "js",
+   "summary": "FFmpeg: convert, cut and resize video and audio, grab frames (ffmpeg, ffprobe; 32 MB, one thread)",
+   "license": "GPL-2.0-or-later",
+   "homepage": "https://ffmpegwasm.netlify.app",
+   "commands": {
+    "ffmpeg": {
+     "run": "ffmpeg.js",
+     "load": [
+      "lib/ffmpeg-core.js"
+     ],
+     "assets": [
+      "lib/ffmpeg-core.wasm"
+     ]
+    },
+    "ffprobe": {
+     "run": "ffmpeg.js",
+     "args": [
+      "--ffprobe"
+     ],
+     "load": [
+      "lib/ffmpeg-core.js"
+     ],
+     "assets": [
+      "lib/ffmpeg-core.wasm"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/ffmpeg-core.js",
+     "url": "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.js",
+     "sha256": "b266ab5b952555881dd6310663986994a182acb2b7ff25cf10a25f7a37ac2b21",
+     "bytes": 112059
+    },
+    {
+     "path": "lib/ffmpeg-core.wasm",
+     "url": "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd/ffmpeg-core.wasm",
+     "sha256": "9f57947a5bd530d8f00c5b3f2cb2a3492faa7e5d823315342d6a8656d0a6b7b7",
+     "bytes": 32232419
+    },
+    {
+     "path": "ffmpeg.js",
+     "text": "// ffmpeg and ffprobe (FFmpeg 6 compiled to WebAssembly by ffmpeg.wasm, one thread).\n// Files named in the arguments are copied in; files it writes are copied back.\nconst createFFmpegCore = require('lib/ffmpeg-core.js');\nconst probe = args[0] === '--ffprobe';\nconst argv = probe ? args.slice(1) : args;\nif (!argv.length || argv[0] === '-h' && argv.length === 1) {\n  return print(`usage: ${probe ? 'ffprobe' : 'ffmpeg'} [options] (as FFmpeg's own)\n  e.g. ffmpeg -i in.mov -vf scale=1280:-2 out.mp4\n       ffmpeg -i talk.mp4 -vn -c:a libmp3lame talk.mp3\n       ffmpeg -i clip.mp4 -ss 3 -frames:v 1 frame.png\n       ffprobe -hide_banner in.mp4\nFiles are read from and written to the working folder. One thread, so big\nvideos take a while; a run may last 10 minutes at most.`);\n}\nconst cwd = env.PWD || '/';\nconst abs = (p) => (p.startsWith('/') ? p : `${cwd.replace(/\\/$/, '')}/${p}`).replace(/\\/\\.\\//g, '/');\n// The core reads where its files are from its script address (#base64 JSON); the WebAssembly is given here.\nconst core = await createFFmpegCore({ wasmBinary: await asset('lib/ffmpeg-core.wasm'), mainScriptUrlOrBlob: `ffmpeg-core.js#${btoa(JSON.stringify({ wasmURL: 'ffmpeg-core.wasm', workerURL: '' }))}` });\ncore.setLogger(({ type, message }) => (type === 'stdout' ? console.log : console.error)(message));\nconst FS = core.FS;\nconst mkdirs = (dir) => {\n  let cur = '';\n  for (const part of dir.split('/').filter(Boolean)) {\n    cur += `/${part}`;\n    try {\n      FS.mkdir(cur);\n    } catch {\n      /* exists */\n    }\n  }\n};\nmkdirs(cwd);\nFS.chdir(cwd);\n// Inputs: every argument that names a file in the box.\nconst copied = new Map();\nfor (const a of argv) {\n  if (a.startsWith('-') || /^[a-z]+:\\/\\//i.test(a)) continue;\n  for (const cand of [a, ...a.split(/[=:,]/).filter((x) => /\\.[a-z0-9]{2,5}$/i.test(x))]) {\n    const path = abs(cand);\n    if (copied.has(path) || !(await fs.exists(cand))) continue;\n    const bytes = await fs.readFile(cand).catch(() => null);\n    if (!bytes) continue;\n    mkdirs(path.replace(/\\/[^/]*$/, ''));\n    FS.writeFile(path, bytes);\n    copied.set(path, FS.stat(path).mtime.getTime());\n  }\n}\n// The folders it may write to: the working folder and those named in the arguments.\nconst dirs = new Set([cwd]);\nfor (const a of argv) if (!a.startsWith('-') && a.includes('/')) dirs.add(abs(a).replace(/\\/[^/]*$/, '') || '/');\nfor (const d of dirs) mkdirs(d);\n// ffprobe in this build ends without setting its exit code (-1, \"not finished\"): that is success.\nconst ret = probe ? core.ffprobe(...argv) : core.exec(...argv);\nconst code = probe && ret === -1 ? 0 : ret;\n// Anything new or changed goes back into the box.\nconst written = [];\nfor (const d of dirs) {\n  let names = [];\n  try {\n    names = FS.readdir(d).filter((n) => n !== '.' && n !== '..');\n  } catch {\n    continue;\n  }\n  for (const n of names) {\n    const path = `${d === '/' ? '' : d}/${n}`;\n    const st = FS.stat(path);\n    if (FS.isDir(st.mode)) continue;\n    if (copied.has(path) && copied.get(path) === st.mtime.getTime()) continue;\n    await fs.writeFile(path, FS.readFile(path));\n    written.push(path.startsWith(`${cwd}/`) ? path.slice(cwd.length + 1) : path);\n  }\n}\nif (written.length) console.error(`(wrote ${written.join(', ')})`);\nif (code !== 0) exit(code === undefined ? 1 : code);\n",
+     "sha256": "d9b4a4fb7a761e141bf59bafb966e244671fc8b52d8cb577b39ee9f61a760a60",
+     "bytes": 3295
+    }
+   ]
+  },
+  {
+   "id": "ocr",
+   "version": "6.0.0",
+   "kind": "js",
+   "summary": "OCR: text from pictures, English (Tesseract 5 via tesseract.js; 7 MB)",
+   "license": "Apache-2.0",
+   "homepage": "https://tesseract.projectnaptha.com",
+   "commands": {
+    "ocr": {
+     "run": "ocr.js",
+     "load": [
+      "lib/tesseract-core-simd-lstm.wasm.js"
+     ],
+     "assets": [
+      "data/eng.traineddata.gz"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/tesseract-core-simd-lstm.wasm.js",
+     "url": "https://cdn.jsdelivr.net/npm/tesseract.js-core@6.0.0/tesseract-core-simd-lstm.wasm.js",
+     "sha256": "9d7c43fb206dc9f48475228b46bf35f888fa9e6259da2e67d5a75c77049f2dc7",
+     "bytes": 3954569
+    },
+    {
+     "path": "data/eng.traineddata.gz",
+     "url": "https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int/eng.traineddata.gz",
+     "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91",
+     "bytes": 2952873
+    },
+    {
+     "path": "ocr.js",
+     "text": "// ocr: text from pictures (Tesseract 5, LSTM, compiled to WebAssembly by tesseract.js).\nconst TesseractCore = require('lib/tesseract-core-simd-lstm.wasm.js');\nconst usage = `usage: ocr picture.(png|jpg|webp|bmp|tif) … [-o out.txt] [--psm N]\n  Prints the text it reads (English). Several pictures: one after the other.\n  --psm 6   treat the picture as one block of text (default 3: find the layout)\n  --psm 7   a single line,  --psm 11  scattered text\nFor a scanned PDF, make pictures of its pages first (e.g. ffmpeg, or ask the agent).`;\nlet out = null;\nlet psm = null;\nconst files = [];\nfor (let i = 0; i < args.length; i++) {\n  const a = args[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  if (a === '-o' || a === '--output') out = args[++i];\n  else if (a === '--psm') psm = args[++i];\n  else files.push(a);\n}\nif (!files.length) return print(usage);\nconst gz = await asset('data/eng.traineddata.gz');\nconst lang = new Uint8Array(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());\nconst tm = await TesseractCore({ print: () => {}, printErr: () => {} });\ntm.FS.writeFile('/eng.traineddata', lang);\nconst api = new tm.TessBaseAPI();\n// OEM 1: the LSTM engine (the only one in this build).\nif (api.Init(null, 'eng', 1) === -1) {\n  console.error('ocr: the English language data could not be loaded');\n  exit(1);\n}\nif (psm) api.SetVariable('tessedit_pageseg_mode', String(psm));\nconst texts = [];\nfor (const f of files) {\n  const image = await fs.readFile(f);\n  tm.FS.writeFile('/input', image);\n  if (api.SetImageFile(1, 0) === 1) {\n    console.error(`ocr: ${f}: cannot read this picture (PNG, JPEG, WebP, BMP or TIFF)`);\n    exit(1);\n  }\n  const text = api.GetUTF8Text().trim();\n  const conf = api.MeanTextConf();\n  texts.push(files.length > 1 ? `--- ${f} (confidence ${conf}%) ---\\n${text}` : text);\n  if (files.length === 1) console.error(`(confidence ${conf}%)`);\n}\napi.End();\nconst all = texts.join('\\n\\n');\nif (out) {\n  await fs.writeFile(out, all);\n  print(`wrote ${out}`);\n} else print(all || '(no text found)');\n",
+     "sha256": "ce83a4be8faedecbc31e9c73c51f173df4de283c7a38263e2ef141dc6db3e5e8",
+     "bytes": 2091
+    }
+   ]
   }
  ]
 }
