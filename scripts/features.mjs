@@ -514,9 +514,11 @@ await check('desktop: right-click menu, new folder on the desktop, wallpaper, sn
   await desk.locator('.desk-icon', { hasText: 'Projects' }).waitFor({ timeout: 10000 });
   if (!(await desk.evaluate(() => bbx.fs.exists('/home/user/Desktop/Projects')))) throw new Error('folder not created');
   const before = await desk.locator('.wallpaper').evaluate((el) => el.style.background);
-  await desk.evaluate(() => bbx.settings.set('desktop.wallpaper', 'sand'));
-  await desk.waitForFunction((b) => document.querySelector('.wallpaper').style.background !== b, before);
-  if ((await desk.locator('.wallpaper').getAttribute('data-light')) !== 'true') throw new Error('light wallpaper not flagged');
+  // A light theme repaints the wallpaper in its colours, flagged light (dark icon labels).
+  await desk.evaluate(() => bbx.settings.set('ui.theme', 'paper'));
+  await desk.waitForFunction((b) => document.querySelector('.wallpaper').style.background !== b && document.querySelector('.wallpaper').dataset.light === 'true', before, { timeout: 15000 });
+  if ((await desk.evaluate(() => document.documentElement.dataset.theme)) !== 'light') throw new Error('the page did not switch to the light theme');
+  await desk.evaluate(() => bbx.settings.set('ui.theme', 'system'));
   await desk.locator('.desk-icon', { hasText: 'Files' }).dblclick();
   await desk.waitForSelector('.win-body[data-app="files"]');
   const bar = await desk.locator('.win-bar').first().boundingBox();

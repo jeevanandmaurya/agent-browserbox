@@ -17,6 +17,8 @@ The optional desktop (**Open desktop** in the chat list) shows BrowserBox's apps
 - The bar at the bottom: tap or swipe up to go home; long-press or swipe up and hold for recent apps (tap a card to switch, swipe it up to close).
 - The back button goes home.
 
-## Wallpaper
+## Themes and wallpaper
 
-Settings → Appearance → Wallpaper: a preset or your own picture.
+Settings → Appearance → **Theme** colours everything at once: the agent window, the desktop, terminal colours and the wallpaper. Graphite, Midnight, Forest, Ember, Frost, Petal and Ink are dark; Paper and Dune are light; **Match device** follows your device's light or dark setting.
+
+Each theme has its own wallpaper, and every wallpaper style can be drawn in any theme's colours: mountain ridges, topographic contours, dunes, a Bauhaus poster, a retro sunset, a pixel skyline and a starfield. They are drawn by the browser at your screen's size, so they stay sharp and download nothing. Or choose your own picture.

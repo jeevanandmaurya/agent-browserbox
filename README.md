@@ -154,7 +154,12 @@ open apps:
   home bar goes home on a tap or swipe up, and shows recent apps on a long
   press or a long swipe (tap a card to switch, swipe it up to close). The
   browser's back button goes home instead of leaving.
-- **Wallpapers**: presets or your own picture, in Settings → Appearance.
+- **Themes**: nine of them (Graphite, Midnight, Forest, Ember, Frost, Petal,
+  Ink, Paper, Dune), each colouring the agent window, the desktop, terminal
+  colours and the wallpaper together, in Settings → Appearance.
+- **Wallpapers**: drawn in the browser in the theme's colours (ridges,
+  contours, dunes, Bauhaus, sunset, pixel skyline, starfield), sharp at any
+  size, or your own picture.
 
 The agent opens as a window on the desktop (full screen on phones); right-click it (long press on phones) and choose "Open in new tab" for a browser tab of its own.
 

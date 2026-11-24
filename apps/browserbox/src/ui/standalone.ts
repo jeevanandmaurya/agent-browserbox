@@ -7,32 +7,51 @@ import { permissionDialog } from './dialog';
 import { h } from './dom';
 
 const THEME_KEY = 'bbx-theme';
+/** The last theme's colours and darkness, to paint them before anything loads. */
+const THEME_CACHE = 'bbx-theme-paint';
 
 /**
- * Paints the right theme before the kernel has answered, then follows the
- * `ui.theme` setting: 'dark', 'light' or 'system' (the OS preference, live).
+ * Paints the theme before the kernel has answered (from the last one used),
+ * then follows the `ui.theme` setting: a theme id, 'system' (Graphite, as the
+ * device prefers, live), or the older 'dark' and 'light'. The themes' colours
+ * load after startup.
  */
 export function followTheme(os: Kernel): void {
   const root = document.documentElement;
   const dark = matchMedia('(prefers-color-scheme: dark)');
-  let choice = 'dark';
-  const paint = () => {
-    root.dataset.theme = choice === 'system' ? (dark.matches ? 'dark' : 'light') : choice === 'light' ? 'light' : 'dark';
-  };
-  const choose = (value: unknown) => {
-    choice = value === 'light' || value === 'system' ? value : 'dark';
-    paint();
+  let choice = 'system';
+  const store = (k: string, v: string) => {
     try {
-      localStorage.setItem(THEME_KEY, choice);
+      localStorage.setItem(k, v);
     } catch {
       /* storage blocked */
     }
   };
   try {
-    choice = localStorage.getItem(THEME_KEY) ?? 'dark';
+    choice = localStorage.getItem(THEME_KEY) ?? 'system';
+    const cached = JSON.parse(localStorage.getItem(THEME_CACHE) ?? 'null') as { dark: boolean; vars: string } | null;
+    if (cached) {
+      root.dataset.theme = cached.dark ? 'dark' : 'light';
+      root.style.cssText = cached.vars;
+    } else root.dataset.theme = choice === 'light' || (choice === 'system' && !dark.matches) ? 'light' : 'dark';
   } catch {
     /* storage blocked */
   }
+  const themes = import('./themes');
+  const paint = () =>
+    void themes.then(({ resolveTheme, themeVars }) => {
+      const t = resolveTheme(choice, dark.matches);
+      const vars = themeVars(t);
+      root.dataset.theme = t.dark ? 'dark' : 'light';
+      root.style.cssText = vars;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t.palette.panel);
+      store(THEME_CACHE, JSON.stringify({ dark: t.dark, vars }));
+    });
+  const choose = (value: unknown) => {
+    choice = typeof value === 'string' && value ? value : 'system';
+    store(THEME_KEY, choice);
+    paint();
+  };
   paint();
   dark.addEventListener('change', paint);
   os.bus.on('settings:change', ({ key, value }) => key === 'ui.theme' && choose(value));

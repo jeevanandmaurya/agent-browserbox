@@ -2,81 +2,121 @@ import type { Kernel } from '@jeevanand/agent-browserbox-runtime/client';
 import { basename, extname } from '@jeevanand/agent-browserbox-runtime/client';
 import { h } from './dom';
 import { icon } from './icons';
+import { resolveTheme, type Theme } from './themes';
+import { drawWallpaper, WALL_STYLES } from './wallart';
 
-/** Settings key: a preset id, or `file:<path>` for a picture from the filesystem. */
+/**
+ * Settings key: 'theme' (the theme's own wallpaper, the default), a style id
+ * (drawn in the theme's colours), or `file:<path>` for a picture.
+ */
 export const WALLPAPER_KEY = 'desktop.wallpaper';
 export const WALLPAPER_DIR = '/home/user/Pictures/Wallpapers';
-
-export interface Wallpaper {
-  id: string;
-  name: string;
-  /** A CSS `background` value: drawn by the browser, so nothing to download. */
-  css: string;
-  /** Light pictures get dark icon labels. */
-  light?: boolean;
-}
-
-export const WALLPAPERS: Wallpaper[] = [
-  { id: 'dusk', name: 'Dusk', css: 'radial-gradient(120% 90% at 85% 8%, #1f5c50 0%, transparent 55%), radial-gradient(90% 80% at 0% 100%, #3a2b4a 0%, transparent 60%), #151514' },
-  { id: 'tide', name: 'Tide', css: 'linear-gradient(165deg, #0f2027 0%, #1d3a44 48%, #2b5262 100%)' },
-  { id: 'ember', name: 'Ember', css: 'radial-gradient(100% 80% at 18% 0%, #7a3b1d 0%, transparent 60%), radial-gradient(80% 70% at 100% 100%, #5a1e2e 0%, transparent 62%), #1a1312' },
-  { id: 'meadow', name: 'Meadow', css: 'radial-gradient(110% 90% at 100% 0%, #3f6b3a 0%, transparent 58%), radial-gradient(100% 90% at 0% 100%, #1f4a49 0%, transparent 60%), #121714' },
-  { id: 'sand', name: 'Sand', css: 'radial-gradient(120% 90% at 90% 0%, #f6efe2 0%, transparent 60%), linear-gradient(170deg, #ece2cf 0%, #d6c4a2 100%)', light: true },
-  { id: 'mist', name: 'Mist', css: 'radial-gradient(130% 100% at 50% 0%, #eef3f2 0%, #c7d6d4 100%)', light: true },
-  { id: 'graphite', name: 'Graphite', css: '#1c1c1b' },
-  { id: 'grid', name: 'Grid', css: 'linear-gradient(rgb(255 255 255 / 0.045) 1px, transparent 1px) 0 0 / 28px 28px, linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px) 0 0 / 28px 28px, #161615' },
-];
-export const DEFAULT_WALLPAPER = 'dusk';
+export const DEFAULT_WALLPAPER = 'theme';
 
 const IMAGE = /^(png|jpe?g|webp|avif|gif)$/;
+const dark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+
+/** The theme in use now. */
+export const currentTheme = (os: Kernel): Theme => resolveTheme(os.settings.get<string>('ui.theme', 'system'), dark());
+
+/** The style a setting draws (a picture, or a value from before themes, means the theme's own). */
+function styleFor(value: string, theme: Theme): string {
+  return WALL_STYLES.some((s) => s.id === value) ? value : theme.wallpapers[0]!;
+}
 
 /** Paints the chosen wallpaper on `el` and keeps it current. Returns a stop function. */
 export function applyWallpaper(os: Kernel, el: HTMLElement): () => void {
   let url: string | null = null;
   let gen = 0;
-  const paint = async () => {
+  let drawnFor = '';
+  const set = (next: string | null, css: string, light: boolean) => {
+    if (url && url !== next) URL.revokeObjectURL(url);
+    url = next;
+    el.style.background = css;
+    el.dataset.light = String(light);
+  };
+  const paint = async (force = false) => {
     const g = ++gen;
     const value = os.settings.get<string>(WALLPAPER_KEY, DEFAULT_WALLPAPER);
-    let css = (WALLPAPERS.find((w) => w.id === value) ?? WALLPAPERS[0]!).css;
-    let light = WALLPAPERS.find((w) => w.id === value)?.light ?? false;
+    const theme = currentTheme(os);
     if (value.startsWith('file:')) {
       try {
         const bytes = await os.fs.readFile(value.slice(5));
         if (g !== gen) return;
-        if (url) URL.revokeObjectURL(url);
-        url = URL.createObjectURL(new Blob([bytes as BlobPart]));
-        css = `url("${url}") center / cover no-repeat, #151514`;
-        light = false;
+        const next = URL.createObjectURL(new Blob([bytes as BlobPart]));
+        drawnFor = value;
+        return set(next, `url("${next}") center / cover no-repeat, ${theme.palette.wall}`, false);
       } catch {
-        /* the picture was moved or deleted: keep the default */
+        /* the picture was moved or deleted: draw the theme's own */
       }
     }
+    // Drawn at the screen's real size (up to 4K wide), once per theme, style and size.
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.min(3840, Math.round((el.clientWidth || innerWidth) * ratio));
+    const hgt = Math.min(2400, Math.round((el.clientHeight || innerHeight) * ratio));
+    const style = styleFor(value, theme);
+    const key = `${style}:${theme.id}:${w}x${hgt}`;
+    if (!force && key === drawnFor) return;
+    // Let the page paint first: drawing takes a moment on a slow device.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r)));
     if (g !== gen) return;
-    el.style.background = css;
-    el.dataset.light = String(light);
+    const canvas = drawWallpaper(style, theme, w, hgt);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+    if (g !== gen || !blob) return;
+    drawnFor = key;
+    const next = URL.createObjectURL(blob);
+    set(next, `url("${next}") center / cover no-repeat, ${theme.palette.wall}`, !theme.dark);
   };
   void paint();
-  const off = os.bus.on('settings:change', ({ key }) => key === WALLPAPER_KEY && void paint());
+  const off = os.bus.on('settings:change', ({ key }) => (key === WALLPAPER_KEY || key === 'ui.theme') && void paint());
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  const onMedia = () => void paint();
+  media.addEventListener('change', onMedia);
+  // Redrawn when the screen grows a lot (a window maximised, a monitor change).
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onResize = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void paint(), 400);
+  };
+  addEventListener('resize', onResize);
   return () => {
     off?.();
+    media.removeEventListener('change', onMedia);
+    removeEventListener('resize', onResize);
     if (url) URL.revokeObjectURL(url);
   };
 }
 
-/** Swatches plus "Choose a picture…", for Settings → Appearance. */
+/** A small picture of a wallpaper style in a theme, for pickers. */
+export function wallpaperThumb(style: string, theme: Theme, w = 192, h = 120): string {
+  return drawWallpaper(style, theme, w * 2, h * 2).toDataURL('image/png');
+}
+
+/** The theme's own wallpaper, every style in the theme's colours, and "Choose a picture…", for Settings → Appearance. */
 export function wallpaperPicker(os: Kernel, on: Kernel['bus']['on'] = os.bus.on.bind(os.bus)): HTMLElement {
   const input = h('input', { type: 'file', accept: 'image/*', hidden: true });
   const current = () => os.settings.get<string>(WALLPAPER_KEY, DEFAULT_WALLPAPER);
-  const swatch = (id: string, label: string, css: string) =>
-    h('button', { class: 'wp-swatch', type: 'button', title: label, 'aria-label': label, 'aria-pressed': String(current() === id), dataset: { id }, style: `background:${css}`, onclick: () => os.settings.set(WALLPAPER_KEY, id) });
-  const custom = h('button', { class: 'wp-swatch wp-custom', type: 'button', title: 'Choose a picture…', 'aria-label': 'Choose a picture for the wallpaper', onclick: () => input.click() }, icon('plus', 18));
-  const grid = h('div', { class: 'wp-grid', role: 'group', 'aria-label': 'Wallpaper' }, WALLPAPERS.map((w) => swatch(w.id, w.name, w.css)), custom);
+  const grid = h('div', { class: 'wp-grid', role: 'group', 'aria-label': 'Wallpaper' });
   const note = h('p', { class: 'muted wp-note' });
-  const refresh = () => {
+  const custom = h('button', { class: 'wp-swatch wp-custom', type: 'button', title: 'Choose a picture…', 'aria-label': 'Choose a picture for the wallpaper', onclick: () => input.click() }, icon('plus', 18));
+  let drawnFor = '';
+  const render = () => {
+    const theme = currentTheme(os);
+    if (drawnFor !== theme.id) {
+      drawnFor = theme.id;
+      const swatch = (id: string, label: string, style: string) =>
+        h('button', { class: 'wp-swatch', type: 'button', title: label, 'aria-label': label, dataset: { id }, style: `background:url("${wallpaperThumb(style, theme)}") center / cover`, onclick: () => os.settings.set(WALLPAPER_KEY, id) }, h('span', { class: 'wp-label' }, label));
+      grid.replaceChildren(
+        swatch('theme', `${theme.name}’s own`, theme.wallpapers[0]!),
+        ...WALL_STYLES.map((s) => swatch(s.id, s.name, s.id)),
+        custom,
+      );
+    }
     const v = current();
-    for (const b of grid.querySelectorAll<HTMLElement>('.wp-swatch[data-id]')) b.setAttribute('aria-pressed', String(b.dataset.id === v));
+    const chosen = v.startsWith('file:') ? '' : WALL_STYLES.some((s) => s.id === v) ? v : 'theme';
+    for (const b of grid.querySelectorAll<HTMLElement>('.wp-swatch[data-id]')) b.setAttribute('aria-pressed', String(b.dataset.id === chosen));
     custom.setAttribute('aria-pressed', String(v.startsWith('file:')));
-    note.textContent = v.startsWith('file:') ? `Picture: ${basename(v.slice(5))}` : 'Shown on the desktop and the phone home screen.';
+    note.textContent = v.startsWith('file:') ? `Picture: ${basename(v.slice(5))}` : `Drawn in ${theme.name}’s colours; it changes with the theme. Shown on the desktop and the phone home screen.`;
   };
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
@@ -88,7 +128,7 @@ export function wallpaperPicker(os: Kernel, on: Kernel['bus']['on'] = os.bus.on.
     os.settings.set(WALLPAPER_KEY, `file:${path}`);
     input.value = '';
   });
-  on('settings:change', ({ key }) => key === WALLPAPER_KEY && refresh());
-  refresh();
+  on('settings:change', ({ key }) => (key === WALLPAPER_KEY || key === 'ui.theme') && render());
+  render();
   return h('div', { class: 'wp-picker' }, grid, note, input);
 }

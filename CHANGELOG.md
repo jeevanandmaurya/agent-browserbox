@@ -7,6 +7,15 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.1
 
+- **Themes**: nine themes (Graphite, Midnight, Forest, Ember, Frost, Petal,
+  Ink, Paper, Dune) colour the agent window, the desktop, terminal colours
+  and the wallpaper together. Settings → Appearance shows each as a little
+  picture.
+- **New wallpapers**, drawn in the browser in the theme's colours instead of
+  flat gradients: mountain ridges, topographic contours, dunes, a Bauhaus
+  poster, a retro sunset, a pixel skyline and a starfield. Each theme has its
+  own; they stay sharp at any size and download nothing.
+
 Fixes for a chat open in more than one window (the agent window and the
 desktop's Agent, or two tabs):
 

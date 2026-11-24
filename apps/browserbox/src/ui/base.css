@@ -167,12 +167,12 @@ button, a, summary, label, input, select, textarea { touch-action: manipulation;
 .ansi .a-red { color: var(--err); }
 .ansi .a-green { color: var(--ok); }
 .ansi .a-yellow { color: var(--warn); }
-.ansi .a-blue { color: #6ea8fe; }
-.ansi .a-magenta { color: #c49cf5; }
-.ansi .a-cyan { color: #5ccfe6; }
-:root[data-theme='light'] .ansi .a-blue { color: #1f5fbf; }
-:root[data-theme='light'] .ansi .a-magenta { color: #7a3fb8; }
-:root[data-theme='light'] .ansi .a-cyan { color: #0e6e80; }
+.ansi .a-blue { color: var(--ansi-blue, #6ea8fe); }
+.ansi .a-magenta { color: var(--ansi-magenta, #c49cf5); }
+.ansi .a-cyan { color: var(--ansi-cyan, #5ccfe6); }
+:root[data-theme='light']:not([style]) .ansi .a-blue { color: #1f5fbf; }
+:root[data-theme='light']:not([style]) .ansi .a-magenta { color: #7a3fb8; }
+:root[data-theme='light']:not([style]) .ansi .a-cyan { color: #0e6e80; }
 
 
 /* Terminal component (src/ui/terminal.ts): boot console and Terminal app */
