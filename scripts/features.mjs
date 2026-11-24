@@ -2122,6 +2122,8 @@ await check('web search for any model: Wikipedia without a key, and a page read 
     if (!tools.includes('web_search') || !tools.includes('web_fetch')) throw new Error(`tools offered: ${tools.join(', ')}`);
     if (!requests[before].messages[0].content.includes('do not write fetch code for searching')) throw new Error('the prompt does not point to the web tools');
     const said = await p.evaluate(() => document.querySelector('.ag-log').innerText.match(/WEB DONE[^\n]*/)[0]);
+    // A live service: Wikipedia sometimes rate-limits this machine. That is theirs, not ours.
+    if (said.includes('(HTTP 429)')) return 'skipped: Wikipedia rate-limited this machine (HTTP 429); the tools are covered by unit tests';
     if (!said.includes('Results from Wikipedia for “Riemann hypothesis”') || !said.includes('en.wikipedia.org/wiki/Riemann_hypothesis')) throw new Error(`search: ${said.slice(0, 500)}`);
     if (!/example-domains[^|]*(Example Domains|example\.com)/i.test(said)) throw new Error(`fetch: ${said.slice(-500)}`);
     const via = said.includes('read through Jina Reader') ? 'through Jina Reader' : 'directly';

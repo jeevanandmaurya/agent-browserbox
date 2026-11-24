@@ -205,8 +205,13 @@
 .ag-choice-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* ---- Diffs ---- */
-.df { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font: 12px/1.5 var(--mono); }
-.df-line { display: grid; grid-template-columns: 3.4em 3.4em 1.4em 1fr; min-width: max-content; }
+.df { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font: 12px/18px var(--mono); contain: content; }
+/* Its own scroll area: a long change does not make the chat that much longer. */
+.df-rows { max-height: 420px; overflow: auto; overscroll-behavior: contain; }
+.df-block { content-visibility: auto; width: max-content; min-width: 100%; }
+.df-line { display: flex; white-space: pre; }
+.df-line > .df-num { flex: none; width: 3.4em; }
+.df-line > .df-sign { flex: none; width: 1.4em; }
 .df-line.add { background: color-mix(in srgb, var(--ok) 14%, transparent); }
 .df-line.del { background: color-mix(in srgb, var(--err) 14%, transparent); }
 .df-num { padding-right: 6px; color: var(--muted); text-align: right; user-select: none; opacity: 0.7; }

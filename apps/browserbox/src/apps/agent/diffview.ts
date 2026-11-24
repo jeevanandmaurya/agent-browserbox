@@ -30,10 +30,13 @@ export function diffView(d: FileDiff): HTMLElement {
       );
     }
   });
+  // Blocks of 40 lines: the browser skips laying out and drawing those off screen.
+  const blocks: HTMLElement[] = [];
+  for (let i = 0; i < rows.length; i += 40) blocks.push(h('div', { class: 'df-block', style: `contain-intrinsic-size: auto ${Math.min(40, rows.length - i) * 18}px` }, rows.slice(i, i + 40)));
   return h(
     'div',
     { class: 'df', role: 'table', 'aria-label': `Changes to ${d.path}` },
-    rows,
+    h('div', { class: 'df-rows' }, blocks),
     d.note ? h('p', { class: 'df-note' }, d.note) : null,
     !d.hunks.length && !d.note ? h('p', { class: 'df-note' }, d.before === null ? 'Empty file created.' : 'No changes.') : null,
   );
