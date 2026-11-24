@@ -1,0 +1,80 @@
+{
+  "$comment": "The official package index, before pinning. scripts/catalog.mjs downloads each file, checks it, and writes public/kernel/package-index.json with its sha256 and size. Files are upstream builds, served by jsDelivr from npm; wrappers are kept in the index.",
+  "packages": [
+    {
+      "id": "quickjs",
+      "version": "0.18.0",
+      "kind": "wasm",
+      "summary": "QuickJS-ng, a small JavaScript interpreter: qjs file.js, qjs -e \"code\"",
+      "license": "MIT",
+      "homepage": "https://quickjs-ng.github.io/quickjs/",
+      "files": [{ "path": "qjs.wasm", "url": "https://cdn.jsdelivr.net/npm/@ai-ecoverse/wasi-quickjs@0.18.0-1/bin/qjs.wasm" }],
+      "commands": { "qjs": { "run": "qjs.wasm" } }
+    },
+    {
+      "id": "ripgrep",
+      "version": "15.2.0",
+      "kind": "wasm",
+      "summary": "ripgrep: fast recursive search (rg pattern [path])",
+      "license": "MIT OR Unlicense",
+      "homepage": "https://github.com/BurntSushi/ripgrep",
+      "files": [{ "path": "rg.wasm", "url": "https://cdn.jsdelivr.net/npm/@ai-ecoverse/wasi-ripgrep@15.2.0-5/bin/rg.wasm" }],
+      "commands": { "rg": { "run": "rg.wasm" } }
+    },
+    {
+      "id": "prettier",
+      "version": "3.10.1",
+      "kind": "js",
+      "summary": "Prettier: formats JavaScript, TypeScript, CSS, JSON, Markdown, HTML, YAML and GraphQL",
+      "license": "MIT",
+      "homepage": "https://prettier.io",
+      "files": [
+        { "path": "standalone.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/standalone.js" },
+        { "path": "plugins/babel.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/babel.js" },
+        { "path": "plugins/estree.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/estree.js" },
+        { "path": "plugins/typescript.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/typescript.js" },
+        { "path": "plugins/postcss.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/postcss.js" },
+        { "path": "plugins/markdown.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/markdown.js" },
+        { "path": "plugins/html.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/html.js" },
+        { "path": "plugins/yaml.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/yaml.js" },
+        { "path": "plugins/graphql.js", "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/graphql.js" },
+        { "path": "prettier.js", "wrapper": "prettier.js" }
+      ],
+      "commands": {
+        "prettier": {
+          "run": "prettier.js",
+          "load": ["standalone.js", "plugins/babel.js", "plugins/estree.js", "plugins/typescript.js", "plugins/postcss.js", "plugins/markdown.js", "plugins/html.js", "plugins/yaml.js", "plugins/graphql.js"]
+        }
+      }
+    },
+    {
+      "id": "marked",
+      "version": "18.3.0",
+      "kind": "js",
+      "summary": "marked: Markdown to HTML (marked notes.md -o notes.html --page)",
+      "license": "MIT",
+      "homepage": "https://marked.js.org",
+      "files": [
+        { "path": "lib/marked.umd.js", "url": "https://cdn.jsdelivr.net/npm/marked@18.3.0/lib/marked.umd.js" },
+        { "path": "marked.js", "wrapper": "marked.js" }
+      ],
+      "commands": { "marked": { "run": "marked.js", "load": ["lib/marked.umd.js"] } }
+    },
+    {
+      "id": "yaml",
+      "version": "4.1.0",
+      "kind": "js",
+      "summary": "yaml2json and json2yaml (js-yaml)",
+      "license": "MIT",
+      "homepage": "https://github.com/nodeca/js-yaml",
+      "files": [
+        { "path": "dist/js-yaml.min.js", "url": "https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" },
+        { "path": "yaml.js", "wrapper": "yaml.js" }
+      ],
+      "commands": {
+        "yaml2json": { "run": "yaml.js", "args": ["--to-json"], "load": ["dist/js-yaml.min.js"] },
+        "json2yaml": { "run": "yaml.js", "args": ["--to-yaml"], "load": ["dist/js-yaml.min.js"] }
+      }
+    }
+  ]
+}

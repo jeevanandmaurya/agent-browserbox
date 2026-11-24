@@ -28,7 +28,7 @@ export const execCommands: Command[] = [
       const { opts, rest } = flags(ctx.args);
       const { code, args } = await source(ctx, rest, opts);
       if (opts.has('net')) await requireNetwork(ctx, 'js', 'network access for a JavaScript program');
-      return finish(ctx, await runJs(ctx.os, code, { cwd: ctx.shell.cwd, env: userEnv(ctx.shell.env), args, network: opts.has('net'), signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, timeoutMs: 120000 }));
+      return finish(ctx, await runJs(ctx.os, code, { cwd: ctx.shell.cwd, env: userEnv(ctx.shell.env), args, stdin: code === ctx.stdin ? undefined : ctx.stdin, network: opts.has('net'), signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, timeoutMs: 120000 }));
     },
   },
   {

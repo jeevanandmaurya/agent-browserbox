@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, parseDep, sha256, validatePackage } from '../packages/runtime/src/kernel/packages';
+import { bundleJs, compareVersions, parseDep, sha256, validatePackage } from '../packages/runtime/src/kernel/packages';
 
 const ok = { id: 'jq', version: '1.7.1', kind: 'wasm', summary: 'JSON', files: [{ path: 'jq.wasm', url: 'https://x.test/jq.wasm', sha256: 'a'.repeat(64) }], commands: { jq: { run: 'jq.wasm' } } };
 
@@ -25,5 +25,34 @@ describe('package descriptions', () => {
 
   it('hashes with sha256', async () => {
     expect(await sha256(new TextEncoder().encode('abc'))).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
+});
+
+describe('JavaScript packages', () => {
+  const js = {
+    id: 'tool',
+    version: '1.0.0',
+    kind: 'js',
+    summary: '',
+    files: [
+      { path: 'lib.js', url: 'https://x.test/lib.js', sha256: 'a'.repeat(64) },
+      { path: 'main.js', text: 'print(1)', sha256: 'b'.repeat(64) },
+    ],
+    commands: { tool: { run: 'main.js', load: ['lib.js'] } },
+  };
+
+  it('accepts inline wrapper files and load lists, and checks them', () => {
+    expect(validatePackage(js).commands.tool!.load).toEqual(['lib.js']);
+    expect(() => validatePackage({ ...js, commands: { tool: { run: 'main.js', load: ['nope.js'] } } })).toThrow(/loads a file/);
+    expect(() => validatePackage({ ...js, kind: 'wasm' })).toThrow(/only JavaScript packages load/);
+    expect(() => validatePackage({ ...js, files: [js.files[0], { ...js.files[1], url: 'https://x.test/m.js' }] })).toThrow(/both url and text/);
+  });
+
+  it('bundles UMD, CommonJS and global libraries for require()', async () => {
+    const umd = `(function (g, f) { typeof exports === 'object' && typeof module !== 'undefined' ? f(exports) : f((g.umdLib = {})); })(this, function (e) { e.twice = (n) => n * 2; });`;
+    const cjs = `module.exports = { name: 'cjs' };`;
+    const code = bundleJs([['lib/umd.js', umd], ['cjs.js', cjs]], `return [require('lib/umd.js').twice(21), require('./cjs.js').name, (() => { try { require('x'); } catch (e) { return e.message; } })()];`);
+    const AsyncFunction = (async () => {}).constructor as new (...a: string[]) => () => Promise<unknown>;
+    expect(await new AsyncFunction(code)()).toEqual([42, 'cjs', 'cannot require x']);
   });
 });

@@ -49,7 +49,7 @@ void os.handle({
     const peer = await os.handle({});
     const opts = { ...o, signal: ctl.signal, onStdout: (t: string) => peer.emit('host:out', { runId, s: 'o', t }), onStderr: (t: string) => peer.emit('host:out', { runId, s: 'e', t }), onProgress: (pr: object) => peer.emit('host:progress', { runId, ...pr }), env: p.env };
     try {
-      if (kind === 'js') return await runJs(os, p.code, { ...opts, args: p.args, network: p.network, ppid: p.ppid });
+      if (kind === 'js') return await runJs(os, p.code, { ...opts, args: p.args, stdin: p.stdin, network: p.network, ppid: p.ppid });
       if (kind === 'python') return await runPython(os, p.code, { ...opts, packages: p.packages });
       return await runWasm(os, p.wasm, { ...opts, args: p.args, stdin: p.stdin, name: p.name, ppid: p.ppid });
     } finally {

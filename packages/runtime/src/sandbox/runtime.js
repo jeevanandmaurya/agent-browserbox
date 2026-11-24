@@ -55,6 +55,14 @@ async function handle(m) {
 }
 
 // ---- JavaScript -----------------------------------------------------------
+/** Thrown to end a program with an exit code (WASI proc_exit, JavaScript exit()). */
+class Exit extends Error {
+  constructor(code) {
+    super('exit ' + code);
+    this.code = code;
+  }
+}
+
 async function runJs(m, out, err) {
   const line = (sink) => (...a) => sink(a.map(show).join(' ') + '\n');
   const console = { log: line(out), info: line(out), debug: line(out), warn: line(err), error: line(err), table: line(out) };
@@ -71,9 +79,18 @@ async function runJs(m, out, err) {
     glob: call('fs.glob'),
   };
   const AsyncFunction = (async () => {}).constructor;
-  const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', m.code);
-  const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }));
-  return { value: value === undefined ? undefined : show(value) };
+  // exit(code) ends the program with that exit code (as process.exit does).
+  const exit = (code = 0) => {
+    throw new Exit(Number(code) | 0);
+  };
+  const fn = new AsyncFunction('fs', 'console', 'print', 'args', 'env', 'exit', 'stdin', m.code);
+  try {
+    const value = await fn(fs, console, line(out), m.args ?? [], Object.freeze({ ...(m.env ?? {}) }), exit, m.stdin ?? '');
+    return { value: value === undefined ? undefined : show(value) };
+  } catch (e) {
+    if (e instanceof Exit) return { exitCode: e.code };
+    throw e;
+  }
 }
 
 // ---- Dev-server backend -----------------------------------------------------
@@ -217,12 +234,6 @@ async function runWasi(m, out, err) {
   let memory;
   const view = () => new DataView(memory.buffer);
   const bytes = () => new Uint8Array(memory.buffer);
-  class Exit extends Error {
-    constructor(code) {
-      super('exit ' + code);
-      this.code = code;
-    }
-  }
   const ESUCCESS = 0, EBADF = 8, EEXIST = 20, EINVAL = 28, EISDIR = 31, ENOENT = 44, ENOSYS = 52, ENOTDIR = 54, ENOTEMPTY = 55, ESPIPE = 70, ENOTCAPABLE = 76;
   const DIR = 3, FILE = 4, CHAR = 2;
 

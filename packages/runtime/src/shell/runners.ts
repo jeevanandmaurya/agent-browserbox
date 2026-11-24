@@ -18,7 +18,7 @@ export async function runProgram(ctx: CommandContext, kind: ProgramKind, bytes: 
   const io = { signal: ctx.signal, onStdout: ctx.out, onStderr: ctx.err, ppid: ctx.shell.ppid, cwd: ctx.shell.cwd, env };
   if (kind === 'wasm') return finish(ctx, await runWasm(ctx.os, bytes, { ...io, name, args, stdin: ctx.stdin }));
   const text = new TextDecoder().decode(bytes);
-  if (kind === 'js') return finish(ctx, await runJs(ctx.os, text, { ...io, args, timeoutMs: 120000 }));
+  if (kind === 'js') return finish(ctx, await runJs(ctx.os, text, { ...io, args, stdin: ctx.stdin, timeoutMs: 120000 }));
   // A shell script runs line by line in this shell (like `source`): $1… are not set, $ARGS holds the arguments.
   const before = ctx.shell.env.ARGS;
   ctx.shell.env.ARGS = args.join(' ');

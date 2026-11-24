@@ -30,6 +30,8 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   of WebAssembly, JavaScript and script packages from package indexes, each
   file checked; `pkg update`, `upgrade`, `verify`, `why`, and Tab completion.
   Put your own commands in `~/.local/bin`.
+- The first packages to install that way: `qjs` (QuickJS), `rg` (ripgrep),
+  `prettier`, `marked` (Markdown to HTML) and `yaml2json` / `json2yaml`.
 - WebAssembly programs can read and write files in the folder they run in.
 
 ## 0.3.2

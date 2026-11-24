@@ -40,7 +40,9 @@
     "test": "vitest run",
     "serve": "node apps/browserbox/serve.mjs",
     "smoke": "NODE_PATH=$(npm root -g) node scripts/smoke.mjs && NODE_PATH=$(npm root -g) node scripts/features.mjs",
-    "e2e:sdk": "npm run build:agent && npm run build:runtime && NODE_PATH=$(npm root -g) node scripts/sdk-e2e.mjs"
+    "e2e:sdk": "npm run build:agent && npm run build:runtime && NODE_PATH=$(npm root -g) node scripts/sdk-e2e.mjs",
+    "catalog": "node scripts/catalog.mjs",
+    "test:catalog": "NODE_PATH=$(npm root -g) node scripts/catalog-test.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

@@ -21,7 +21,9 @@ const INDEX_CACHE = 'bbx-pkg-index';
 export type ExternalKind = 'wasm' | 'js' | 'script';
 export interface PackageFile {
   path: string;
-  url: string;
+  /** Where to download it; or `text` holds it (a small wrapper script kept in the index). */
+  url?: string;
+  text?: string;
   sha256: string;
   bytes?: number;
 }
@@ -34,9 +36,17 @@ export interface ExternalPackage {
   homepage?: string;
   files: PackageFile[];
   /** Command name → the file that runs it (and fixed leading arguments). */
-  commands: Record<string, { run: string; args?: string[] }>;
+  commands: Record<string, PackageCommand>;
   /** Other packages first, as `id` or `id>=1.2`. */
   depends?: string[];
+}
+export interface PackageCommand {
+  /** The file that runs. */
+  run: string;
+  /** Fixed leading arguments. */
+  args?: string[];
+  /** JavaScript packages: library files loaded first, which `run` gets with `require(path)`. */
+  load?: string[];
 }
 export interface PackageSource {
   url: string;
@@ -67,15 +77,34 @@ export function validatePackage(p: unknown): ExternalPackage {
   if (!Array.isArray(x.files) || !x.files.length) bad('no files');
   for (const f of x.files) {
     if (typeof f?.path !== 'string' || !f.path || f.path.includes('..') || f.path.startsWith('/')) bad(`file path ${f?.path}`);
-    if (typeof f.url !== 'string' || !/^https?:\/\//.test(f.url)) bad(`file url ${f.url}`);
+    if (typeof f.text === 'string') {
+      if (f.url !== undefined) bad(`file ${f.path} has both url and text`);
+    } else if (typeof f.url !== 'string' || !/^https?:\/\//.test(f.url)) bad(`file url ${f.url}`);
     if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) bad(`file ${f.path} needs a sha256`);
   }
   if (!x.commands || typeof x.commands !== 'object' || !Object.keys(x.commands).length) bad('no commands');
   for (const [name, c] of Object.entries(x.commands)) {
     if (!CMD.test(name)) bad(`command name ${name}`);
     if (!x.files.some((f) => f.path === c?.run)) bad(`command ${name} runs ${c?.run}, which is not one of its files`);
+    if (c.load !== undefined) {
+      if (x.kind !== 'js') bad(`command ${name}: only JavaScript packages load files`);
+      if (!Array.isArray(c.load) || c.load.some((l) => !x.files.some((f) => f.path === l))) bad(`command ${name} loads a file that is not one of its files`);
+    }
   }
   return { ...x, summary: typeof x.summary === 'string' ? x.summary : '', depends: Array.isArray(x.depends) ? x.depends.filter((d) => typeof d === 'string') : [] };
+}
+
+/**
+ * A JavaScript program with libraries: each library runs once with its own
+ * `module`/`exports` (so UMD and CommonJS builds export there), and the entry
+ * gets them with `require(path)`.
+ */
+export function bundleJs(libs: ReadonlyArray<readonly [string, string]>, entry: string): string {
+  const parts = libs.map(
+    ([path, code]) =>
+      `{ const module = { exports: {} }; (function (module, exports, define, self, window) {\n${code}\n}).call(globalThis, module, module.exports, undefined, globalThis, globalThis); __libs[${JSON.stringify(path)}] = module.exports; }`,
+  );
+  return `const __libs = {};\n${parts.join('\n')}\nconst require = (p) => { const m = __libs[p] ?? __libs[String(p).replace(/^\\.\\//, '')]; if (m === undefined) throw new Error('cannot require ' + p); return m; };\n${entry}`;
 }
 
 /** Compares dotted versions numerically (1.10 > 1.9); non-numeric parts compare as text. */
@@ -337,6 +366,11 @@ export class PackageManager {
     let loaded = 0;
     progress?.(0, total);
     for (const f of pkg.files) {
+      if (f.url === undefined) {
+        // Kept in the record itself: only its checksum to check.
+        if ((await sha256(new TextEncoder().encode(f.text ?? ''))) !== f.sha256) throw new Error(`${pkg.id}: ${f.path} does not match its sha256. Not installed.`);
+        continue;
+      }
       const hit = await cache.match(f.url);
       if (hit && (await sha256(new Uint8Array(await hit.clone().arrayBuffer()))) === f.sha256) {
         loaded += f.bytes ?? 0;
@@ -381,7 +415,7 @@ export class PackageManager {
     const cache = await caches.open(PACKAGE_CACHE);
     // Keep a file another installed package still uses.
     const used = new Set(Object.values(rest).flatMap((r) => r.pkg.files.map((f) => f.url)));
-    for (const f of rec.pkg.files) if (!used.has(f.url)) await cache.delete(f.url);
+    for (const f of rec.pkg.files) if (f.url && !used.has(f.url)) await cache.delete(f.url);
     this.os.log('pkg', `removed ${id}`);
   }
 
@@ -402,6 +436,10 @@ export class PackageManager {
     for (const r of Object.values(this.externals())) {
       if (ids?.length && !ids.includes(r.pkg.id)) continue;
       for (const f of r.pkg.files) {
+        if (f.url === undefined) {
+          if ((await sha256(new TextEncoder().encode(f.text ?? ''))) !== f.sha256) bad.push({ id: r.pkg.id, path: f.path, problem: 'changed' });
+          continue;
+        }
         const hit = await cache.match(f.url);
         if (!hit) bad.push({ id: r.pkg.id, path: f.path, problem: 'missing' });
         else if ((await sha256(new Uint8Array(await hit.arrayBuffer()))) !== f.sha256) bad.push({ id: r.pkg.id, path: f.path, problem: 'changed' });
@@ -410,19 +448,27 @@ export class PackageManager {
     return bad;
   }
 
-  /** An installed package's command: what runs it, and its file's bytes. */
-  externalCommand(name: string): { pkg: ExternalPackage; entry: { run: string; args?: string[] }; file(): Promise<Uint8Array> } | null {
+  /** An installed package's command: what runs it, and its file's bytes (a JavaScript entry with its libraries loaded first). */
+  externalCommand(name: string): { pkg: ExternalPackage; entry: PackageCommand; file(): Promise<Uint8Array> } | null {
     for (const r of Object.values(this.externals())) {
       const entry = r.pkg.commands[name];
       if (!entry) continue;
-      const f = r.pkg.files.find((x) => x.path === entry.run)!;
+      const read = async (path: string): Promise<Uint8Array> => {
+        const f = r.pkg.files.find((x) => x.path === path);
+        if (!f) throw new Error(`${r.pkg.id}: no file ${path}`);
+        if (f.url === undefined) return new TextEncoder().encode(f.text ?? '');
+        const hit = await (await caches.open(PACKAGE_CACHE)).match(f.url);
+        if (!hit) throw new Error(`${r.pkg.id}: ${f.path} is missing from the cache. Run: pkg install ${r.pkg.id}`);
+        return new Uint8Array(await hit.arrayBuffer());
+      };
       return {
         pkg: r.pkg,
         entry,
         file: async () => {
-          const hit = await (await caches.open(PACKAGE_CACHE)).match(f.url);
-          if (!hit) throw new Error(`${r.pkg.id}: ${f.path} is missing from the cache. Run: pkg install ${r.pkg.id}`);
-          return new Uint8Array(await hit.arrayBuffer());
+          if (!entry.load?.length) return read(entry.run);
+          const dec = new TextDecoder();
+          const libs = await Promise.all(entry.load.map(async (path) => [path, dec.decode(await read(path))] as const));
+          return new TextEncoder().encode(bundleJs(libs, dec.decode(await read(entry.run))));
         },
       };
     }

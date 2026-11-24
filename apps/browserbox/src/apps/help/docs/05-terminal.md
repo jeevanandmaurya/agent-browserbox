@@ -36,7 +36,19 @@ Besides the built-in packages above, `pkg` installs programs described by a pack
 | `pkg why <id>` | which packages need it |
 | `pkg source list`, `add <url>`, `remove <url>` | the indexes `pkg` uses |
 
+The official index has:
+
+| Package | Gives you |
+| --- | --- |
+| quickjs | `qjs`, a small JavaScript interpreter (QuickJS-ng) |
+| ripgrep | `rg`, fast search through files |
+| prettier | `prettier` to format JS, TS, CSS, JSON, Markdown, HTML, YAML (`--write`, `--check`) |
+| marked | `marked notes.md -o notes.html --page`: Markdown to HTML |
+| yaml | `yaml2json`, `json2yaml` |
+
 The official index installs without asking. Adding another index asks once; only a person typing in a terminal can confirm, so the agent and scripts install from the official index only.
+
+JavaScript programs (`.js` in `~/.local/bin`, or a package) get `fs`, `print`, `console`, `args`, `env`, `stdin` and `exit(code)`.
 
 Your own commands: put a `name`, `name.wasm`, `name.js` or `name.sh` file in `~/.local/bin` and type `name`. WebAssembly programs see the folder they run in, and can read, write, rename and delete files there (not above it).
 

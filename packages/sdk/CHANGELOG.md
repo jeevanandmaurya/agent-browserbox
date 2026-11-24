@@ -25,6 +25,15 @@ the GitHub release notes.
   working folder (preopened as `.` and its absolute path), with read, write,
   seek, mkdir, rename, delete, readdir and stat; changes are written back.
   Paths outside it are refused. `PWD` and the user's variables are set.
+- **The official package index** has its first packages, each file pinned
+  by sha256 to its upstream build on jsDelivr and tested in the app:
+  quickjs (`qjs`), ripgrep (`rg`), prettier, marked, and yaml (`yaml2json`,
+  `json2yaml`). The format and how to add one: `packages/runtime/catalog/`.
+- **JavaScript packages**: a file can be inline `text` (a wrapper kept in
+  the index), and a command can `load` library files first, which the
+  program gets with `require(path)` (UMD and CommonJS builds work).
+- **JavaScript programs** (`js`, packages, `~/.local/bin`) get `stdin` and
+  `exit(code)`.
 
 ## 0.3.1
 

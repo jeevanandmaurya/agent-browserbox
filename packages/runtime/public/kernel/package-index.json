@@ -1,1 +1,205 @@
-{ "packages": [] }
+{
+ "updated": "2026-11-24",
+ "packages": [
+  {
+   "id": "quickjs",
+   "version": "0.18.0",
+   "kind": "wasm",
+   "summary": "QuickJS-ng, a small JavaScript interpreter: qjs file.js, qjs -e \"code\"",
+   "license": "MIT",
+   "homepage": "https://quickjs-ng.github.io/quickjs/",
+   "commands": {
+    "qjs": {
+     "run": "qjs.wasm"
+    }
+   },
+   "files": [
+    {
+     "path": "qjs.wasm",
+     "url": "https://cdn.jsdelivr.net/npm/@ai-ecoverse/wasi-quickjs@0.18.0-1/bin/qjs.wasm",
+     "sha256": "112609c7a1f9e9c847df7f103171057f1a6054e8fc20a06d203d13132e60281f",
+     "bytes": 1076331
+    }
+   ]
+  },
+  {
+   "id": "ripgrep",
+   "version": "15.2.0",
+   "kind": "wasm",
+   "summary": "ripgrep: fast recursive search (rg pattern [path])",
+   "license": "MIT OR Unlicense",
+   "homepage": "https://github.com/BurntSushi/ripgrep",
+   "commands": {
+    "rg": {
+     "run": "rg.wasm"
+    }
+   },
+   "files": [
+    {
+     "path": "rg.wasm",
+     "url": "https://cdn.jsdelivr.net/npm/@ai-ecoverse/wasi-ripgrep@15.2.0-5/bin/rg.wasm",
+     "sha256": "133aa291b5bcfd9e24edb6eddf11766bf6757c38c76d0f5badfc05f18c669dd1",
+     "bytes": 3051673
+    }
+   ]
+  },
+  {
+   "id": "prettier",
+   "version": "3.10.1",
+   "kind": "js",
+   "summary": "Prettier: formats JavaScript, TypeScript, CSS, JSON, Markdown, HTML, YAML and GraphQL",
+   "license": "MIT",
+   "homepage": "https://prettier.io",
+   "commands": {
+    "prettier": {
+     "run": "prettier.js",
+     "load": [
+      "standalone.js",
+      "plugins/babel.js",
+      "plugins/estree.js",
+      "plugins/typescript.js",
+      "plugins/postcss.js",
+      "plugins/markdown.js",
+      "plugins/html.js",
+      "plugins/yaml.js",
+      "plugins/graphql.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "standalone.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/standalone.js",
+     "sha256": "de3f2d161cca96802c4c511acb17d11a64ae0ba43be8ddcda5b7df48829c97b0",
+     "bytes": 85210
+    },
+    {
+     "path": "plugins/babel.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/babel.js",
+     "sha256": "78ec0c9b08128b8d01e79a1b1f67dda19ac099cf5fd82b7d601308b4047e8de3",
+     "bytes": 319739
+    },
+    {
+     "path": "plugins/estree.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/estree.js",
+     "sha256": "345cae914870a386045a4b951e3954287149e502c791d23125b548246911152f",
+     "bytes": 220845
+    },
+    {
+     "path": "plugins/typescript.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/typescript.js",
+     "sha256": "9c1b3055e18e29378c3f147d9c7967801f6a2405db3fc85a4b08a0f4c484ff24",
+     "bytes": 903594
+    },
+    {
+     "path": "plugins/postcss.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/postcss.js",
+     "sha256": "ca8f2237eba2e9ec2e14b47e0f1ba3dc5db1b06ac3aea9564454a008dd7b273f",
+     "bytes": 165152
+    },
+    {
+     "path": "plugins/markdown.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/markdown.js",
+     "sha256": "b47503573f754e1ecd625ed968e05859580ca06a93467ca8cc8a87a3f7b9c728",
+     "bytes": 296768
+    },
+    {
+     "path": "plugins/html.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/html.js",
+     "sha256": "a0beaf2d7a2ff3437152b6d74481f39dc23889960cdf68b1aa73e6ccfe322eb3",
+     "bytes": 173230
+    },
+    {
+     "path": "plugins/yaml.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/yaml.js",
+     "sha256": "0e0c66c575cfad060fba7d95bbc5507483d9b362c95096723327aeba2d563c98",
+     "bytes": 136822
+    },
+    {
+     "path": "plugins/graphql.js",
+     "url": "https://cdn.jsdelivr.net/npm/prettier@3.10.1/plugins/graphql.js",
+     "sha256": "a2bb418c36fce8c4d40cab07b04f0b5d9f8bbe811604c83d4f763af9b9dfeb5d",
+     "bytes": 47162
+    },
+    {
+     "path": "prettier.js",
+     "text": "// prettier: formats files with Prettier (its standalone build and plugins).\nconst prettier = require('standalone.js');\nconst plugins = ['babel', 'estree', 'typescript', 'postcss', 'markdown', 'html', 'yaml', 'graphql'].map((p) => require(`plugins/${p}.js`));\nconst usage = `usage: prettier [--write | --check] [options] file...\n  (no flag)          print the formatted file\n  -w, --write        format the files in place\n  -c, --check        list files that are not formatted (exit 1 if any)\n  --parser NAME      babel, typescript, css, scss, less, json, markdown, html, vue, yaml, graphql\n  --stdin-filepath F format stdin as if it were the file F\n  --print-width N  --tab-width N  --use-tabs  --single-quote  --no-semi  --trailing-comma all|es5|none\nOptions also come from .prettierrc (JSON) in the folder.`;\nconst opts = {};\nlet mode = 'print';\nconst files = [];\nfor (let i = 0; i < args.length; i++) {\n  const a = args[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  else if (a === '-v' || a === '--version') return print(prettier.version);\n  else if (a === '-w' || a === '--write') mode = 'write';\n  else if (a === '-c' || a === '--check' || a === '-l' || a === '--list-different') mode = 'check';\n  else if (a === '--parser') opts.parser = args[++i];\n  else if (a === '--stdin-filepath') opts.filepath = args[++i];\n  else if (a === '--print-width') opts.printWidth = Number(args[++i]);\n  else if (a === '--tab-width') opts.tabWidth = Number(args[++i]);\n  else if (a === '--use-tabs') opts.useTabs = true;\n  else if (a === '--single-quote') opts.singleQuote = true;\n  else if (a === '--no-semi') opts.semi = false;\n  else if (a === '--trailing-comma') opts.trailingComma = args[++i];\n  else if (a.startsWith('-')) {\n    console.error(`prettier: unknown option ${a}\\n${usage}`);\n    exit(2);\n  } else files.push(a);\n}\nlet config = {};\nif (await fs.exists('.prettierrc')) {\n  try {\n    config = JSON.parse(await fs.readText('.prettierrc'));\n  } catch {\n    console.error('prettier: .prettierrc is not JSON; ignoring it');\n  }\n}\nif (!files.length) {\n  if (!stdin) return print(usage);\n  if (!opts.parser && !opts.filepath) {\n    console.error('prettier: formatting stdin needs --parser or --stdin-filepath');\n    exit(2);\n  }\n  const outText = await prettier.format(stdin, { ...config, ...opts, plugins });\n  return void console.log(outText.replace(/\\n$/, ''));\n}\nlet failed = 0;\nlet unformatted = 0;\nfor (const file of files) {\n  try {\n    const text = await fs.readText(file);\n    const o = { ...config, ...opts, filepath: file, plugins };\n    if (mode === 'check') {\n      if (!(await prettier.check(text, o))) (unformatted++, print(file));\n      continue;\n    }\n    const formatted = await prettier.format(text, o);\n    if (mode === 'write') {\n      if (formatted !== text) await fs.writeFile(file, formatted);\n      print(`${file}${formatted === text ? ' (unchanged)' : ''}`);\n    } else console.log(formatted.replace(/\\n$/, ''));\n  } catch (e) {\n    failed++;\n    console.error(`${file}: ${String(e?.message ?? e).split('\\n')[0]}`);\n  }\n}\nif (failed) exit(2);\nif (unformatted) exit(1);\n",
+     "sha256": "aae8ce327abe4ee8d0f6cc5621b51724e3ed040f4643152db8b1484a95b64097",
+     "bytes": 3110
+    }
+   ]
+  },
+  {
+   "id": "marked",
+   "version": "18.3.0",
+   "kind": "js",
+   "summary": "marked: Markdown to HTML (marked notes.md -o notes.html --page)",
+   "license": "MIT",
+   "homepage": "https://marked.js.org",
+   "commands": {
+    "marked": {
+     "run": "marked.js",
+     "load": [
+      "lib/marked.umd.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "lib/marked.umd.js",
+     "url": "https://cdn.jsdelivr.net/npm/marked@18.3.0/lib/marked.umd.js",
+     "sha256": "f8c7f128939415995e2219e8a84bec42fab27f5980d22e361339e6901da5eadf",
+     "bytes": 55534
+    },
+    {
+     "path": "marked.js",
+     "text": "// marked: converts Markdown to HTML.\nconst { marked } = require('lib/marked.umd.js');\nconst usage = `usage: marked [file] [-o out.html] [--page] [--breaks] [--no-gfm]\n  Reads the file (or stdin) and prints HTML, or writes it with -o.\n  --page     a whole HTML page (with a title and simple styles), not a fragment`;\nlet input = null;\nlet output = null;\nlet page = false;\nconst o = { gfm: true, breaks: false };\nfor (let i = 0; i < args.length; i++) {\n  const a = args[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  else if (a === '-o' || a === '--output') output = args[++i];\n  else if (a === '--page' || a === '-s' || a === '--standalone') page = true;\n  else if (a === '--breaks') o.breaks = true;\n  else if (a === '--no-gfm') o.gfm = false;\n  else if (a.startsWith('-')) {\n    console.error(`marked: unknown option ${a}\\n${usage}`);\n    exit(2);\n  } else input = a;\n}\nconst md = input ? await fs.readText(input) : stdin;\nif (!md && !input) return print(usage);\nlet html = await marked.parse(md, o);\nif (page) {\n  const title = (/^#\\s+(.+)$/m.exec(md)?.[1] ?? (input ?? 'Document')).replace(/[<&>\"]/g, (c) => `&#${c.charCodeAt(0)};`);\n  html = `<!doctype html>\\n<html lang=\"en\">\\n<head>\\n<meta charset=\"utf-8\">\\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\\n<title>${title}</title>\\n<style>body{font:16px/1.6 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#222}pre{background:#f4f4f4;padding:.75rem;overflow:auto}code{font-family:ui-monospace,monospace}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:.25rem .5rem}img{max-width:100%}@media (prefers-color-scheme:dark){body{background:#161616;color:#ddd}pre{background:#222}}</style>\\n</head>\\n<body>\\n${html}</body>\\n</html>\\n`;\n}\nif (output) {\n  await fs.writeFile(output, html);\n  print(`wrote ${output}`);\n} else console.log(html.replace(/\\n$/, ''));\n",
+     "sha256": "31ade6e5d1c7494ee1d824a944dfc2c1529fd4cdf7928485114ce688d81e2137",
+     "bytes": 1894
+    }
+   ]
+  },
+  {
+   "id": "yaml",
+   "version": "4.1.0",
+   "kind": "js",
+   "summary": "yaml2json and json2yaml (js-yaml)",
+   "license": "MIT",
+   "homepage": "https://github.com/nodeca/js-yaml",
+   "commands": {
+    "yaml2json": {
+     "run": "yaml.js",
+     "args": [
+      "--to-json"
+     ],
+     "load": [
+      "dist/js-yaml.min.js"
+     ]
+    },
+    "json2yaml": {
+     "run": "yaml.js",
+     "args": [
+      "--to-yaml"
+     ],
+     "load": [
+      "dist/js-yaml.min.js"
+     ]
+    }
+   },
+   "files": [
+    {
+     "path": "dist/js-yaml.min.js",
+     "url": "https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js",
+     "sha256": "45dc3dd03dc07a06705a2c2989b8c7f709013f04bd5386e3279d4e447f07ebd7",
+     "bytes": 39430
+    },
+    {
+     "path": "yaml.js",
+     "text": "// yaml2json / json2yaml: converts between YAML and JSON (js-yaml).\nconst yaml = require('dist/js-yaml.min.js');\nconst toJson = args[0] === '--to-json';\nconst rest = args.slice(1);\nconst name = toJson ? 'yaml2json' : 'json2yaml';\nconst usage = `usage: ${name} [file] [-o out] ${toJson ? '[--indent N] [--compact]' : '[--indent N]'}\\n  Reads the file (or stdin) and prints ${toJson ? 'JSON' : 'YAML'}, or writes it with -o.`;\nlet input = null;\nlet output = null;\nlet indent = 2;\nfor (let i = 0; i < rest.length; i++) {\n  const a = rest[i];\n  if (a === '-h' || a === '--help') return print(usage);\n  else if (a === '-o' || a === '--output') output = rest[++i];\n  else if (a === '--indent') indent = Number(rest[++i]) || 2;\n  else if (a === '--compact') indent = 0;\n  else if (a.startsWith('-')) {\n    console.error(`${name}: unknown option ${a}\\n${usage}`);\n    exit(2);\n  } else input = a;\n}\nconst text = input ? await fs.readText(input) : stdin;\nif (!text && !input) return print(usage);\nlet result;\ntry {\n  if (toJson) {\n    const docs = yaml.loadAll(text);\n    result = JSON.stringify(docs.length === 1 ? docs[0] : docs, null, indent || undefined) + '\\n';\n  } else result = yaml.dump(JSON.parse(text), { indent, lineWidth: 100, noRefs: true });\n} catch (e) {\n  console.error(`${name}: ${String(e?.message ?? e)}`);\n  exit(1);\n}\nif (output) {\n  await fs.writeFile(output, result);\n  print(`wrote ${output}`);\n} else console.log(result.replace(/\\n$/, ''));\n",
+     "sha256": "bc93692ddc94f2738072319294704abdf11dfc2bc664a7284beab6b59327f4a1",
+     "bytes": 1457
+    }
+   ]
+  }
+ ]
+}

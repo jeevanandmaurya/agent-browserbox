@@ -168,7 +168,7 @@ export const pkgCommand: Command = {
         if (os.packages.manifests().some((m) => m.id === names[0])) return void out(`${names[0]} is built into BrowserBox: its code is part of the runtime.\n`);
         throw new Error(`${names[0] ?? ''} is not installed`);
       }
-      for (const f of rec.pkg.files) out(`${f.path}  ${f.bytes ? fmtBytes(f.bytes).padStart(8) : ''}  sha256 ${f.sha256.slice(0, 16)}…  ${C.dim}${f.url}${C.reset}\n`);
+      for (const f of rec.pkg.files) out(`${f.path}  ${f.bytes ? fmtBytes(f.bytes).padStart(8) : ''}  sha256 ${f.sha256.slice(0, 16)}…  ${C.dim}${f.url ?? '(in the index)'}${C.reset}\n`);
       return;
     }
 
