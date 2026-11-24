@@ -1,5 +1,5 @@
 import { agentsOf } from '@/app/agents';
-import { builtinAvailability, DEFAULT_CONFIG, API_PRESETS, LOCAL_PRESETS, SECRET, loadConfig, protocolOf, saveConfig, type AgentConfig, type ProviderId } from '@jeevanand/agent-browserbox/ui';
+import { builtinAvailability, DEFAULT_CONFIG, API_PRESETS, LOCAL_PRESETS, SEARCH_SERVICES, SECRET, hasServerWebTools, loadConfig, protocolOf, saveConfig, type AgentConfig, type ProviderId, type WebSearchService } from '@jeevanand/agent-browserbox/ui';
 import type { AppContext } from '@/ui/apps';
 import { debounce, h } from '@/ui/dom';
 import { keyField } from './keyfield';
@@ -240,6 +240,28 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
   });
   const autoCompact = h('input', { type: 'checkbox', checked: cfg.autoCompact, onchange: () => save({ autoCompact: autoCompact.checked }) });
 
+  // ---- Web search for models without their own (Anthropic's API has it built in)
+  const serverNote = h('p', { class: 'muted st-note', role: 'status' });
+  const syncServerNote = () => {
+    serverNote.textContent = hasServerWebTools(cfg)
+      ? 'The model you use now (Anthropic’s API) searches and reads the web on Anthropic’s side; these settings apply to the other models.'
+      : 'The agent searches and reads the web from this browser. Most search engines do not accept requests from web pages; these do, with your key.';
+  };
+  syncServerNote();
+  const service = h(
+    'select',
+    { class: 'select', onchange: () => save({ webSearch: service.value as WebSearchService }) },
+    h('option', { value: 'auto' }, 'Automatic: the first service below with a key, else Wikipedia'),
+    ...SEARCH_SERVICES.map((s) => h('option', { value: s.id }, s.name)),
+    h('option', { value: 'wikipedia' }, 'Wikipedia only (no key)'),
+    h('option', { value: 'off' }, 'Off'),
+  ) as HTMLSelectElement;
+  service.value = cfg.webSearch;
+  const reader = h('input', { type: 'checkbox', checked: cfg.jinaReader, onchange: () => save({ jinaReader: reader.checked }) });
+  const searchKeys = SEARCH_SERVICES.map((s) =>
+    keyField(ctx, { secret: s.secret, label: `${s.name} key`, placeholder: `Key from ${s.site.replace(/^https:\/\//, '')}`, note: `${s.hint} Stored encrypted; sent only to ${s.name}.`, onSaved: saved }),
+  );
+
   return h(
     'div',
     { class: 'st-section' },
@@ -250,6 +272,12 @@ export function modelSection(ctx: AppContext, saved: () => void): HTMLElement {
     field('Model for sub-agents (API only)', subModel, 'A model id on the same API for sub-agents, e.g. a faster, cheaper one for exploring. Custom agents can name their own with model: in their file.'),
     field('Max steps per message', maxSteps, 'Upper limit on model ↔ tool round trips before the agent stops and reports back.'),
     field('Extra instructions', instructions, 'Appended to the agent’s system prompt.'),
+    h('h3', null, 'Web search'),
+    serverNote,
+    field('Search with', service, 'Queries go to the service you choose. Without a key, the agent can only search Wikipedia, and tells you so.'),
+    ...searchKeys,
+    h('label', { class: 'st-check' }, reader, 'Read pages that refuse web pages through Jina Reader (r.jina.ai)'),
+    h('p', { class: 'muted st-note' }, 'Many sites do not let a web page read them. With this on, the agent reads them through Jina Reader, which then sees the page’s address (not your files or keys). Works without a key, with a rate limit; a Jina key above raises it.'),
     h('h3', null, 'Context'),
     h('label', { class: 'st-check' }, autoCompact, 'Summarise the conversation automatically when the context window is 85% full'),
     h('p', { class: 'muted st-note' }, 'The summary replaces the older messages for the model; the full history stays visible in the chat. You can also compact any time with /compact or the meter in the header.'),

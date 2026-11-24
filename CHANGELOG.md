@@ -7,6 +7,13 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
 ## 0.4.3 (not released yet)
 
+- **Web search for every model**: `web_search` and `web_fetch` now work with
+  Gemini, OpenAI-compatible, local and in-browser models too (Anthropic's API
+  keeps its own). Search uses the service you choose in Settings → Model →
+  Web search with your key (Tavily, Serper for Google results, or Jina
+  Search), or Wikipedia without one, and says so. Pages that do not let web
+  pages read them are read through Jina Reader, which you can turn off.
+
 - **Interactive replies**: the agent can put UI in its answers (cards,
   figures, charts, sortable tables, progress, checklists, buttons, choices
   and forms), written as a ```ui block in a small line-based language (a

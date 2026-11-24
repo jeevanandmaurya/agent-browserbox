@@ -34,6 +34,14 @@ export interface AgentConfig {
    * e.g. ollama.com. Requests go to `<relay>/<full API URL>`; see relay/worker.js.
    */
   corsRelay: string;
+  /**
+   * Web search for models without their own (everything but Anthropic's API):
+   * a service with your key, Wikipedia only, or none. 'auto': the first service
+   * with a key saved, else Wikipedia.
+   */
+  webSearch: WebSearchService;
+  /** web_fetch may read pages that refuse web pages through Jina Reader (r.jina.ai), which then sees their address. */
+  jinaReader: boolean;
   /** The host an API key saved before 0.3 (one key for every OpenAI-compatible API) belongs to. */
   legacyKeyHost?: string;
 }
@@ -51,7 +59,18 @@ export const DEFAULT_CONFIG: AgentConfig = {
   contextWindow: 32768,
   autoCompact: true,
   corsRelay: '',
+  webSearch: 'auto',
+  jinaReader: true,
 };
+
+export type WebSearchService = 'auto' | 'tavily' | 'serper' | 'jina' | 'wikipedia' | 'off';
+
+/** Search services the browser may call (they allow web pages), with where their keys are kept. */
+export const SEARCH_SERVICES = [
+  { id: 'tavily', name: 'Tavily', secret: 'search.tavily', site: 'https://tavily.com', hint: 'Made for AI agents: results with page excerpts. Free tier.' },
+  { id: 'serper', name: 'Serper (Google results)', secret: 'search.serper', site: 'https://serper.dev', hint: 'Google’s results. Free tier.' },
+  { id: 'jina', name: 'Jina Search', secret: 'search.jina', site: 'https://jina.ai', hint: 'The same key also raises Jina Reader’s rate limit.' },
+] as const;
 
 /** Model servers you run yourself; they speak the OpenAI chat-completions protocol. */
 export const LOCAL_PRESETS = [
@@ -138,6 +157,9 @@ export async function migrateKeys(os: WithSettings & { secrets: SecretStore }): 
 export function hasServerWebTools(cfg: AgentConfig): boolean {
   return cfg.provider === 'api' && protocolOf(cfg.apiBaseUrl) === 'anthropic';
 }
+
+/** web_search and web_fetch run in the browser: every model but those with server-side web tools. */
+export const hasBrowserWebTools = (cfg: AgentConfig): boolean => !hasServerWebTools(cfg) && (cfg.webSearch ?? 'auto') !== 'off';
 
 const KEY = 'agent.config';
 

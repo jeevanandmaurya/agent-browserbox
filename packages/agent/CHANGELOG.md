@@ -5,6 +5,13 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.3 (not released yet)
 
+- `web_search` and `web_fetch` tools running in the browser, offered when
+  the provider has no server-side web tools (`hasBrowserWebTools`): search
+  via Tavily, Serper or Jina Search (keys `search.tavily`, `search.serper`,
+  `search.jina`), else Wikipedia; pages directly, else through Jina Reader
+  (`jinaReader`). Config `webSearch` ('auto' | service | 'wikipedia' |
+  'off'), `SEARCH_SERVICES`. They run concurrently with other read-only tools.
+
 - Interactive replies: `UI_COMPONENTS`, `UI_ACTIONS` and `uiPrompt()`
   (ui-spec.ts) describe the components of ```ui blocks; the prompt teaches
   them when the host sets `AgentUi.blocks` (`AgentOs.uiBlocks`), never to

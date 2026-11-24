@@ -6,7 +6,7 @@ import type { Proc } from './host/os.js';
 import { isInside, resolve } from './host/path.js';
 import { listApps } from './host/os.js';
 import { Shell } from './host/os.js';
-import { describeModel, hasServerWebTools, loadConfig } from './config.js';
+import { describeModel, hasBrowserWebTools, hasServerWebTools, loadConfig } from './config.js';
 import { buildSystemPrompt } from './prompt.js';
 import { IMAGE_TOKENS, imageRef, withImageData } from './images.js';
 import { decide, describeRule, loadRules } from './rules.js';
@@ -70,7 +70,7 @@ const PLAN_TOOLS = new Set(['read_artifact', 'read_file', 'view_image', 'list_di
  * in order, even without a permission prompt: two edits of one file at once
  * would each start from the original, and the second would undo the first.
  */
-const READ_ONLY = new Set(['read_artifact', 'read_file', 'view_image', 'list_dir', 'glob', 'grep', 'system_info', 'list_processes', 'use_skill', 'preview_logs']);
+const READ_ONLY = new Set(['web_search', 'web_fetch', 'read_artifact', 'read_file', 'view_image', 'list_dir', 'glob', 'grep', 'system_info', 'list_processes', 'use_skill', 'preview_logs']);
 /** An http_fetch that only reads: what plan mode allows of it. */
 const readsOnly = (call: { name: string; input: Record<string, unknown> }) => call.name !== 'http_fetch' || ((call.input.method === undefined || String(call.input.method).toUpperCase() === 'GET') && call.input.save_to === undefined);
 const PLAN_NOTE =
@@ -303,6 +303,7 @@ export class Agent {
           .filter((t) => this.#depth === 0 || !['spawn_agent', 'ask_user'].includes(t.name))
           .filter((t) => t.name !== 'open_app' || listApps().length > 0) // a headless runtime has no apps
           .filter((t) => t.name !== 'preview' || !!this.os.preview) // pages need a window to run in
+          .filter((t) => (t.name !== 'web_search' && t.name !== 'web_fetch') || hasBrowserWebTools(cfg)) // Anthropic's API brings its own
           .filter((t) => !allowed || allowed.has(t.name))
           .filter((t) => t.name !== 'memory' || autoMemory(this.os)) // the user can turn off memories the agent saves itself
           .filter((t) => !opts.plan || PLAN_TOOLS.has(t.name));
@@ -502,7 +503,7 @@ export class Agent {
    * one gets a shorter prompt), web tools or extra instructions rebuild it.
    */
   async #ensureSystem(cfg: ReturnType<typeof loadConfig>, lite: boolean): Promise<void> {
-    const key = JSON.stringify([lite, hasServerWebTools(cfg), cfg.instructions]);
+    const key = JSON.stringify([lite, hasServerWebTools(cfg), hasBrowserWebTools(cfg), cfg.instructions]);
     if (this.#system !== null && key === this.#systemKey) return;
     this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona, project: this.project, folder: this.folder });
     this.#systemKey = key;

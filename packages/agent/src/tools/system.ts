@@ -13,7 +13,7 @@ function ui(tc: ToolContext) {
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
 /** Reduces an HTML document to readable text so pages fit in context. (No DOM: this runs in the kernel worker.) */
-function htmlToText(html: string): string {
+export function htmlToText(html: string): string {
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim();
   const text = html
     .replace(/<(script|style|noscript|svg|iframe|template|head)\b[\s\S]*?<\/\1>/gi, ' ')

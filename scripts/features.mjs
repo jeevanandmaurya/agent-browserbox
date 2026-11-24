@@ -64,6 +64,12 @@ function respond(r) {
     if (last.content.startsWith('EVAL')) return call('preview', { action: 'screenshot' });
     if (last.content.startsWith('Screenshot')) return text(`PREVIEW DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.split('\n')[0]).join(' | ')}`);
   }
+  // Web search in the browser: search, then read a page that does not let web pages read it.
+  if (lastUser.includes('look it up on the web')) {
+    if (last.role === 'user') return call('web_search', { query: 'Riemann hypothesis', max_results: 3 });
+    if (last.content.startsWith('Results from')) return call('web_fetch', { url: 'https://www.iana.org/help/example-domains', max_chars: 3000 });
+    return text(`WEB DONE ${msgs.filter((m) => m.role === 'tool').map((m) => m.content.slice(0, 400).replace(/\n/g, ' / ')).join(' | ')}`);
+  }
   // Background jobs: start one, keep going, then read how it ended.
   if (lastUser.includes('count in the background')) {
     if (last.role === 'user') return call('shell', { command: 'echo start; sleep 2; echo finished', background: true });
@@ -2090,6 +2096,36 @@ await check('updates: a newer version on the site shows a banner, and Update now
     await p.waitForTimeout(5000);
     if (await banner.count()) throw new Error('Later did not keep it quiet for this version');
     return `"${text.replace(/\n/g, ' · ')}"; Update now reloaded; Later keeps it quiet until the next version`;
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('web search for any model: Wikipedia without a key, and a page read through Jina Reader (live)', async () => {
+  // Wikimedia limits headless browsers by their name; a person's Chrome is not.
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' });
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(() => (bbx.perms.mode = 'auto'));
+    const before = requests.length;
+    await p.locator('.ag-input').fill('look it up on the web');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('WEB DONE'), null, { timeout: 90000 });
+    const tools = requests[before].tools.map((t) => t.function.name);
+    if (!tools.includes('web_search') || !tools.includes('web_fetch')) throw new Error(`tools offered: ${tools.join(', ')}`);
+    if (!requests[before].messages[0].content.includes('do not write fetch code for searching')) throw new Error('the prompt does not point to the web tools');
+    const said = await p.evaluate(() => document.querySelector('.ag-log').innerText.match(/WEB DONE[^\n]*/)[0]);
+    if (!said.includes('Results from Wikipedia for “Riemann hypothesis”') || !said.includes('en.wikipedia.org/wiki/Riemann_hypothesis')) throw new Error(`search: ${said.slice(0, 500)}`);
+    if (!/example-domains[^|]*(Example Domains|example\.com)/i.test(said)) throw new Error(`fetch: ${said.slice(-500)}`);
+    const via = said.includes('read through Jina Reader') ? 'through Jina Reader' : 'directly';
+    return `searched Wikipedia (no key), read iana.org ${via}`;
   } finally {
     await ctx.close();
   }
