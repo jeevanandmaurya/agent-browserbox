@@ -5,6 +5,8 @@ new" part of the GitHub release notes (`agent-v*`).
 
 ## 0.4.0
 
+- Fixed: the package list in the prompt had a bogus `=` entry (the legend
+  under `pkg list` was read as a package).
 - `AgentInfo.waiting` (from `live()`): the chat waits for an approval or an
   answer (agent process ids belong to the host's own table).
 - **The browser's built-in model** (`provider: 'builtin'`, Chrome's Prompt

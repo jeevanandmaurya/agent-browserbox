@@ -69,9 +69,25 @@ export class Transcript {
     this.#diffs.clear();
   }
 
+  /**
+   * Whether the chat follows new output: true until you scroll up, true again
+   * once you scroll back to the end. Measured when you scroll, not after new
+   * content arrives (a tall tool card or diff would otherwise end following).
+   */
+  #follow = true;
+  #watched: HTMLElement | null = null;
+
   #scroll(force = false): void {
     const s = this.el.closest<HTMLElement>('.ag-scroll');
-    if (s && (force || s.scrollHeight - s.scrollTop - s.clientHeight < 160)) s.scrollTop = s.scrollHeight;
+    if (!s) return;
+    if (this.#watched !== s) {
+      this.#watched = s;
+      s.addEventListener('scroll', () => (this.#follow = s.scrollHeight - s.scrollTop - s.clientHeight < 160), { passive: true });
+    }
+    if (force || this.#follow) {
+      s.scrollTop = s.scrollHeight;
+      this.#follow = true;
+    }
   }
 
   #ensureTurn(): HTMLElement {
@@ -237,7 +253,7 @@ export class Transcript {
         h('span', { class: 'ag-tool-sum' }, line),
         h('span', { class: 'ag-tool-chev' }, icon('chevron', 14)),
       ),
-      h('div', { class: 'ag-tool-body' }, h('div', { class: 'ag-tool-label' }, 'Input'), h('pre', { class: 'ag-tool-in' }, typeof input === 'string' ? input : JSON.stringify(input, null, 2)), h('div', { class: 'ag-tool-label' }, 'Output'), output),
+      h('div', { class: 'ag-tool-body' }, h('div', { class: 'ag-tool-label' }, 'Input'), h('pre', { class: 'ag-tool-in' }, typeof input === 'string' ? input : showInput(input)), h('div', { class: 'ag-tool-label' }, 'Output'), output),
     );
     el.dataset.id = id;
     // A sub-agent's card opens what it did, step by step.
@@ -417,3 +433,16 @@ function summarize(input: Record<string, unknown>): string {
   const v = input.command ?? input.path ?? input.pattern ?? input.url ?? input.question ?? input.task ?? input.app ?? input.code ?? '';
   return String(v);
 }
+
+/**
+ * A tool's input for people: each field on its own line, and text with line
+ * breaks (a file's content, code, a command) shown as written rather than as
+ * an escaped JSON string.
+ */
+export function showInput(input: unknown): string {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return JSON.stringify(input, null, 2);
+  return Object.entries(input as Record<string, unknown>)
+    .map(([k, v]) => (typeof v === 'string' && (v.includes('\n') || v.length > 100) ? `${k}:\n${v}` : `${k}: ${JSON.stringify(v)}`))
+    .join('\n');
+}
+

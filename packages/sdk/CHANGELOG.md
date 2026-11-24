@@ -52,6 +52,11 @@ the GitHub release notes.
   (`serial.*` UI calls; `RemoteKernel.serial`). SDK (confined) shells ask
   before using a device.
 - Fixed: `serial` reading on the first open.
+- Fixed: Python saw files from earlier runs (its interpreter stays warm):
+  each run now starts from exactly its folder, and files a script deletes
+  are deleted in the box.
+- Fixed: an install's progress counted wrapper files that are not
+  downloaded, so it stopped at 99%.
 
 ## 0.3.1
 

@@ -180,6 +180,20 @@ async function runPython(m, out, err) {
   pyodide.setStdout({ batched: (s) => out(s + '\n') });
   pyodide.setStderr({ batched: (s) => err(s + '\n') });
   const FS = pyodide.FS;
+  // The interpreter stays warm between runs: start each run from an empty /work, so a
+  // script sees exactly this run's folder (not files from earlier runs or other folders).
+  const clear = (dir) => {
+    for (const name of FS.readdir(dir)) {
+      if (name === '.' || name === '..') continue;
+      const p = dir + '/' + name;
+      if (FS.isDir(FS.stat(p).mode)) {
+        clear(p);
+        FS.rmdir(p);
+      } else FS.unlink(p);
+    }
+  };
+  FS.chdir('/');
+  clear('/work');
   const before = new Map();
   for (const f of m.files ?? []) {
     const p = '/work/' + f.path;
@@ -209,14 +223,16 @@ async function runPython(m, out, err) {
       }
     }
   };
+  FS.chdir('/');
   walk('/work', '');
-  for (const f of m.files ?? []) before.delete(f.path);
+  // Files the program deleted are deleted in the box too.
+  const deleted = (m.files ?? []).map((f) => f.path).filter((p) => !FS.analyzePath('/work/' + p).exists);
   let shown;
   if (value !== undefined && value !== null) {
     shown = typeof value?.toString === 'function' ? value.toString() : show(value);
     value?.destroy?.();
   }
-  return { value: shown, files: changed };
+  return { value: shown, files: changed, deleted };
 }
 
 // ---- WASI preview1: stdio, and the working folder's files -----------------------

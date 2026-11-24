@@ -1005,6 +1005,27 @@ await check('WASI programs read and write the working folder (files, folders, re
   return 'read, mkdir -p, write, rename, delete, list, stat, env, absolute path; escaping refused';
 });
 
+await check('Python sees only the folder it runs in, run after run, and its deletes are kept', async () => {
+  const r = await page.evaluate(async () => {
+    await bbx.fs.writeFile('/home/user/pa/one.txt', '1');
+    await bbx.fs.writeFile('/home/user/pb/two.txt', '2');
+    await bbx.fs.writeFile('/home/user/pb/gone.txt', 'x');
+    const run = async (cwd, code) => {
+      const sh = await bbx.shells.open({ cwd });
+      let out = '';
+      await bbx.fs.writeFile('/tmp/t.py', code);
+      await sh.run('python /tmp/t.py', { out: (s) => (out += s), err: (s) => (out += s) });
+      sh.close();
+      return out.trim();
+    };
+    const a = await run('/home/user/pa', 'import os; print(sorted(os.listdir(".")))');
+    const b = await run('/home/user/pb', 'import os; os.remove("gone.txt"); print(sorted(os.listdir(".")))');
+    return { a, b, gone: await bbx.fs.exists('/home/user/pb/gone.txt'), two: await bbx.fs.exists('/home/user/pb/two.txt') };
+  });
+  if (r.a !== "['one.txt']" || r.b !== "['two.txt']" || r.gone || !r.two) throw new Error(JSON.stringify(r));
+  return `${r.a} then ${r.b}; the deleted file is gone`;
+});
+
 await check('packages: add a source, install with a dependency, run WASM and JS packages, checks and refusals', async () => {
   await page.evaluate(() => bbx.openApp('terminal'));
   await page.waitForSelector('.term-input');

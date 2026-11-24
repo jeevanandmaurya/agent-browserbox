@@ -310,7 +310,8 @@ export class PackageManager {
       done.push(...(await this.installExternal(found, found.source, progress, seen)));
     }
     const cache = await caches.open(PACKAGE_CACHE);
-    const total = pkg.files.reduce((n, f) => n + (f.bytes ?? 0), 0);
+    // Only downloaded files count (a wrapper kept in the index is not fetched).
+    const total = pkg.files.reduce((n, f) => n + (f.url ? (f.bytes ?? 0) : 0), 0);
     let loaded = 0;
     progress?.(0, total);
     for (const f of pkg.files) {

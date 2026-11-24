@@ -58,6 +58,10 @@ SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
   BrowserBox with a pair of codes (WebRTC, no server).
 - Fixed: a chat waiting for your approval now shows as waiting (amber) in
   the chat list.
+- Fixed: the chat stops following new output only when you scroll up (a
+  tall tool card or diff no longer stops it).
+- Tool inputs show text as written (a file's content, code), not as escaped
+  JSON.
 
 ## 0.3.2
 

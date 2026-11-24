@@ -227,7 +227,8 @@ class BoxPackages {
     if (r.exitCode !== 0) return;
     const list: Array<PackageManifest & { installed: boolean }> = [];
     for (const line of r.stdout.split('\n')) {
-      const m = /^(i| ) (\S+)\s+(?:~?\S+ \S+)?\s+(.*)$/.exec(line);
+      // A package line (not the legend under the list: "i = installed · …").
+      const m = /^(i| ) ([a-z0-9][a-z0-9._-]*)\s+(?:~?\S+ \S+)?\s+(.*)$/.exec(line);
       if (!m) continue;
       const info = await this.box.exec(`pkg info ${m[2]}`);
       const field = (k: string) => new RegExp(`^${k}:\\s*(.*)$`, 'm').exec(info.stdout)?.[1]?.trim() ?? '';
