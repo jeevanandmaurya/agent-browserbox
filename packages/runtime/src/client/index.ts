@@ -18,6 +18,7 @@ export type { PasskeyInfo } from '../kernel/secrets';
 export type { ExternalPackage, InstalledExternal, Listed, PackageInfo, PackageSource } from '../kernel/package-types';
 export { createProfile, DEFAULT_PROFILE, deleteProfile, getProfile, lastProfile, listProfiles, setLastProfile, updateProfile, type Profile } from '../kernel/profiles';
 export type { Stat } from '../kernel/vfs/types';
+export type { OverlayChange } from '../kernel/vfs/overlayfs';
 export type { DevApi, DevInfo, DevLog, DevLogLevel, DevPage, DevStartOptions, WireRequest, WireResponse } from '../kernel/dev/types';
 export type { PlatformCap } from '../kernel/caps';
 

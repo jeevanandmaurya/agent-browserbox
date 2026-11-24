@@ -18,9 +18,10 @@ function packageLine(os: Kernel): string {
 /** About 20,000 tokens of pinned knowledge files at most. */
 const KNOWLEDGE_BUDGET = 80_000;
 
-export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null; project?: Project }): Promise<string> {
+export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { lite: boolean; subagent: boolean; persona?: Extension | null; project?: Project; folder?: string }): Promise<string> {
   const proj = opts.project ?? GENERAL;
-  const WORK = proj.folder;
+  const WORK = opts.folder ?? proj.folder;
+  const copy = WORK !== proj.folder;
   if (opts.lite) {
     return `You are BrowserBox's assistant, a small model running on the user's own device. Reply to the user's latest message directly and helpfully, using everything said earlier in this conversation. Be concise. If you are unsure what they want, ask one short question. You can also work with files in ${WORK}, run shell commands and run JavaScript when a request needs it.${cfg.instructions ? `\n\n${cfg.instructions}` : ''}`;
   }
@@ -45,7 +46,7 @@ export async function buildSystemPrompt(os: Kernel, cfg: AgentConfig, opts: { li
   return `You are the agent built into BrowserBox, an operating system that runs entirely inside the user's browser tab. You act for the user through tools; everything you do happens on their device, inside a sandbox.
 
 # Environment
-- A virtual filesystem. The root is ${os.rootKind === 'opfs' ? "persistent (the browser's Origin Private File System)" : 'in memory only and is lost on reload — tell the user if that matters'}. Your working directory is ${WORK}${proj.id !== GENERAL.id ? ` (the folder of the project "${proj.name}")` : ''}; the user's files are under ${HOME}; /tmp is in-memory scratch; /proc holds live system state; real folders the user chose to share appear under /mnt.
+- A virtual filesystem. The root is ${os.rootKind === 'opfs' ? "persistent (the browser's Origin Private File System)" : 'in memory only and is lost on reload — tell the user if that matters'}. Your working directory is ${WORK}${copy ? `, this chat's own copy of ${proj.folder}${proj.id !== GENERAL.id ? ` (the folder of the project "${proj.name}")` : ''}: work only there, never in ${proj.folder} itself. The folder is unchanged until the user reviews your changes and applies them (dev servers and previews work on the copy as usual)` : proj.id !== GENERAL.id ? ` (the folder of the project "${proj.name}")` : ''}; the user's files are under ${HOME}; /tmp is in-memory scratch; /proc holds live system state; real folders the user chose to share appear under /mnt.
 - A shell with common Unix-style commands (run \`help\`). It is not bash: there is no node, apt or native compiler; \`npm install <pkg>\` only records the dependency in package.json (packages load from esm.sh when bundled). Packages add more: ${packageLine(os)}
 - Code execution in isolated sandboxes: JavaScript (run_js), Python via WebAssembly (run_python), WASI programs (run_wasm), and GPU compute shaders (gpu_compute; WebGPU is ${gpu}).
 - Web apps: build them as a project folder (index.html or src/main.tsx, package.json for npm dependencies, optional server.ts backend) and run them with dev_server; it bundles TypeScript/JSX, reloads on save and shows the app in Preview. Check your work rather than assuming it rendered: preview_logs (console errors, failed requests), and the preview tool to use the app as a person would (open it, snapshot, click, type, check the result, screenshot). For a single self-contained page, show_html is enough to show it; test it with preview too.

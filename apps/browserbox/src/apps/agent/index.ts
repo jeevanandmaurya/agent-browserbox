@@ -17,7 +17,6 @@ import { openMenu } from '@/ui/menu';
 import { choiceDialog, modal } from '@/ui/dialog';
 import { h } from '@/ui/dom';
 import { icon } from './icons';
-import { collectChanges, openChanges } from './changes';
 import { createComposer, type AgentMode } from './composer';
 import { attachMentions } from './mention';
 import { modelLabel, modelMenuEntries } from './model-picker';
@@ -100,6 +99,7 @@ const app: AppModule = {
       { name: 'connectors', description: 'Manage MCP connectors', kind: 'built-in', run: () => settings.open('connectors') },
       { name: 'model', description: 'Model settings', kind: 'built-in', run: () => settings.open('model') },
       { name: 'plan', description: 'Plan first: look around and propose, change nothing', kind: 'built-in', run: (args) => (setMode('plan'), args ? submit(args) : composer.focus()) },
+      { name: 'isolate', description: 'Work on a copy of the project folder; apply when happy (/isolate off)', kind: 'built-in', run: (args) => void isolateNow(args.trim() !== 'off') },
       { name: 'changes', description: 'Review and undo what the agent changed in this chat', kind: 'built-in', run: () => showChanges() },
       { name: 'init', description: 'Write AGENTS.md: how this project is built, tested and laid out', kind: 'built-in', run: () => submit('Look at the project in your working directory and write AGENTS.md there: what it is, how to build, run and test it, how the code is laid out, and the conventions to follow. Keep it short and specific; it is read at the start of every chat.') },
       {
@@ -193,6 +193,7 @@ const app: AppModule = {
           { label: 'Processes', icon: 'activity', onSelect: () => route('taskmgr') },
           { separator: true },
           { label: 'Changes', icon: 'edit', hint: 'Review and undo file changes', onSelect: () => showChanges() },
+          isolated ? { label: 'Review the copy', icon: 'copy', hint: 'Apply or discard this chat’s changes', onSelect: () => showIsolation() } : { label: 'Work on a copy', icon: 'copy', hint: 'The folder changes only when you apply', onSelect: () => void isolateNow(true) },
           { label: 'Context', icon: 'info', hint: 'What fills the context window', onSelect: () => meter.open() },
           { label: 'Compact conversation', icon: 'refresh', onSelect: () => void compactNow() },
           ...(pipAvailable() ? [{ label: 'Mini window', icon: 'panelRight' as const, hint: 'Follow the agent on top of other apps', onSelect: () => void Promise.all([agent.snapshot(), import('./pip')]).then(([s, m]) => (mini ??= new m.MiniView()).show(s.title)).catch((err: Error) => os.notify({ title: 'Could not open the mini window', body: err.message, level: 'error' })) }] : []),
@@ -253,6 +254,8 @@ const app: AppModule = {
         else if (e.type === 'file_change') void syncChanges();
         else if (e.type === 'done') {
           setBusy(false);
+          // Shell commands change files too: the copy's count is checked after every turn.
+          if (isolated) void syncChanges();
           afterReply(e.reason);
           meter.refresh();
           void sidebar.refresh(agent.sid);
@@ -424,17 +427,32 @@ const app: AppModule = {
 
     // ---- changes and rewinding ------------------------------------------------
     const changesChip = h('button', { class: 'bb-changes', type: 'button', hidden: true, onclick: () => showChanges() });
+    // An isolated chat: a chip that says so, and its review dialog (loaded when opened).
+    let isolated = false;
+    const copyChip = h('button', { class: 'bb-changes', type: 'button', hidden: true, onclick: () => showIsolation() });
+    const showIsolation = () => void import('./isolation').then((m) => m.openIsolation(os, agent, { openFile: (path) => route('editor', { path }), onChanged: () => void syncChanges() }));
+    const isolateNow = (on: boolean) =>
+      agent.isolate(on).then(
+        () => (void syncChanges(), on && os.notify({ title: 'This chat works on a copy', body: 'The project folder changes only when you apply. Review it from the chip above the message box.', level: 'ok' })),
+        (err: Error) => os.notify({ title: on ? 'Could not make a copy' : 'Still working on a copy', body: err.message, level: 'warn' }),
+      );
     async function syncChanges(): Promise<void> {
-      const list = await collectChanges(os, await agent.changes().catch(() => [])).catch(() => []);
+      const iso = await agent.isolation().catch(() => null);
+      isolated = !!iso;
+      copyChip.hidden = !iso;
+      if (iso) copyChip.replaceChildren(icon('copy', 14), h('span', null, iso.changes.length ? `Copy: ${iso.changes.length} file${iso.changes.length === 1 ? '' : 's'} to apply` : 'Working on a copy'), h('span', { class: 'bb-changes-go' }, 'Review'));
+      // The Changes code loads once a chat has something to show.
+      const turns = await agent.changes().catch(() => []);
+      const list = turns.length ? await import('./changes').then((m) => m.collectChanges(os, turns)).catch(() => []) : [];
       changesChip.hidden = !list.length;
       const added = list.reduce((n, c) => n + (c.diff?.added ?? 0), 0);
       const removed = list.reduce((n, c) => n + (c.diff?.removed ?? 0), 0);
       changesChip.replaceChildren(icon('edit', 14), h('span', null, `${list.length} file${list.length === 1 ? '' : 's'} changed`), h('span', { class: 'df-add' }, `+${added}`), h('span', { class: 'df-del' }, `−${removed}`), h('span', { class: 'bb-changes-go' }, 'Review'));
     }
     function showChanges(): void {
-      openChanges(os, agent, { openFile: (path) => route('editor', { path }), onChanged: () => void syncChanges() });
+      void import('./changes').then((m) => m.openChanges(os, agent, { openFile: (path) => route('editor', { path }), onChanged: () => void syncChanges() }));
     }
-    shell.todoSlot.after(changesChip);
+    shell.todoSlot.after(changesChip, copyChip);
 
     // Edit an earlier message: the chat goes back to just before it (and, if you choose, so do the files).
     log.onOpenArtifact = (id, version) => route('artifacts', { id, version });

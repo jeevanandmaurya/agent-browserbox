@@ -24,6 +24,8 @@ export interface SessionFile {
   diffs?: Record<string, FileDiff>;
   /** What each sub-agent did, by its spawn_agent call id. */
   subagents?: Record<string, Msg[]>;
+  /** Works on its own copy of the project folder (see isolation.ts). */
+  isolated?: boolean;
 }
 
 export interface SessionInfo {
@@ -83,6 +85,12 @@ export async function saveSession(os: WithFiles, s: SessionFile): Promise<void> 
 export async function loadSession(os: WithFiles, id: string): Promise<SessionFile> {
   return JSON.parse(await os.fs.readText(`${DIR}/${id}.json`)) as SessionFile;
 }
+
+/** Where an isolated chat sees its copy of the project folder. */
+export const workFolder = (id: string) => `/work/${id}`;
+
+/** Where an isolated chat keeps its changes until they are applied: deleted with the chat. */
+export const workStore = (id: string) => `${DIR}/${id}/work`;
 
 /** Files attached to a chat (uploads, pasted pictures, voice notes): kept with it, deleted with it. */
 export const attachmentsDir = (id: string) => `${DIR}/${id}/files`;

@@ -23,6 +23,8 @@ export interface AgentSnapshot {
   project: string;
   /** What each sub-agent did, by its spawn_agent call id. */
   subagents?: Record<string, Msg[]>;
+  /** Works on its own copy (`folder`) of the project folder (`lower`). */
+  isolated?: { folder: string; lower: string };
   /**
    * While it works: the current step's events not yet in `messages` (text so
    * far, running tools), for a window that opens the chat mid-turn to replay.
@@ -36,6 +38,13 @@ export interface TurnChanges {
   turn: number;
   at: number;
   files: Array<{ path: string; before: string | null; existed: boolean; binary: boolean; skipped: boolean }>;
+}
+
+/** An isolated chat: where its copy is, the folder it copies, and the files it changed (paths inside the copy). */
+export interface Isolation {
+  folder: string;
+  lower: string;
+  changes: Array<{ path: string; kind: 'added' | 'modified' | 'deleted' }>;
 }
 
 export interface AgentInfo {
@@ -59,6 +68,14 @@ export interface AgentHandle {
   rewind(index: number, files: boolean): Promise<{ restored: string[]; skipped: string[] }>;
   /** The files each turn changed (file tools only). */
   changes(): Promise<TurnChanges[]>;
+  /** An isolated chat's copy and what it changed in it; null when the chat works in the folder itself. */
+  isolation(): Promise<Isolation | null>;
+  /** Starts working on a copy of the project folder, or stops (refused while the copy has changes). */
+  isolate(on: boolean): Promise<void>;
+  /** Copies an isolated chat's changes (all, or under `paths`, relative to the copy) into the folder. Returns the paths applied. */
+  applyWork(paths?: string[]): Promise<string[]>;
+  /** Throws an isolated chat's changes away (all, or under `paths`). */
+  discardWork(paths?: string[]): Promise<void>;
   stop(): void;
   snapshot(): Promise<AgentSnapshot>;
   /** Where the context window is going. */
@@ -79,7 +96,8 @@ export interface AgentHandle {
 export interface AgentsApi {
   /** `resume` loads a saved session file by id. */
   /** `project`: the project a new chat belongs to (default General); a resumed chat keeps its own. */
-  create(opts?: { resume?: string; ppid?: number; private?: boolean; project?: string }): Promise<AgentHandle>;
+  /** `isolated`: the new chat works on its own copy of the project folder. */
+  create(opts?: { resume?: string; ppid?: number; private?: boolean; project?: string; isolated?: boolean }): Promise<AgentHandle>;
   attach(sid: string): Promise<AgentHandle>;
   /** Sessions currently alive in the kernel, most recent first. */
   live(): Promise<AgentInfo[]>;

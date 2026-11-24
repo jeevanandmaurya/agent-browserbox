@@ -196,6 +196,10 @@ export class KernelServer {
       'fs.glob': (pattern: string, cwd?: string, limit?: number) => fs.glob(pattern, cwd, limit),
       'fs.unmount': (point: string) => fs.unmount(point),
       'fs.mounts': () => fs.mounts().map((m) => ({ point: m.point, label: m.fs.label, readonly: m.fs.readonly ?? false })),
+      'fs.overlay': (point: string, lower: string, store: string) => fs.overlay(point, lower, store),
+      'fs.overlayChanges': (point: string) => fs.overlayChanges(point),
+      'fs.overlayApply': (point: string, paths?: string[]) => fs.overlayApply(point, paths),
+      'fs.overlayDiscard': (point: string, paths?: string[]) => fs.overlayDiscard(point, paths),
       'fs.mountHandle': (handle: FileSystemDirectoryHandle) => os.mountHandle(handle),
 
       // Dev servers

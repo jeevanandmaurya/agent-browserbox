@@ -8,6 +8,7 @@ import type { KernelEvents, LockState, Notice, ShellAction } from './types';
 import type { PasskeyInfo } from './secrets';
 import type { ExternalPackage, InstalledExternal, Listed, PackageInfo, PackageSource } from './package-types';
 import type { Stat } from './vfs/types';
+import type { OverlayChange } from './vfs/overlayfs';
 
 /**
  * The kernel's public surface. Two things implement it:
@@ -68,6 +69,14 @@ export interface FsApi {
   walk(root: string, opts?: { maxDepth?: number; signal?: AbortSignal }): AsyncGenerator<Stat>;
   mounts(): readonly MountInfo[];
   unmount(point: string): void;
+  /** Mounts a copy-on-write view of `lower` at `point`; changes stay in `store` until applied or discarded. */
+  overlay(point: string, lower: string, store: string): Promise<void>;
+  /** What the overlay at `point` changed. */
+  overlayChanges(point: string): Promise<OverlayChange[]>;
+  /** Copies the overlay's changes (all, or those under `paths`) into its folder; returns the paths applied. */
+  overlayApply(point: string, paths?: string[]): Promise<string[]>;
+  /** Throws the overlay's changes away (all, or those under `paths`). */
+  overlayDiscard(point: string, paths?: string[]): Promise<void>;
 }
 
 export interface ProcsApi {

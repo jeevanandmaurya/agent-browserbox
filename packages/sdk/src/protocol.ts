@@ -118,6 +118,12 @@ export interface KernelChannel {
   shared: boolean;
 }
 
+/** A file an overlay changed, by its path inside the overlay. */
+export interface OverlayChange {
+  path: string;
+  kind: 'added' | 'modified' | 'deleted';
+}
+
 /** Calls the SDK can make, with their arguments and results. */
 export interface Methods {
   info(): Hello;
@@ -134,6 +140,11 @@ export interface Methods {
   'fs.appendFile'(path: string, data: string | Uint8Array): void;
   /** Absolute paths of the files under `cwd` that match a glob ('**', '*', '?', '{a,b}'). */
   'fs.glob'(pattern: string, cwd?: string, limit?: number): string[];
+  /** Mounts a copy-on-write view of the folder `lower` at `point`; changes stay in `store` until applied or discarded. */
+  'fs.overlay'(point: string, lower: string, store: string): void;
+  'fs.overlayChanges'(point: string): OverlayChange[];
+  'fs.overlayApply'(point: string, paths?: string[]): string[];
+  'fs.overlayDiscard'(point: string, paths?: string[]): void;
   'shell.open'(opts?: { cwd?: string; env?: Record<string, string> }): ShellInfo;
   /** Runs a command line in a shell session; output and exit (with the new cwd) arrive as events. Returns its process id. */
   'shell.run'(id: number, command: string, opts?: { timeoutMs?: number }): number;

@@ -5,6 +5,7 @@ import {
   type ExecOptions,
   type ExecResult,
   type FileStat,
+  type OverlayChange,
   type ProcessInfo,
   type FromRuntime,
   type Hello,
@@ -16,11 +17,11 @@ import {
   type ToRuntime,
 } from './protocol.js';
 
-export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, KernelChannel, PermissionDecision, PermissionRequest, ProcessInfo };
+export type { DevLogEntry, DevServer, ExecOptions, ExecResult, FileStat, KernelChannel, OverlayChange, PermissionDecision, PermissionRequest, ProcessInfo };
 export { PROTOCOL_VERSION };
 
 /** This SDK's version. Always released together with the runtime of the same version. */
-export const VERSION = '0.4.1';
+export const VERSION = '0.4.2';
 
 /**
  * The hosted runtime of exactly this SDK's version. Released runtimes never
@@ -221,6 +222,26 @@ export class BoxFs {
   /** Absolute paths of the files under `cwd` (default: home) that match a glob ('**', '*', '?', '{a,b}'). */
   glob(pattern: string, opts: { cwd?: string; limit?: number } = {}): Promise<string[]> {
     return this.box.call('fs.glob', pattern, this.#abs(opts.cwd ?? '.'), opts.limit);
+  }
+  /**
+   * Mounts a copy-on-write view of the folder `lower` at `point`: reads see the
+   * folder, changes are kept in `store` until applied or discarded, so the
+   * folder is untouched meanwhile. Mounting it again (after a reload) does nothing.
+   */
+  overlay(point: string, lower: string, store: string): Promise<void> {
+    return this.box.call('fs.overlay', this.#abs(point), this.#abs(lower), this.#abs(store));
+  }
+  /** The files the overlay at `point` added, changed or deleted. */
+  overlayChanges(point: string): Promise<OverlayChange[]> {
+    return this.box.call('fs.overlayChanges', this.#abs(point));
+  }
+  /** Copies the overlay's changes (all, or those under `paths`, inside the overlay) into its folder. Returns the paths applied. */
+  overlayApply(point: string, paths?: string[]): Promise<string[]> {
+    return this.box.call('fs.overlayApply', this.#abs(point), paths);
+  }
+  /** Throws the overlay's changes away (all, or those under `paths`). */
+  overlayDiscard(point: string, paths?: string[]): Promise<void> {
+    return this.box.call('fs.overlayDiscard', this.#abs(point), paths);
   }
 }
 

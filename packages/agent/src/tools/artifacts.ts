@@ -23,8 +23,8 @@ export const artifactTools: ToolDef[] = [
     cap: () => null,
     describe: (i) => `${i.kind} artifact: ${i.title}`,
     async run(i, tc) {
-      const a = await createArtifact(tc.os, tc.workspace, { title: i.title, kind: i.kind, content: i.content, language: i.language, session: tc.session });
-      tc.created(artifactFolder(tc.workspace, a.id));
+      const a = await createArtifact(tc.os, tc.project.folder, { title: i.title, kind: i.kind, content: i.content, language: i.language, session: tc.session });
+      tc.created(artifactFolder(tc.project.folder, a.id));
       return artifactLine('Created', a, 1);
     },
   }),
@@ -44,9 +44,9 @@ export const artifactTools: ToolDef[] = [
     cap: () => null,
     describe: (i) => (i.restore ? `Restore version ${i.restore} of artifact ${i.id}` : `Update artifact ${i.id}${i.note ? `: ${i.note}` : ''}`),
     async run(i, tc) {
-      const old = i.restore ? await readArtifact(tc.os, tc.workspace, i.id, i.restore) : null;
-      const a = await updateArtifact(tc.os, tc.workspace, i.id, old ? { content: old.content, note: i.note ?? `restored version ${i.restore}` } : { content: i.content, edits: i.edits, note: i.note });
-      tc.created(versionPath(tc.workspace, a));
+      const old = i.restore ? await readArtifact(tc.os, tc.project.folder, i.id, i.restore) : null;
+      const a = await updateArtifact(tc.os, tc.project.folder, i.id, old ? { content: old.content, note: i.note ?? `restored version ${i.restore}` } : { content: i.content, edits: i.edits, note: i.note });
+      tc.created(versionPath(tc.project.folder, a));
       return artifactLine('Updated', a, a.versions.at(-1)!.n);
     },
   }),
@@ -58,8 +58,8 @@ export const artifactTools: ToolDef[] = [
     cap: () => 'fs.write',
     describe: (i) => `Delete artifact ${i.id}`,
     async run(i, tc) {
-      const a = await readArtifactMeta(tc.os, tc.workspace, i.id);
-      await deleteArtifact(tc.os, tc.workspace, i.id);
+      const a = await readArtifactMeta(tc.os, tc.project.folder, i.id);
+      await deleteArtifact(tc.os, tc.project.folder, i.id);
       return `Deleted artifact "${a.title}" (${a.versions.length} version${a.versions.length === 1 ? '' : 's'}).`;
     },
   }),
@@ -71,10 +71,10 @@ export const artifactTools: ToolDef[] = [
     describe: (i) => (i.id ? `Read artifact ${i.id}` : 'List artifacts'),
     async run(i, tc) {
       if (!i.id) {
-        const list = await listArtifacts(tc.os, tc.workspace);
+        const list = await listArtifacts(tc.os, tc.project.folder);
         return list.length ? list.map((a) => `${a.id} · ${a.kind} · v${a.versions.at(-1)!.n} · ${a.title}`).join('\n') : 'No artifacts in this project yet.';
       }
-      const r = await readArtifact(tc.os, tc.workspace, i.id, i.version);
+      const r = await readArtifact(tc.os, tc.project.folder, i.id, i.version);
       return clip(`# ${r.artifact.title} (${r.artifact.kind}, version ${r.version} of ${r.artifact.versions.length})\n\n${r.content}`, 60_000);
     },
   }),

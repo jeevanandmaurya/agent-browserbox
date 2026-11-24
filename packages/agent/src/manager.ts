@@ -59,7 +59,7 @@ export class AgentManager implements AgentsApi {
     });
   }
 
-  async create(opts: { resume?: string; ppid?: number; private?: boolean; project?: string } = {}): Promise<AgentHandle> {
+  async create(opts: { resume?: string; ppid?: number; private?: boolean; project?: string; isolated?: boolean } = {}): Promise<AgentHandle> {
     const saved = opts.resume ? await loadSession(this.os, opts.resume) : null;
     const live = saved && this.#sessions.get(saved.id);
     if (live) return this.#handle(saved.id, live);
@@ -90,6 +90,10 @@ export class AgentManager implements AgentsApi {
       agent.diffs = saved.diffs ?? {};
       agent.subagents = saved.subagents ?? {};
     }
+    // Its own copy of the folder: mounted again after a reload.
+    if (saved?.isolated || (!saved && opts.isolated)) {
+      await agent.isolate(true).catch((err: Error) => this.os.notify({ title: 'This chat works in the project folder itself', body: `Its copy could not be set up: ${err.message}`, level: 'warn' }));
+    }
     this.#sessions.set(agent.id, session);
     return this.#handle(agent.id, session);
   }
@@ -118,7 +122,7 @@ export class AgentManager implements AgentsApi {
 
   async #save(s: Session): Promise<void> {
     if (s.private || !s.agent.transcript.length) return;
-    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), project: s.agent.project.id, messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents }).catch((err: Error) =>
+    await saveSession(this.os, { id: s.agent.id, title: titleFrom(s.agent.transcript), updated: Date.now(), project: s.agent.project.id, messages: s.agent.messages, transcript: s.agent.transcript, todos: s.agent.todos, checkpoints: s.agent.checkpoints.list, diffs: s.agent.diffs, subagents: s.agent.subagents, isolated: s.agent.isolated || undefined }).catch((err: Error) =>
       this.os.notify({ title: 'Could not save the agent session', body: err.message, level: 'warn' }),
     );
   }
@@ -143,11 +147,24 @@ export class AgentManager implements AgentsApi {
         return r;
       },
       changes: async () => s.agent.checkpoints.list.map((c) => ({ turn: c.turn, at: c.at, files: c.files.map((f) => ({ path: f.path, before: f.binary ? null : f.before, existed: f.before !== null || !!f.skipped, binary: !!f.binary, skipped: !!f.skipped })) })),
+      isolation: async () => (s.agent.isolated ? { folder: s.agent.folder, lower: s.agent.project.folder, changes: await os.fs.overlayChanges(s.agent.folder) } : null),
+      isolate: async (on) => {
+        await s.agent.isolate(on);
+        await this.#save(s);
+      },
+      applyWork: (paths) => {
+        if (!s.agent.isolated) throw new Error('this chat is not isolated');
+        return os.fs.overlayApply(s.agent.folder, paths);
+      },
+      discardWork: async (paths) => {
+        if (!s.agent.isolated) throw new Error('this chat is not isolated');
+        await os.fs.overlayDiscard(s.agent.folder, paths);
+      },
       stop: () => s.agent.stop(),
       context: async () => s.agent.context(),
       compact: () => s.agent.compact(),
       async snapshot(): Promise<AgentSnapshot> {
-        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, live: s.agent.busy && s.liveAt === s.agent.transcript.length ? s.live.slice() : [], title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents, project: s.agent.project.id };
+        return { sid, private: s.private, pid: s.agent.proc.pid, busy: s.agent.busy, live: s.agent.busy && s.liveAt === s.agent.transcript.length ? s.live.slice() : [], title: titleFrom(s.agent.transcript), messages: s.agent.transcript, todos: s.agent.todos, total: { ...s.agent.total }, context: s.agent.context(), diffs: s.agent.diffs, subagents: s.agent.subagents, project: s.agent.project.id, isolated: s.agent.isolated ? { folder: s.agent.folder, lower: s.agent.project.folder } : undefined };
       },
       onEvent(fn) {
         mine.add(fn);

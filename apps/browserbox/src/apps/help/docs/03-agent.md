@@ -41,6 +41,10 @@ Only changes made with the agent's file tools are tracked. Changes made by shell
 
 Each project has its own folder, chats, memory and instructions. Pick one at the top of the sidebar, or **New project…** to make one: give it a name and a folder (a new one under `~/Projects`, an existing one, or a folder you shared from your computer under `/mnt`). In a project the agent works in its folder, changes files there without asking (in Ask mode, elsewhere still asks), and reads the folder's `AGENTS.md`. **Project settings…** edits the instructions, sets a default model and pins knowledge files the agent always gets. **General** is the original workspace, `/home/agent`, with every chat from before projects. Deleting a project deletes its chats and memory; its folder is kept unless you tick the box.
 
+### Isolated chats
+
+Type `/isolate` (or **Work on a copy** in the chat menu) and the chat works on its own copy of the project folder, at `/work/<chat>`: its edits, shell commands, dev servers and previews all use the copy, and the folder itself does not change. Nothing is copied up front; only the files it changes are kept, with the chat. **"Copy: N files to apply · Review"** above the message box shows each added, changed or deleted file against the folder, with **Apply** and **Discard** for one file or all of them. Several chats can work on the same project this way without getting in each other's way. `/isolate off` goes back to the folder itself once nothing is left to apply.
+
 ## Artifacts
 
 When the agent makes something worth keeping (a document, a web page or small app, a diagram, an SVG, a table, some code) it makes an **artifact**: a card in the chat that opens it beside the conversation. Each change is a new version you can switch between. **Edit** opens a copy as a new version in the Editor; **Copy** and **Download** take it elsewhere. **Artifacts** in the side panel (and on the desktop) lists every artifact in the project. They are files in the project's `.artifacts` folder, so undo and rewinding a chat cover them too. Pages and diagrams run sandboxed: they cannot reach your files, keys or other sites.
@@ -65,7 +69,7 @@ Tasks run only while BrowserBox is open in some window or tab: a browser cannot 
 
 ## Commands
 
-Type **/** in the message box: `/plan`, `/changes`, `/init`, `/compact` (summarise the chat to free context), `/context`, `/clear` (new chat), `/skills`, `/agents`, `/connectors`, `/model`, `/help`, plus your own commands from `/home/agent/commands`.
+Type **/** in the message box: `/plan`, `/changes`, `/isolate`, `/init`, `/compact` (summarise the chat to free context), `/context`, `/clear` (new chat), `/skills`, `/agents`, `/connectors`, `/model`, `/help`, plus your own commands from `/home/agent/commands`.
 
 ## Context, tokens and speed
 

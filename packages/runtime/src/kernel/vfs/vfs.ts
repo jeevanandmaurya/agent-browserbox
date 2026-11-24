@@ -1,6 +1,7 @@
 import type { Bus } from '../bus';
 import type { KernelEvents } from '../types';
 import { basename, dirname, globToRegExp, isInside, join, normalize } from './path';
+import { OverlayFs, type OverlayChange } from './overlayfs';
 import { FsError, type FsBackend, type Stat } from './types';
 
 const enc = new TextEncoder();
@@ -49,6 +50,51 @@ export class Vfs {
 
   mounts(): readonly Mount[] {
     return this.#mounts;
+  }
+
+  /**
+   * Mounts a copy-on-write view of the folder `lower` at `point`: reads see
+   * the folder, changes are kept in `store` until applied or discarded. Mounting
+   * the same overlay again does nothing (callers re-mount after a restart).
+   */
+  async overlay(point: string, lower: string, store: string): Promise<void> {
+    [point, lower, store] = [normalize(point), normalize(lower), normalize(store)];
+    const mine = this.#mounts.find((m) => m.point === point)?.fs;
+    if (mine instanceof OverlayFs && mine.lower === lower && mine.store === store) return;
+    if (point === '/' || isInside(point, lower) || isInside(lower, point) || isInside(point, store) || isInside(store, point)) {
+      throw new FsError('EACCES', point, 'an overlay cannot be inside its folder or its store, nor hold them');
+    }
+    if ((await this.stat(lower))?.kind !== 'dir') throw new FsError('ENOTDIR', lower);
+    await this.mkdir(`${store}/tree`);
+    // Its parent is a real folder, so the overlay is listed where it is mounted.
+    if (!(await this.exists(dirname(point)))) await this.mkdir(dirname(point));
+    this.mount(point, new OverlayFs(this, lower, store));
+  }
+
+  #overlayAt(point: string): OverlayFs {
+    const fs = this.#mounts.find((m) => m.point === normalize(point))?.fs;
+    if (!(fs instanceof OverlayFs)) throw new FsError('ENOENT', point, 'no overlay mounted here');
+    return fs;
+  }
+
+  /** What the overlay at `point` changed, by path inside it. */
+  overlayChanges(point: string): Promise<OverlayChange[]> {
+    return this.#overlayAt(point).changes();
+  }
+
+  /** Copies the overlay's changes (all, or those under `paths`) into its folder. Returns the paths applied. */
+  async overlayApply(point: string, paths?: string[]): Promise<string[]> {
+    const o = this.#overlayAt(point);
+    const done = await o.apply(paths);
+    this.bus.emit('fs:change', { path: o.lower, type: 'write' });
+    this.bus.emit('fs:change', { path: normalize(point), type: 'write' });
+    return done;
+  }
+
+  /** Throws the overlay's changes away (all, or those under `paths`). */
+  async overlayDiscard(point: string, paths?: string[]): Promise<void> {
+    await this.#overlayAt(point).discard(paths);
+    this.bus.emit('fs:change', { path: normalize(point), type: 'write' });
   }
 
   async #route(path: string): Promise<{ fs: FsBackend; rel: string; path: string }> {
@@ -181,4 +227,4 @@ export class Vfs {
   }
 }
 
-export { FsError, type FsBackend, type Stat };
+export { FsError, type FsBackend, type Stat, type OverlayChange };

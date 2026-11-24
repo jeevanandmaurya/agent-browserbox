@@ -22,7 +22,7 @@ export { AGENT_HOME, HOME } from './host/paths.js';
 // The agent and its sessions.
 export { Agent, MODE_TAG, type AgentEvent, type AgentHost, type TurnStats } from './agent.js';
 export { AgentManager } from './manager.js';
-export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, TurnChanges } from './api.js';
+export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, Isolation, TurnChanges } from './api.js';
 export { attachmentsDir, deleteSession, listSessions, loadSession, saveSession, titleFrom, type SessionFile, type SessionInfo } from './session.js';
 export { Checkpoints, type Checkpoint } from './checkpoints.js';
 export { diffFiles, type FileDiff } from './diff.js';

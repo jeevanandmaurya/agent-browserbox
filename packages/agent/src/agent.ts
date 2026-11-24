@@ -14,6 +14,7 @@ import { FileMemory } from './seen.js';
 import { GENERAL, GENERAL_ID, type Project } from './projects.js';
 import { autoMemory, memoryPath, type MemoryScope } from './memory.js';
 import { artifactFile } from './artifacts.js';
+import { workFolder, workStore } from './session.js';
 import { runHooks, type HookEvent, type HookPayload } from './hooks.js';
 import { createProvider } from './providers/index.js';
 import { validate } from './schema.js';
@@ -192,6 +193,37 @@ export class Agent {
   subagents: Record<string, Msg[]> = {};
   /** The project this agent works in (General: /home/agent). */
   readonly project: Project;
+  /**
+   * Isolated: the chat works on its own copy of the project folder (an
+   * overlay at /work/<id>); its changes reach the folder when the user applies them.
+   */
+  isolated = false;
+  /** A sub-agent works where its parent does. */
+  #folder: string | null;
+
+  /** Where this agent works: the project's folder, or the chat's own copy of it. */
+  get folder(): string {
+    return this.#folder ?? (this.isolated ? workFolder(this.id) : this.project.folder);
+  }
+
+  /**
+   * Starts or stops working on a copy of the project folder. Stopping is
+   * refused while the copy has changes (apply or discard them first).
+   */
+  async isolate(on: boolean): Promise<void> {
+    if (this.#depth) throw new Error('a sub-agent works where its parent does');
+    if (on) await this.os.fs.overlay(workFolder(this.id), this.project.folder, workStore(this.id));
+    else if (this.isolated && (await this.os.fs.overlayChanges(workFolder(this.id))).length) throw new Error('this chat has changes that are not applied: apply or discard them first');
+    if (on === this.isolated) return;
+    const from = this.folder;
+    this.isolated = on;
+    // The shell follows into (or out of) the copy, keeping its place in it.
+    const cwd = this.shell.cwd;
+    this.shell.reset();
+    this.shell.cwd = isInside(from, cwd) ? this.folder + cwd.slice(from.length) : this.folder;
+    this.#system = null;
+  }
+
   /** SessionStart hooks have run for this session (in this process). */
   #started = false;
   /** A model of its own (custom agents, sub-agents): the main provider with this model id. */
@@ -200,7 +232,7 @@ export class Agent {
   constructor(
     private os: Kernel,
     private host: AgentHost,
-    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension; model?: string; project?: Project } = {},
+    opts: { ppid?: number; depth?: number; id?: string; persona?: Extension; model?: string; project?: Project; folder?: string } = {},
   ) {
     this.#depth = opts.depth ?? 0;
     this.project = opts.project ?? GENERAL;
@@ -210,7 +242,8 @@ export class Agent {
     this.id = opts.id ?? `${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}-${Math.random().toString(36).slice(2, 6)}`;
     this.proc = os.procs.spawn({ name: this.#persona ? `agent:${this.#persona.name}` : this.#depth ? 'sub-agent' : 'agent', kind: 'agent', ppid: opts.ppid, detail: 'idle', onKill: () => this.#run?.abort() });
     os.procs.update(this.proc.pid, { state: 'idle' });
-    this.shell = new Shell(os, { cwd: this.project.folder });
+    this.#folder = opts.folder ?? null;
+    this.shell = new Shell(os, { cwd: this.folder });
     this.checkpoints = new Checkpoints(os);
   }
 
@@ -450,7 +483,7 @@ export class Agent {
   async #ensureSystem(cfg: ReturnType<typeof loadConfig>, lite: boolean): Promise<void> {
     const key = JSON.stringify([lite, hasServerWebTools(cfg), cfg.instructions]);
     if (this.#system !== null && key === this.#systemKey) return;
-    this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona, project: this.project });
+    this.#system = await buildSystemPrompt(this.os, cfg, { lite, subagent: this.#depth > 0, persona: this.#persona, project: this.project, folder: this.folder });
     this.#systemKey = key;
   }
 
@@ -561,7 +594,7 @@ export class Agent {
       session: this.id,
       created: (p) => this.checkpoints.created(p),
       project: this.project,
-      workspace: this.project.folder,
+      workspace: this.folder,
       setTodos: (items) => {
         this.todos = items;
         emit({ type: 'todos', items });
@@ -671,7 +704,7 @@ export class Agent {
         prompter: this.host.prompter,
       },
       // Its model: the custom agent's own, else the one set for sub-agents, else this agent's.
-      { ppid: this.proc.pid, depth: this.#depth + 1, persona, project: this.project, model: persona?.model || loadConfig(this.os).subagentModel || this.#model || undefined },
+      { ppid: this.proc.pid, depth: this.#depth + 1, persona, project: this.project, folder: this.folder, model: persona?.model || loadConfig(this.os).subagentModel || this.#model || undefined },
     );
     const abort = () => child.stop();
     signal.addEventListener('abort', abort);

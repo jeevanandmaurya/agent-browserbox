@@ -5,8 +5,15 @@ The app (agent window, desktop, docs) is released on its own, as a site:
 Each section becomes the "What's new" part of the GitHub release notes. The
 SDK and runtime have their own changelog in `packages/sdk/CHANGELOG.md`.
 
-## 0.4.2 (not released yet)
+## 0.4.2
 
+- **Isolated chats**: a chat can work on its own copy of the project folder
+  (`/isolate`, or "Work on a copy" in the chat menu). The agent's edits,
+  shell commands and dev servers all use the copy; the folder itself is
+  untouched until you review the changes (a chip above the message box) and
+  apply them, all or file by file, or discard them. The copy costs nothing
+  up front: only changed files are stored, with the chat, and it survives
+  reloads.
 - **The agent tests what it builds**: a new `preview` tool opens a page it
   made (a file or a dev server page) in the sandboxed preview, reads it with
   its buttons and fields numbered, clicks, types, chooses, presses keys,

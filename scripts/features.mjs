@@ -78,6 +78,7 @@ function respond(r) {
   if (lastUser.includes('write the report')) return call('create_artifact', { title: 'Weekly report', kind: 'markdown', content: '# Weekly report\n\nAll good.' });
   if (lastUser.includes('improve the report')) return call('update_artifact', { id: 'weekly-report', edits: [{ old: 'All good.', new: 'All good, shipped 3 features.' }], note: 'more detail' });
   if (lastUser.includes('where are you working')) return call('shell', { command: 'pwd' });
+  if (lastUser.includes('isolated edit')) return call('shell', { command: 'echo v2 > iso/hello.txt && rm iso/gone.txt && echo new > iso/added.txt && pwd' });
   if (lastUser.includes('make yourself a profile')) return call('shell', { command: 'profile new Evil' });
   if (lastUser.includes('touch while away')) return call('shell', { command: 'touch /home/user/away.txt' });
   if (lastUser.includes('run the risky command')) return call('shell', { command: 'echo fine && rm -rf /home/user/keep' });
@@ -373,11 +374,13 @@ await check('editor: Markdown preview replaces the code instead of stacking unde
 });
 
 await check('preview runs a page’s scripts (sandboxed, own origin)', async () => {
-  await page.evaluate(() => bbx.openApp('preview', { html: '<p id="x">waiting</p><script>let s; try { localStorage.length; s = "storage-open"; } catch { s = "storage-blocked"; } document.getElementById("x").textContent = "js-ran:" + s</script>' }));
+  // The page gets storage of its own (kept per app), never the app's: its origin is opaque.
+  await page.evaluate(() => localStorage.setItem('bbx-probe', 'app-only'));
+  await page.evaluate(() => bbx.openApp('preview', { html: '<p id="x">waiting</p><script>document.getElementById("x").textContent = "js-ran origin=" + self.origin + " probe=" + localStorage.getItem("bbx-probe")</script>' }));
   const frame = await (await page.waitForSelector('.wb-pane[data-app="preview"]:not([hidden]) iframe.pv-frame')).contentFrame();
   await frame.waitForFunction(() => document.getElementById('x')?.textContent.startsWith('js-ran'), null, { timeout: 10000 });
   const t = await frame.locator('#x').textContent();
-  if (!t.includes('storage-blocked')) throw new Error(`the page reached storage: ${t}`);
+  if (t !== 'js-ran origin=null probe=null') throw new Error(`the page reached the app's origin or storage: ${t}`);
   return t;
 });
 
@@ -685,7 +688,7 @@ await check('diffs, the Changes panel, and editing a message rewinds chat and fi
   if (!stat.includes('+1') || !stat.includes('−1')) throw new Error(`stat ${stat}`);
   // The chip and the panel list the file; undo there puts it back.
   await page.locator('.bb-changes:not([hidden])').waitFor();
-  await page.locator('.bb-changes').click();
+  await page.locator('.bb-changes:not([hidden])').click();
   await page.locator('.ch-file', { hasText: 'notes.txt' }).waitFor();
   await page.locator('.ch-file button', { hasText: 'Undo' }).click();
   await page.waitForFunction(async () => (await bbx.fs.readText('/home/agent/notes.txt').catch(() => '')) === 'first\nsecond\nthird\n');
@@ -1821,6 +1824,54 @@ await check('the preview tool: the agent opens its page, types, reads, checks an
     const sawImage = requests.slice(before).some((r) => JSON.stringify(r.messages).includes('data:image/png;base64'));
     if (!sawImage) throw new Error('the screenshot was not shown to the model');
     return 'opened (fields numbered), typed and submitted, read the new entry, eval → 1, screenshot shown to the model';
+  } finally {
+    await ctx.close();
+  }
+});
+
+await check('isolated chats: the agent works on a copy; the folder changes when you apply', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  try {
+    await p.goto(base + 'agent/');
+    for (const a of ['', '', 'http://localhost:11436/v1']) {
+      await p.waitForSelector('.boot-console .term-line:not(.busy)', { timeout: 60000 });
+      await p.locator('.boot-console .term-input').fill(a);
+      await p.locator('.boot-console .term-input').press('Enter');
+    }
+    await p.waitForSelector('.ag-input', { timeout: 120000 });
+    await p.evaluate(async () => {
+      bbx.perms.mode = 'auto';
+      await bbx.fs.writeFile('/home/agent/iso/hello.txt', 'v1\n');
+      await bbx.fs.writeFile('/home/agent/iso/gone.txt', 'bye\n');
+    });
+    await p.locator('.ag-input').fill('/isolate');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => [...document.querySelectorAll('.bb-changes')].some((b) => !b.hidden && b.textContent.includes('Working on a copy')), null, { timeout: 10000 });
+    await p.locator('.ag-input').fill('isolated edit');
+    await p.locator('.ag-input').press('Enter');
+    await p.waitForFunction(() => document.querySelector('.ag-log')?.textContent.includes('Tool said'), null, { timeout: 60000 });
+    const said = await p.evaluate(() => document.querySelector('.ag-log').innerText.match(/Tool said: (\S+)/)?.[1]);
+    if (!said?.startsWith('/work/')) throw new Error(`the shell worked in ${said}`);
+    const real = await p.evaluate(async () => [await bbx.fs.readText('/home/agent/iso/hello.txt'), await bbx.fs.exists('/home/agent/iso/gone.txt'), await bbx.fs.exists('/home/agent/iso/added.txt')]);
+    if (real.join() !== 'v1\n,true,false') throw new Error(`the folder changed before applying: ${JSON.stringify(real)}`);
+    const chip = p.locator('.bb-changes', { hasText: 'to apply' });
+    await chip.waitFor({ timeout: 10000 });
+    const chipText = await chip.innerText();
+    if (!chipText.includes('3 files')) throw new Error(`chip: ${chipText}`);
+    await chip.click();
+    await p.waitForSelector('.ch-dialog .ch-file');
+    const listed = await p.locator('.ch-dialog .ch-file summary').allInnerTexts();
+    await p.locator('.ch-dialog button', { hasText: 'Apply all' }).click();
+    await p.waitForFunction(() => document.querySelector('.ch-dialog .ch-empty'), null, { timeout: 10000 });
+    const after = await p.evaluate(async () => [await bbx.fs.readText('/home/agent/iso/hello.txt'), await bbx.fs.exists('/home/agent/iso/gone.txt'), await bbx.fs.readText('/home/agent/iso/added.txt')]);
+    if (after.join() !== 'v2\n,false,new\n') throw new Error(`after apply: ${JSON.stringify(after)}`);
+    // After a reload the chat still works on its copy (mounted again), which shows the applied files.
+    await p.reload();
+    await p.waitForFunction(() => [...document.querySelectorAll('.bb-changes')].some((b) => !b.hidden && b.textContent.includes('Working on a copy')), null, { timeout: 60000 });
+    const copy = await p.evaluate((dir) => bbx.fs.readText(`${dir}/iso/hello.txt`), said);
+    if (copy !== 'v2\n') throw new Error(`the copy after reload: ${copy}`);
+    return `worked in ${said}; folder untouched; review listed ${listed.map((l) => l.split('\n').slice(0, 2).join(' ')).join(', ')}; applied; still a copy after reload`;
   } finally {
     await ctx.close();
   }

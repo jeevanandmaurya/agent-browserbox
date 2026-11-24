@@ -318,7 +318,7 @@ function connect(port: MessagePort): void {
   const agents = async () => (await ensureWorld()).agents;
 
   peer.handle({
-    'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean; project?: string }) => adopt(await (await agents()).create(opts)),
+    'agent.create': async (opts?: { resume?: string; ppid?: number; private?: boolean; project?: string; isolated?: boolean }) => adopt(await (await agents()).create(opts)),
     'agent.attach': async (sid: string) => adopt(await (await agents()).attach(sid)),
     'agent.live': async () => (await agents()).live(),
     'agent.probeModels': async (baseUrl: string, kind?: 'local' | 'api') => (await agents()).probeModels(baseUrl, kind),
@@ -326,6 +326,10 @@ function connect(port: MessagePort): void {
     'agent.send': (sid: string, text: string, opts?: { plan?: boolean; images?: string[] }) => agent(sid).send(text, opts),
     'agent.rewind': (sid: string, index: number, files: boolean) => agent(sid).rewind(index, files),
     'agent.changes': (sid: string) => agent(sid).changes(),
+    'agent.isolation': (sid: string) => agent(sid).isolation(),
+    'agent.isolate': (sid: string, on: boolean) => agent(sid).isolate(on),
+    'agent.applyWork': (sid: string, paths?: string[]) => agent(sid).applyWork(paths),
+    'agent.discardWork': (sid: string, paths?: string[]) => agent(sid).discardWork(paths),
     'agent.stop': (sid: string) => agent(sid).stop(),
     'agent.snapshot': (sid: string) => agent(sid).snapshot(),
     'agent.context': (sid: string) => agent(sid).context(),

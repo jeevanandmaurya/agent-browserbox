@@ -23,6 +23,6 @@ export { describeSchedule, loadSchedules, MIN_MINUTES, nextRunAfter, SCHEDULES_K
 export { HOOK_EVENTS, HOOKS_KEY, loadHooks, type Hook, type HookEvent } from './hooks.js';
 export { decide, describeRule, loadRules, matches, RULES_KEY, saveRules, splitCommand, type PermRule, type RuleAction, type RuleScope } from './rules.js';
 export type { AgentEvent, AgentHost, TurnStats } from './agent.js';
-export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, TurnChanges } from './api.js';
+export type { AgentHandle, AgentInfo, AgentSnapshot, AgentsApi, Isolation, TurnChanges } from './api.js';
 export type { TodoItem } from './tools/types.js';
 export type { FilesLike, SettingsApi, WithFiles, WithSettings } from './host/os.js';

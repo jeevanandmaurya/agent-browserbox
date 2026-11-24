@@ -243,6 +243,10 @@ export class RemoteKernel implements Kernel {
     },
     mounts: () => self.#mounts,
     unmount: (point) => void self.call('fs.unmount', point),
+    overlay: (point, lower, store) => self.call('fs.overlay', point, lower, store),
+    overlayChanges: (point) => self.call('fs.overlayChanges', point),
+    overlayApply: (point, paths) => self.call('fs.overlayApply', point, paths),
+    overlayDiscard: (point, paths) => self.call('fs.overlayDiscard', point, paths),
   }))(this);
 
   readonly secrets: SecretsApi = {

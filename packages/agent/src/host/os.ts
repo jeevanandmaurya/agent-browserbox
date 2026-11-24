@@ -200,6 +200,10 @@ class BoxFs {
   cp = (a: string, b: string) => this.box.fs.cp(a, b);
   mv = (a: string, b: string) => this.box.fs.rename(a, b);
   glob = (pattern: string, cwd = HOME, limit?: number) => this.box.fs.glob(pattern, { cwd, limit });
+  overlay = (point: string, lower: string, store: string) => this.box.fs.overlay(point, lower, store);
+  overlayChanges = (point: string) => this.box.fs.overlayChanges(point);
+  overlayApply = (point: string, paths?: string[]) => this.box.fs.overlayApply(point, paths);
+  overlayDiscard = (point: string, paths?: string[]) => this.box.fs.overlayDiscard(point, paths);
   /** Every entry under `root`, depth first. */
   async *walk(root: string, opts: { maxDepth?: number; signal?: AbortSignal } = {}): AsyncGenerator<Stat> {
     const visit = async function* (fs: BoxFs, dir: string, depth: number): AsyncGenerator<Stat> {

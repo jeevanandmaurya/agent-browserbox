@@ -3,8 +3,15 @@
 `@jeevanand/agent-browserbox`: the agent. Each section becomes the "What's
 new" part of the GitHub release notes (`agent-v*`).
 
-## 0.4.2 (not released yet)
+## 0.4.2
 
+- **Isolated chats**: `create({ isolated: true })`, or `handle.isolate(on)`,
+  runs a chat on a copy-on-write copy of its project folder at
+  `/work/<id>` (its changes kept in `.sessions/<id>/work`, deleted with the
+  chat). `handle.isolation()` lists what it changed; `applyWork(paths?)` and
+  `discardWork(paths?)` copy the changes into the folder or throw them away.
+  The shell, file tools, sub-agents and the prompt use the copy; artifacts
+  stay in the project. Snapshots carry `isolated`.
 - `preview` tool (when the host gives `ui.preview`): open a page of the box
   or a dev server page, snapshot (numbered elements), click, type, select,
   check, press, scroll, wait, eval (an `exec` permission), console,

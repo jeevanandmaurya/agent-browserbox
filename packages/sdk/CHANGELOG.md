@@ -5,6 +5,16 @@ Covers both `@jeevanand/agent-browserbox-sdk` (the SDK) and
 together with the same version. Each section becomes the "What's new" part of
 the GitHub release notes.
 
+## 0.4.2
+
+- **Overlay folders**: `box.fs.overlay(point, lower, store)` mounts a
+  copy-on-write view of a folder: reads see the folder, writes and deletes are
+  kept in `store` (surviving reloads; mount it again after one), so the folder
+  is untouched. `overlayChanges(point)` lists added, modified and deleted
+  files; `overlayApply(point, paths?)` copies them into the folder;
+  `overlayDiscard(point, paths?)` throws them away. In the kernel: `fs.overlay`
+  and friends, and `OverlayFs`.
+
 ## 0.4.1
 
 - **`help` in sections**, with installed package commands and `~/.local/bin`

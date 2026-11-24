@@ -148,6 +148,10 @@ class Connection {
     'fs.cp': (from, to) => this.os.fs.cp(from, to),
     'fs.appendFile': (path, data) => this.os.fs.appendFile(path, data),
     'fs.glob': (pattern, cwd, limit) => this.os.fs.glob(pattern, cwd ?? HOME, limit),
+    'fs.overlay': (point, lower, store) => this.os.fs.overlay(point, lower, store),
+    'fs.overlayChanges': (point) => this.os.fs.overlayChanges(point),
+    'fs.overlayApply': (point, paths) => this.os.fs.overlayApply(point, paths),
+    'fs.overlayDiscard': (point, paths) => this.os.fs.overlayDiscard(point, paths),
     exec: async (command, opts = {}): Promise<ExecResult> => {
       let stdout = '';
       let stderr = '';
